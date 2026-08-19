@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY } from "../shared/lahza";
-import { calculateDeliveryFee, calculateLineTotal, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, pendingDeliveryCalculation } from "./lahza";
+import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText } from "../shared/lahza";
+import { calculateDeliveryFee, calculateLineTotal, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, pendingDeliveryCalculation, tickerSettingsInputSchema } from "./lahza";
 
 describe("حساب إجمالي السطر", () => {
   it("يحسب الأصناف العادية بعدد الوحدات", () => {
@@ -49,6 +49,16 @@ describe("الأقسام ومحتوى الواجهة الجديد", () => {
   it("يوفر نصين افتراضيين منفصلين للشريط المتحرك", () => {
     expect(DEFAULT_TICKER_PRIMARY).toContain("١٠ طلبات");
     expect(DEFAULT_TICKER_SECONDARY).toContain("منبج");
+  });
+
+  it("يعيد النص الافتراضي عند غياب قيمة الشريط بدلاً من تعطل الواجهة", () => {
+    expect(normalizeTickerText(undefined, DEFAULT_TICKER_PRIMARY)).toBe(DEFAULT_TICKER_PRIMARY);
+    expect(normalizeTickerText("  نص محفوظ  ", DEFAULT_TICKER_PRIMARY)).toBe("نص محفوظ");
+  });
+
+  it("يحضّر قيم الشريطين قبل الحفظ ولا يمرر حقولاً فارغة إلى قاعدة البيانات", () => {
+    expect(tickerSettingsInputSchema.parse({ tickerPrimary: "عرض اليوم", tickerSecondary: "توصيل سريع" })).toEqual({ tickerPrimary: "عرض اليوم", tickerSecondary: "توصيل سريع" });
+    expect(tickerSettingsInputSchema.parse({})).toEqual({ tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
   });
 });
 
