@@ -4,8 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { catalogSeed, categoryMeta, formatSyp, type LahzaCategory } from "@shared/lahza";
-import { ArrowLeft, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, Minus, PackagePlus, Phone, Pill, Plus, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
+import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, type LahzaCategory } from "@shared/lahza";
+import { ArrowLeft, BadgePercent, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, Minus, PackagePlus, Phone, Pill, Plus, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -46,6 +46,8 @@ const categoryIcons = {
   butcher: Store,
   fuel: Fuel,
   pharmacy: Pill,
+  other: PackagePlus,
+  offers: BadgePercent,
 };
 
 const categoryColors = {
@@ -56,6 +58,8 @@ const categoryColors = {
   butcher: "from-rose-100 to-pink-50 text-rose-800",
   fuel: "from-blue-100 to-sky-50 text-blue-800",
   pharmacy: "from-emerald-100 to-teal-50 text-emerald-800",
+  other: "from-violet-100 to-indigo-50 text-indigo-800",
+  offers: "from-red-100 to-orange-50 text-red-800",
 };
 
 function lineTotal(line: Pick<CartLine, "quantity" | "unitPrice" | "unit">) {
@@ -70,9 +74,9 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
           <Phone className="h-4 w-4" />
           <span dir="ltr">0997311078</span>
         </a>
-        <button className="brand-mark" onDoubleClick={onSecret} title="لحظة">
-          <span className="brand-dot" />
-          <span>لحظة</span>
+        <button className="brand-mark" onDoubleClick={onSecret} title="لحظة — منبج بين يديك">
+          <span className="brand-logo-line"><span className="brand-dot" /><span>لحظة</span></span>
+          <small>منبج بين يديك</small>
         </button>
         <button className="relative grid h-10 w-10 place-items-center rounded-2xl bg-slate-50 text-slate-700 transition hover:bg-slate-100 active:scale-95" onClick={onCart} aria-label="عرض السلة">
           <ShoppingBasket className="h-5 w-5" />
@@ -120,7 +124,10 @@ export default function Home() {
   const [destination, setDestination] = useState("");
 
   const catalogQuery = trpc.lahza.catalog.list.useQuery();
+  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery();
   const products = catalogQuery.data ?? [];
+  const tickerPrimary = interfaceSettingsQuery.data?.tickerPrimary ?? DEFAULT_TICKER_PRIMARY;
+  const tickerSecondary = interfaceSettingsQuery.data?.tickerSecondary ?? DEFAULT_TICKER_SECONDARY;
   const adminLogin = trpc.lahza.admin.login.useMutation({
     onSuccess: () => {
       setSecretOpen(false);
@@ -244,7 +251,7 @@ export default function Home() {
   return (
     <main dir="rtl" className="min-h-screen bg-white text-slate-950">
       <Header onSecret={() => setSecretOpen(true)} onCart={() => screen === "delivery" ? openCheckout() : setScreen("delivery")} cartCount={cart.length} />
-      <div className="reward-ticker" aria-label="عرض المكافأة"><div className="reward-ticker-track"><span>حقق ١٠ طلبات واربح معنا هدية</span><span aria-hidden="true">حقق ١٠ طلبات واربح معنا هدية</span></div></div>
+      <div className="reward-ticker" aria-label="رسائل لحظة"><div className="reward-ticker-track"><span>{tickerPrimary}<b aria-hidden="true">★</b>{tickerSecondary}</span><span aria-hidden="true">{tickerPrimary}<b>★</b>{tickerSecondary}</span></div></div>
 
       {screen === "home" ? (
         <>
