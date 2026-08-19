@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
-import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, type LahzaCategory } from "@shared/lahza";
+import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, type LahzaCategory } from "@shared/lahza";
 import { ArrowLeft, BadgePercent, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
@@ -130,8 +130,8 @@ export default function Home() {
   const catalogQuery = trpc.lahza.catalog.list.useQuery();
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery();
   const products = catalogQuery.data ?? [];
-  const tickerPrimary = interfaceSettingsQuery.data?.tickerPrimary ?? DEFAULT_TICKER_PRIMARY;
-  const tickerSecondary = interfaceSettingsQuery.data?.tickerSecondary ?? DEFAULT_TICKER_SECONDARY;
+  const tickerPrimary = normalizeTickerText(interfaceSettingsQuery.data?.tickerPrimary, DEFAULT_TICKER_PRIMARY);
+  const tickerSecondary = normalizeTickerText(interfaceSettingsQuery.data?.tickerSecondary, DEFAULT_TICKER_SECONDARY);
   const adminLogin = trpc.lahza.admin.login.useMutation({
     onSuccess: () => {
       setSecretOpen(false);

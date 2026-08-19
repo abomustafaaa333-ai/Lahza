@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { buildEmployeeOrderWhatsAppUrl, buildWhatsAppLocationUrl, mapUrlFromNotes, shareCustomerContact, shareOrderImage } from "@/lib/adminShare";
-import { categoryMeta, formatSyp, orderStatusLabels, type LahzaCategory } from "@shared/lahza";
+import { categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, orderStatusLabels, type LahzaCategory } from "@shared/lahza";
 import { ArrowRight, BadgeDollarSign, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackageSearch, Phone, RefreshCw, Settings2, Share2, ShieldCheck, Trash2, UserPlus, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -175,8 +175,8 @@ function SettingsPanel() {
   const updateInterface = trpc.lahza.admin.interfaceSettings.update.useMutation({ onSuccess: () => { interfaceSettingsQuery.refetch(); toast.success("تم حفظ نصي الشريط المتحرك"); }, onError: error => toast.error(error.message) });
   useEffect(() => {
     if (!interfaceSettingsQuery.data) return;
-    setTickerPrimary(interfaceSettingsQuery.data.tickerPrimary);
-    setTickerSecondary(interfaceSettingsQuery.data.tickerSecondary);
+    setTickerPrimary(normalizeTickerText(interfaceSettingsQuery.data.tickerPrimary, DEFAULT_TICKER_PRIMARY));
+    setTickerSecondary(normalizeTickerText(interfaceSettingsQuery.data.tickerSecondary, DEFAULT_TICKER_SECONDARY));
   }, [interfaceSettingsQuery.data]);
   return <div className="space-y-5"><section className="admin-section"><div className="admin-section-heading"><div><p>محتوى واجهة العميل</p><h2>الشريطان المتحركان</h2></div><Settings2 className="h-5 w-5 text-red-600" /></div><p className="settings-copy">يظهر النصان في شريط واحد أعلى التطبيق، ويفصل بينهما رمز نجمة تلقائياً.</p>{interfaceSettingsQuery.isLoading ? <PanelLoading text="جارٍ تحميل نصوص الشريط" /> : <div className="pin-form"><div><Label>نص الشريط الأول</Label><Input value={tickerPrimary} onChange={event => setTickerPrimary(event.target.value.slice(0, 220))} placeholder="حقق ١٠ طلبات واربح معنا هدية" /></div><div><Label>نص الشريط الثاني</Label><Input value={tickerSecondary} onChange={event => setTickerSecondary(event.target.value.slice(0, 220))} placeholder="لحظة — منبج بين يديك" /></div><Button disabled={updateInterface.isPending || tickerPrimary.trim().length < 2 || tickerSecondary.trim().length < 2} onClick={() => updateInterface.mutate({ tickerPrimary: tickerPrimary.trim(), tickerSecondary: tickerSecondary.trim() })} className="rounded-xl bg-red-600 hover:bg-red-700"><Settings2 className="h-4 w-4" /> {updateInterface.isPending ? "جارٍ الحفظ..." : "حفظ نصي الشريط"}</Button></div>}</section><section className="admin-section"><div className="admin-section-heading"><div><p>حماية لوحة التحكم</p><h2>تغيير رمز PIN للمالك</h2></div><KeyRound className="h-5 w-5 text-blue-900" /></div><p className="settings-copy">لا تشارك رمز الدخول مع المشرفين. لديهم حسابات مستقلة تُنشأ من هذه اللوحة.</p><div className="pin-form"><div><Label>رمز PIN الحالي</Label><Input type="password" inputMode="numeric" value={currentPin} onChange={e => setCurrentPin(e.target.value)} /></div><div><Label>رمز PIN الجديد</Label><Input type="password" inputMode="numeric" value={newPin} onChange={e => setNewPin(e.target.value)} /></div><Button disabled={changePin.isPending} onClick={() => changePin.mutate({ currentPin, newPin })} className="rounded-xl bg-blue-900 hover:bg-blue-950"><KeyRound className="h-4 w-4" /> حفظ الرمز الجديد</Button></div></section></div>;
 }
