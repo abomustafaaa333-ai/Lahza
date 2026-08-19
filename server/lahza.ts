@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { catalogItems, customerPresence, customerProfiles, lahzaEmployees, orderLines, orders, supervisors, systemSettings } from "../drizzle/schema";
-import { catalogSeed, type LahzaCategory } from "../shared/lahza";
+import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, type LahzaCategory } from "../shared/lahza";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
@@ -14,7 +14,7 @@ import type { TrpcContext } from "./_core/context";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
-const categories = ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy"] as const;
+const categories = ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers"] as const;
 const adminRoles = ["owner", "supervisor"] as const;
 const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled"] as const;
 const MANBIJ_CENTER = { lat: 36.5281, lng: 37.9549 };
@@ -97,7 +97,7 @@ async function getSettings() {
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   if (current[0]) return current[0];
   const masterPinHash = await hashSecret("5555");
-  await db.insert(systemSettings).values({ id: 1, masterPinHash });
+  await db.insert(systemSettings).values({ id: 1, masterPinHash, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
   const created = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   return created[0]!;
 }
@@ -185,6 +185,12 @@ export const orderInputSchema = z.object({
 });
 
 export const lahzaRouter = router({
+  interfaceSettings: router({
+    get: publicProcedure.query(async () => {
+      const settings = await getSettings();
+      return { tickerPrimary: settings.tickerPrimary, tickerSecondary: settings.tickerSecondary };
+    }),
+  }),
   customers: router({
     touch: publicProcedure.input(z.object({ deviceId: deviceIdSchema })).mutation(async ({ input }) => {
       const db = await getDb();
@@ -381,6 +387,23 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await db.update(systemSettings).set({ deliveryPricePerKm: input.pricePerKm, originLatE6: Math.round(input.originLat * 1_000_000), originLngE6: Math.round(input.originLng * 1_000_000) }).where(eq(systemSettings.id, 1));
+        return { success: true };
+      }),
+    }),
+    interfaceSettings: router({
+      get: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const settings = await getSettings();
+        return { tickerPrimary: settings.tickerPrimary, tickerSecondary: settings.tickerSecondary };
+      }),
+      update: publicProcedure.input(z.object({
+        tickerPrimary: z.string().trim().min(2, "أدخل نص الشريط الأول").max(220),
+        tickerSecondary: z.string().trim().min(2, "أدخل نص الشريط الثاني").max(220),
+      })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.update(systemSettings).set({ tickerPrimary: input.tickerPrimary, tickerSecondary: input.tickerSecondary }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),

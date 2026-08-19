@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { catalogSeed, categoryMeta } from "../shared/lahza";
-import { calculateDeliveryFee, calculateLineTotal, orderInputSchema } from "./lahza";
+import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY } from "../shared/lahza";
+import { calculateDeliveryFee, calculateLineTotal, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, pendingDeliveryCalculation } from "./lahza";
 
 describe("حساب إجمالي السطر", () => {
   it("يحسب الأصناف العادية بعدد الوحدات", () => {
@@ -24,6 +24,11 @@ describe("حساب رسوم التوصيل", () => {
   it("يحافظ على حد أدنى كيلومتر واحد عند وصول مسافة طريق صالحة", () => {
     expect(calculateDeliveryFee(350, 2)).toEqual({ billableKm: 1, deliveryFee: 2 });
   });
+
+  it("يُبقي الطلب قابلاً للحفظ عند تعذر خدمة الخرائط ويؤجل التسعير للإدارة", () => {
+    expect(pendingDeliveryCalculation()).toEqual({ deliveryDistanceMeters: 0, deliveryFee: 0, deliveryPricingPending: true });
+    expect(DELIVERY_PRICING_PENDING_NOTE).toContain("يحددها فريق لحظة لاحقاً");
+  });
 });
 
 describe("قسم الكازيات والغاز", () => {
@@ -31,6 +36,19 @@ describe("قسم الكازيات والغاز", () => {
     const gasCylinder = catalogSeed.find(item => item.name === "جرة غاز");
     expect(categoryMeta.fuel.title).toBe("الكازيات والغاز");
     expect(gasCylinder).toMatchObject({ category: "fuel", unit: "قنينة" });
+  });
+});
+
+describe("الأقسام ومحتوى الواجهة الجديد", () => {
+  it("يُعرّف قسمي منتجات أخرى والعروض للإدارة والعميل", () => {
+    expect(categoryMeta.other.title).toBe("منتجات أخرى");
+    expect(categoryMeta.offers.title).toBe("العروض");
+    expect(categoryMeta.offers.priced).toBe(true);
+  });
+
+  it("يوفر نصين افتراضيين منفصلين للشريط المتحرك", () => {
+    expect(DEFAULT_TICKER_PRIMARY).toContain("١٠ طلبات");
+    expect(DEFAULT_TICKER_SECONDARY).toContain("منبج");
   });
 });
 
