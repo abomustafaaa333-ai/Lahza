@@ -1,0 +1,3 @@
+ALTER TABLE `catalog_items` MODIFY COLUMN `category` enum('groceries','chicken','breakfast','lamb','butcher','fuel','pharmacy','other','offers') NOT NULL;--> statement-breakpoint
+ALTER TABLE `system_settings` ADD `tickerPrimary` varchar(220) DEFAULT 'حقق ١٠ طلبات واربح معنا هدية' NOT NULL;--> statement-breakpoint
+ALTER TABLE `system_settings` ADD `tickerSecondary` varchar(220) DEFAULT 'لحظة — منبج بين يديك' NOT NULL;
