@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { catalogSeed, categoryMeta, formatSyp, type LahzaCategory } from "@shared/lahza";
-import { ArrowLeft, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, Minus, PackagePlus, Phone, Pill, Plus, ReceiptText, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
+import { ArrowLeft, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, Minus, PackagePlus, Phone, Pill, Plus, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -20,15 +20,6 @@ type CartLine = {
   unit: string;
   unitPrice: number;
   priceKnown: boolean;
-};
-
-type DeliveryQuote = {
-  distanceMeters: number;
-  distanceText: string;
-  distanceKm: number;
-  billableKm: number;
-  pricePerKm: number;
-  deliveryFee: number;
 };
 
 const heroImages = [
@@ -124,7 +115,6 @@ export default function Home() {
   const [locating, setLocating] = useState(false);
   const [notes, setNotes] = useState("");
   const [payment, setPayment] = useState<"sham_cash" | "cash">("cash");
-  const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
   const [taxiType, setTaxiType] = useState<"standard" | "van">("standard");
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
@@ -150,13 +140,6 @@ export default function Home() {
     },
     onError: error => toast.error(error.message),
   });
-  const requestDeliveryQuote = trpc.lahza.delivery.quote.useMutation({
-    onSuccess: quote => {
-      setDeliveryQuote(quote);
-      toast.success(`مسافة الطريق ${quote.distanceKm} كم ورسوم التوصيل ${formatSyp(quote.deliveryFee)}`);
-    },
-    onError: error => toast.error(error.message),
-  });
   const touchPresence = trpc.lahza.customers.touch.useMutation();
 
   useEffect(() => {
@@ -176,14 +159,12 @@ export default function Home() {
 
   const addLine = (line: Omit<CartLine, "id">) => {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
-    setDeliveryQuote(null);
     toast.success("أُضيف إلى السلة");
     setActiveCategory(null);
   };
 
   const removeLine = (id: string) => {
     setCart(current => current.filter(item => item.id !== id));
-    setDeliveryQuote(null);
   };
 
   const openCheckout = () => {
@@ -216,25 +197,13 @@ export default function Home() {
       setCustomerLocationUrl(`https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`);
       setCustomerLat(latitude);
       setCustomerLng(longitude);
-      setDeliveryQuote(null);
       setLocationVerified(true);
       setLocating(false);
       toast.success("تم تحديد موقعك بنجاح");
-      if (checkoutMode === "delivery" && cart.length) requestDeliveryQuote.mutate({ locationLat: latitude, locationLng: longitude });
     }, () => {
       setLocating(false);
       toast.error("تعذر تحديد الموقع. تحقق من إذن الموقع ثم حاول مجدداً.");
     }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
-  };
-
-  const requestInvoice = () => {
-    if (checkoutMode !== "delivery") return;
-    if (customerLat === null || customerLng === null || !locationVerified) {
-      toast.message("حدد موقعك أولاً لحساب فاتورة التوصيل");
-      locateCustomer();
-      return;
-    }
-    requestDeliveryQuote.mutate({ locationLat: customerLat, locationLng: customerLng });
   };
 
   const submitCheckout = () => {
@@ -247,10 +216,6 @@ export default function Home() {
       return;
     }
     const isTaxi = checkoutMode === "taxi";
-    if (!isTaxi && !deliveryQuote) {
-      toast.error("اضغط الاستعلام عن الفاتورة لحساب سعر التوصيل قبل إرسال الطلب");
-      return;
-    }
     if (isTaxi && (!pickup.trim() || !destination.trim())) {
       toast.error("أكمل موقع الانطلاق والوجهة");
       return;
@@ -287,7 +252,7 @@ export default function Home() {
             <div className="hero-panel">
               <div className="hero-orb hero-orb-one" /><div className="hero-orb hero-orb-two" />
               <div className="hero-image-frame" aria-label="صور أقسام الخدمات">
-                {heroImages.map((image, index) => <img key={image} src={image} alt="" className="hero-image hero-image-cycle" style={{ animationDelay: `${index}s` }} />)}
+                {heroImages.map((image, index) => <img key={image} src={image} alt="" className="hero-image hero-image-cycle" style={{ animationDelay: `${index * 5}s` }} />)}
               </div>
               <div className="relative z-10 max-w-[54%]">
                 <p className="section-eyebrow text-red-100">خدمات منبج على بُعد لحظة</p>
@@ -363,7 +328,7 @@ export default function Home() {
           <section className="app-shell space-y-5 pb-10">
             <div className="checkout-card">
               <div className="checkout-card-title"><ClipboardList className="h-5 w-5 text-red-600" /><span>{checkoutMode === "delivery" ? "ملخص الطلب" : "تفاصيل الرحلة"}</span></div>
-              {checkoutMode === "delivery" ? <CartPreview cart={cart} removeLine={removeLine} total={total} hasPharmacy={hasPharmacy} quote={deliveryQuote} onInvoice={requestInvoice} calculating={locating || requestDeliveryQuote.isPending} /> : <div className="taxi-summary"><CarFront className="h-9 w-9 text-blue-900" /><div><strong>{taxiType === "van" ? "سيارة فان" : "تاكسي عادي"}</strong><span>{pickup || "موقع الانطلاق"} <ChevronLeft className="inline h-3 w-3" /> {destination || "الوجهة"}</span></div></div>}
+              {checkoutMode === "delivery" ? <CartPreview cart={cart} removeLine={removeLine} total={total} hasPharmacy={hasPharmacy} /> : <div className="taxi-summary"><CarFront className="h-9 w-9 text-blue-900" /><div><strong>{taxiType === "van" ? "سيارة فان" : "تاكسي عادي"}</strong><span>{pickup || "موقع الانطلاق"} <ChevronLeft className="inline h-3 w-3" /> {destination || "الوجهة"}</span></div></div>}
             </div>
             <div className="checkout-card space-y-4">
               <div className="checkout-card-title"><UserRound className="h-5 w-5 text-red-600" /><span>بيانات التواصل وموقع الطلب</span></div>
@@ -414,7 +379,6 @@ function CategoryDialog({ category, products, onClose, onAdd }: { category: Lahz
   return <Dialog open={Boolean(category)} onOpenChange={open => !open && onClose()}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><DialogTitle className="text-right text-xl">{meta.title}</DialogTitle><DialogDescription className="text-right">{isPharmacy ? "اكتب أسماء الأدوية أو المستلزمات المطلوبة. لا تظهر أسعار هذا القسم." : "اختر صنفاً وأدخل الكمية المناسبة."}</DialogDescription></DialogHeader>{isPharmacy ? <div className="mt-4 space-y-4"><Textarea value={medicine} onChange={e => setMedicine(e.target.value)} placeholder="مثال: دواء سعال للأطفال، فيتامين C..." /><Button onClick={addCurrent} className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700"><Plus className="h-4 w-4" /> إضافة طلب الصيدلية</Button></div> : <div className="mt-4 space-y-4"><div><Label>الصنف</Label><select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="form-select"><option value="">اختر من القائمة</option>{options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="manual">صنف غير موجود — إدخال يدوي</option></select></div>{selectedId === "manual" ? <div><Label>اسم الصنف</Label><Input value={manualName} onChange={e => setManualName(e.target.value)} placeholder="اكتب اسم الصنف" /></div> : null}<div><Label>الكمية {selectedUnit !== "وحدة" ? `(${selectedUnit})` : ""}</Label><div className="quantity-control"><button onClick={() => setQuantity(value => String(Math.max(selectedUnit === "ليتر" ? 0.1 : 1, Number(value || 1) - (selectedUnit === "جرام" ? 50 : 1))))}><Minus className="h-4 w-4" /></button><Input type="number" min={selectedUnit === "ليتر" ? "0.1" : "1"} step={selectedUnit === "جرام" ? "50" : "1"} value={quantity} onChange={e => setQuantity(e.target.value)} /><button onClick={() => setQuantity(value => String(Number(value || 0) + (selectedUnit === "جرام" ? 50 : 1)))}><Plus className="h-4 w-4" /></button></div></div>{selected && selected.unitPrice > 0 ? <div className="price-note"><span>السعر الحالي</span><strong>{formatSyp(selected.unitPrice)} {selected.unit === "جرام" ? "/ كغ" : selected.unit === "ليتر" ? "/ ليتر" : selected.unit === "قنينة" ? "/ قنينة" : ""}</strong></div> : <div className="price-note price-note-muted">يحدد السعر النهائي من لوحة الإدارة عند توفره.</div>}<Button onClick={addCurrent} className="w-full rounded-xl bg-red-600 hover:bg-red-700"><PackagePlus className="h-4 w-4" /> أضف إلى السلة</Button></div>}</DialogContent></Dialog>;
 }
 
-function CartPreview({ cart, removeLine, total, hasPharmacy, quote, onInvoice, calculating }: { cart: CartLine[]; removeLine: (id: string) => void; total: number; hasPharmacy: boolean; quote: DeliveryQuote | null; onInvoice: () => void; calculating: boolean }) {
-  const finalTotal = total + (quote?.deliveryFee ?? 0);
-  return <div className="mt-3"><div className="divide-y divide-slate-100">{cart.map(item => <div key={item.id} className="cart-line"><div><strong>{item.itemName}</strong><span>{item.quantity} {item.unit}</span></div><div className="flex items-center gap-3">{item.priceKnown ? <strong className="text-sm text-blue-900">{formatSyp(lineTotal(item))}</strong> : <small className="text-slate-400">السعر عند التأكيد</small>}<button onClick={() => removeLine(item.id)} aria-label="حذف"><Trash2 className="h-4 w-4 text-red-400" /></button></div></div>)}</div>{hasPharmacy ? <p className="pharmacy-note"><Pill className="h-4 w-4" />الأدوية لا تدخل في المجموع، ويؤكد سعرها المندوب.</p> : null}<button type="button" onClick={onInvoice} disabled={calculating} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-900 px-4 py-3 text-xs font-bold text-white transition hover:bg-blue-950 disabled:opacity-60"><ReceiptText className="h-4 w-4" />{calculating ? "جارٍ حساب الفاتورة..." : "الاستعلام عن الفاتورة"}</button>{quote ? <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-950"><div className="flex items-center justify-between"><span>مسافة الطريق من مركز منبج</span><strong>{quote.distanceKm} كم</strong></div><div className="mt-2 flex items-center justify-between"><span>سعر التوصيل ({quote.pricePerKm} ل.س × {quote.billableKm} كم)</span><strong>{formatSyp(quote.deliveryFee)}</strong></div></div> : <p className="mt-3 text-center text-[11px] leading-5 text-slate-400">حدد موقعك ثم اضغط الاستعلام عن الفاتورة لإظهار رسوم التوصيل.</p>}<div className="total-row"><span>{quote ? "الإجمالي مع التوصيل" : "إجمالي المنتجات المبدئي"}</span><strong>{formatSyp(finalTotal)}</strong></div></div>;
+function CartPreview({ cart, removeLine, total, hasPharmacy }: { cart: CartLine[]; removeLine: (id: string) => void; total: number; hasPharmacy: boolean }) {
+  return <div className="mt-3"><div className="divide-y divide-slate-100">{cart.map(item => <div key={item.id} className="cart-line"><div><strong>{item.itemName}</strong><span>{item.quantity} {item.unit}</span></div><div className="flex items-center gap-3">{item.priceKnown ? <strong className="text-sm text-blue-900">{formatSyp(lineTotal(item))}</strong> : <small className="text-slate-400">السعر عند التأكيد</small>}<button onClick={() => removeLine(item.id)} aria-label="حذف"><Trash2 className="h-4 w-4 text-red-400" /></button></div></div>)}</div>{hasPharmacy ? <p className="pharmacy-note"><Pill className="h-4 w-4" />الأدوية لا تدخل في المجموع، ويؤكد سعرها المندوب.</p> : null}<p className="mt-3 text-center text-[11px] leading-5 text-slate-400">رسوم التوصيل يحددها المندوب بعد استلام الطلب.</p><div className="total-row"><span>إجمالي المنتجات المبدئي</span><strong>{formatSyp(total)}</strong></div></div>;
 }
