@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { trpc } from "@/lib/trpc";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, type LahzaCategory } from "@shared/lahza";
-import { ArrowLeft, BadgePercent, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, Minus, PackagePlus, Phone, Pill, Plus, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -70,10 +70,14 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
   return (
     <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 pt-9 backdrop-blur-xl">
       <div className="app-shell flex h-[72px] items-center justify-between gap-3">
-        <a className="contact-pill" href="tel:0997311078" aria-label="اتصل بلحظة">
-          <Phone className="h-4 w-4" />
-          <span dir="ltr">0997311078</span>
-        </a>
+        <div className="contact-stack" aria-label="تواصل مع لحظة">
+          <a className="contact-pill" href="tel:+963997311078" aria-label="اتصل بلحظة على الرقم +963997311078">
+            <span dir="ltr">+963 997 311 078</span><Phone className="h-3.5 w-3.5" />
+          </a>
+          <a className="contact-pill contact-whatsapp" href="https://wa.me/963997311078" target="_blank" rel="noreferrer" aria-label="راسل لحظة عبر واتساب على الرقم +963997311078">
+            <span dir="ltr">+963 997 311 078</span><MessageCircle className="h-3.5 w-3.5" />
+          </a>
+        </div>
         <button className="brand-mark" onDoubleClick={onSecret} title="لحظة — منبج بين يديك">
           <span className="brand-logo-line"><span className="brand-dot" /><span>لحظة</span></span>
           <small>منبج بين يديك</small>
