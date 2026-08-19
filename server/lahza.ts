@@ -55,24 +55,29 @@ async function addTickerColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeo
   }
 }
 
-async function saveTickerSettings(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, tickerSettings: ReturnType<typeof readTickerSettings>) {
-  try {
-    await db.execute(sql`
-      UPDATE \`system_settings\`
-      SET \`tickerPrimary\` = ${tickerSettings.tickerPrimary}, \`tickerSecondary\` = ${tickerSettings.tickerSecondary}
-      WHERE \`id\` = 1
-    `);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/unknown column.*ticker/i.test(message)) throw error;
+async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `system_settings`"));
+  const availableColumns = new Set(
+    Array.isArray(columns)
+      ? columns.map(column => String((column as { Field?: unknown }).Field ?? ""))
+      : [],
+  );
+
+  if (!availableColumns.has("tickerPrimary")) {
     await addTickerColumnIfMissing(db, "tickerPrimary", DEFAULT_TICKER_PRIMARY);
-    await addTickerColumnIfMissing(db, "tickerSecondary", DEFAULT_TICKER_SECONDARY);
-    await db.execute(sql`
-      UPDATE \`system_settings\`
-      SET \`tickerPrimary\` = ${tickerSettings.tickerPrimary}, \`tickerSecondary\` = ${tickerSettings.tickerSecondary}
-      WHERE \`id\` = 1
-    `);
   }
+  if (!availableColumns.has("tickerSecondary")) {
+    await addTickerColumnIfMissing(db, "tickerSecondary", DEFAULT_TICKER_SECONDARY);
+  }
+}
+
+async function saveTickerSettings(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, tickerSettings: ReturnType<typeof readTickerSettings>) {
+  await ensureTickerColumns(db);
+  await db.execute(sql`
+    UPDATE \`system_settings\`
+    SET \`tickerPrimary\` = ${tickerSettings.tickerPrimary}, \`tickerSecondary\` = ${tickerSettings.tickerSecondary}
+    WHERE \`id\` = 1
+  `);
 }
 
 export const tickerSettingsInputSchema = z.object({
