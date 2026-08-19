@@ -1,7 +1,7 @@
 [build]
-buildCommand = "pnpm run build"
+buildCommand = "rm -rf dist && pnpm run build"
 
 [deploy]
-startCommand = "pnpm start"
+startCommand = "pnpm exec drizzle-kit migrate && pnpm start"
 healthcheckPath = "/"
 healthcheckTimeout = 180
