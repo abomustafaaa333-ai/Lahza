@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { catalogItems, customerPresence, customerProfiles, lahzaEmployees, orderLines, orders, supervisors, systemSettings } from "../drizzle/schema";
-import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, type LahzaCategory } from "../shared/lahza";
+import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText, type LahzaCategory } from "../shared/lahza";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
@@ -34,6 +34,13 @@ export const DELIVERY_PRICING_PENDING_NOTE = "رسوم التوصيل: يحدد�
 
 export function pendingDeliveryCalculation() {
   return { deliveryDistanceMeters: 0, deliveryFee: 0, deliveryPricingPending: true };
+}
+
+function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSecondary?: unknown }) {
+  return {
+    tickerPrimary: normalizeTickerText(settings.tickerPrimary, DEFAULT_TICKER_PRIMARY),
+    tickerSecondary: normalizeTickerText(settings.tickerSecondary, DEFAULT_TICKER_SECONDARY),
+  };
 }
 
 async function hashSecret(value: string) {
@@ -188,7 +195,7 @@ export const lahzaRouter = router({
   interfaceSettings: router({
     get: publicProcedure.query(async () => {
       const settings = await getSettings();
-      return { tickerPrimary: settings.tickerPrimary, tickerSecondary: settings.tickerSecondary };
+      return readTickerSettings(settings);
     }),
   }),
   customers: router({
@@ -394,7 +401,7 @@ export const lahzaRouter = router({
       get: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner"]);
         const settings = await getSettings();
-        return { tickerPrimary: settings.tickerPrimary, tickerSecondary: settings.tickerSecondary };
+        return readTickerSettings(settings);
       }),
       update: publicProcedure.input(z.object({
         tickerPrimary: z.string().trim().min(2, "أدخل نص الشريط الأول").max(220),
