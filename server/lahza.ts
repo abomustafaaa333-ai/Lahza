@@ -30,6 +30,12 @@ export function calculateDeliveryFee(distanceMeters: number, pricePerKm: number)
   return { billableKm, deliveryFee: billableKm * Math.max(0, pricePerKm) };
 }
 
+export const DELIVERY_PRICING_PENDING_NOTE = "رسوم التوصيل: يحددها فريق لحظة لاحقاً لعدم توفر حساب مسافة الطريق حالياً.";
+
+export function pendingDeliveryCalculation() {
+  return { deliveryDistanceMeters: 0, deliveryFee: 0, deliveryPricingPending: true };
+}
+
 async function hashSecret(value: string) {
   const salt = randomBytes(16).toString("hex");
   const derived = (await scrypt(value, salt, 64)) as Buffer;
@@ -264,11 +270,20 @@ export const lahzaRouter = router({
       });
       let deliveryDistanceMeters = 0;
       let deliveryFee = 0;
+      let deliveryPricingPending = false;
       if (input.orderType === "delivery") {
-        const quote = await getDrivingQuote(input.locationLat, input.locationLng);
-        deliveryDistanceMeters = quote.distanceMeters;
-        deliveryFee = quote.deliveryFee;
-        totalAmount += deliveryFee;
+        try {
+          const quote = await getDrivingQuote(input.locationLat, input.locationLng);
+          deliveryDistanceMeters = quote.distanceMeters;
+          deliveryFee = quote.deliveryFee;
+          totalAmount += deliveryFee;
+        } catch (error) {
+          const pendingCalculation = pendingDeliveryCalculation();
+          deliveryDistanceMeters = pendingCalculation.deliveryDistanceMeters;
+          deliveryFee = pendingCalculation.deliveryFee;
+          deliveryPricingPending = pendingCalculation.deliveryPricingPending;
+          console.warn("[Lahza] تعذر احتساب مسافة الطريق؛ سيُحفظ الطلب برسوم توصيل تحدد لاحقاً.", error);
+        }
       }
 
       const created = await db.insert(orders).values({
@@ -282,7 +297,7 @@ export const lahzaRouter = router({
         taxiType: input.taxiType ?? null,
         pickupLocation: input.pickupLocation ?? null,
         destination: input.destination ?? null,
-        notes: input.notes ?? null,
+        notes: [input.notes, deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
       });
       const orderId = Number(created[0].insertId);
       if (resolvedLines.length) {
@@ -299,7 +314,7 @@ export const lahzaRouter = router({
           notes: line.notes ?? null,
         })));
       }
-      return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee };
+      return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending };
     }),
     list: publicProcedure.query(async ({ ctx }) => {
       await requireAdmin(ctx);
