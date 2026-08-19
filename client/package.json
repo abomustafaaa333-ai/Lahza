@@ -1,0 +1,7 @@
+{
+  "name": "lahza-client",
+  "private": true,
+  "scripts": {
+    "build": "vite build --config vite.netlify.config.ts"
+  }
+}
