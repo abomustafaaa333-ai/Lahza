@@ -1,0 +1,7 @@
+[build]
+buildCommand = "pnpm run build"
+
+[deploy]
+startCommand = "pnpm start"
+healthcheckPath = "/"
+healthcheckTimeout = 180
