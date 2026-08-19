@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
@@ -36,11 +36,43 @@ export function pendingDeliveryCalculation() {
   return { deliveryDistanceMeters: 0, deliveryFee: 0, deliveryPricingPending: true };
 }
 
-function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSecondary?: unknown }) {
+export function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSecondary?: unknown }) {
   return {
     tickerPrimary: normalizeTickerText(settings.tickerPrimary, DEFAULT_TICKER_PRIMARY),
     tickerSecondary: normalizeTickerText(settings.tickerSecondary, DEFAULT_TICKER_SECONDARY),
   };
+}
+
+function isDuplicateColumnError(error: unknown) {
+  return error instanceof Error && /duplicate column name/i.test(error.message);
+}
+
+async function addTickerColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "tickerPrimary" | "tickerSecondary", defaultValue: string) {
+  try {
+    await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` VARCHAR(220) NOT NULL DEFAULT '${defaultValue.replace(/'/g, "''")}'`));
+  } catch (error) {
+    if (!isDuplicateColumnError(error)) throw error;
+  }
+}
+
+async function saveTickerSettings(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, tickerSettings: ReturnType<typeof readTickerSettings>) {
+  try {
+    await db.execute(sql`
+      UPDATE \`system_settings\`
+      SET \`tickerPrimary\` = ${tickerSettings.tickerPrimary}, \`tickerSecondary\` = ${tickerSettings.tickerSecondary}
+      WHERE \`id\` = 1
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/unknown column.*ticker/i.test(message)) throw error;
+    await addTickerColumnIfMissing(db, "tickerPrimary", DEFAULT_TICKER_PRIMARY);
+    await addTickerColumnIfMissing(db, "tickerSecondary", DEFAULT_TICKER_SECONDARY);
+    await db.execute(sql`
+      UPDATE \`system_settings\`
+      SET \`tickerPrimary\` = ${tickerSettings.tickerPrimary}, \`tickerSecondary\` = ${tickerSettings.tickerSecondary}
+      WHERE \`id\` = 1
+    `);
+  }
 }
 
 export const tickerSettingsInputSchema = z.object({
@@ -412,11 +444,8 @@ export const lahzaRouter = router({
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const nextTickerSettings = {
-          tickerPrimary: normalizeTickerText(input.tickerPrimary, DEFAULT_TICKER_PRIMARY),
-          tickerSecondary: normalizeTickerText(input.tickerSecondary, DEFAULT_TICKER_SECONDARY),
-        };
-        await db.update(systemSettings).set(nextTickerSettings).where(eq(systemSettings.id, 1));
+        const nextTickerSettings = readTickerSettings(input);
+        await saveTickerSettings(db, nextTickerSettings);
         return { success: true, ...nextTickerSettings };
       }),
     }),
