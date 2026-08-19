@@ -43,6 +43,11 @@ function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSecondary
   };
 }
 
+export const tickerSettingsInputSchema = z.object({
+  tickerPrimary: z.string().optional(),
+  tickerSecondary: z.string().optional(),
+}).transform(input => readTickerSettings(input));
+
 async function hashSecret(value: string) {
   const salt = randomBytes(16).toString("hex");
   const derived = (await scrypt(value, salt, 64)) as Buffer;
@@ -403,15 +408,16 @@ export const lahzaRouter = router({
         const settings = await getSettings();
         return readTickerSettings(settings);
       }),
-      update: publicProcedure.input(z.object({
-        tickerPrimary: z.string().trim().min(2, "أدخل نص الشريط الأول").max(220),
-        tickerSecondary: z.string().trim().min(2, "أدخل نص الشريط الثاني").max(220),
-      })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(tickerSettingsInputSchema).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.update(systemSettings).set({ tickerPrimary: input.tickerPrimary, tickerSecondary: input.tickerSecondary }).where(eq(systemSettings.id, 1));
-        return { success: true };
+        const nextTickerSettings = {
+          tickerPrimary: normalizeTickerText(input.tickerPrimary, DEFAULT_TICKER_PRIMARY),
+          tickerSecondary: normalizeTickerText(input.tickerSecondary, DEFAULT_TICKER_SECONDARY),
+        };
+        await db.update(systemSettings).set(nextTickerSettings).where(eq(systemSettings.id, 1));
+        return { success: true, ...nextTickerSettings };
       }),
     }),
     employees: router({
