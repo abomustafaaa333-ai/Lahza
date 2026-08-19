@@ -172,7 +172,7 @@ function SettingsPanel() {
   const [tickerPrimary, setTickerPrimary] = useState("");
   const [tickerSecondary, setTickerSecondary] = useState("");
   const changePin = trpc.lahza.admin.changePin.useMutation({ onSuccess: () => { setCurrentPin(""); setNewPin(""); toast.success("تم تغيير رمز PIN بنجاح"); }, onError: error => toast.error(error.message) });
-  const updateInterface = trpc.lahza.admin.interfaceSettings.update.useMutation({ onSuccess: () => { interfaceSettingsQuery.refetch(); toast.success("تم حفظ نصي الشريط المتحرك"); }, onError: error => toast.error(error.message) });
+  const updateInterface = trpc.lahza.admin.interfaceSettings.update.useMutation({ onSuccess: result => { setTickerPrimary(result.tickerPrimary); setTickerSecondary(result.tickerSecondary); interfaceSettingsQuery.refetch(); toast.success("تم حفظ نصي الشريط المتحرك"); }, onError: error => toast.error(error.message) });
   useEffect(() => {
     if (!interfaceSettingsQuery.data) return;
     setTickerPrimary(normalizeTickerText(interfaceSettingsQuery.data.tickerPrimary, DEFAULT_TICKER_PRIMARY));
