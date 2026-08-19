@@ -5,7 +5,9 @@ export type LahzaCategory =
   | "lamb"
   | "butcher"
   | "fuel"
-  | "pharmacy";
+  | "pharmacy"
+  | "other"
+  | "offers";
 
 export type CatalogSeed = {
   code: string;
@@ -22,7 +24,12 @@ export const categoryMeta: Record<LahzaCategory, { title: string; subtitle: stri
   butcher: { title: "الملحمة", subtitle: "الكمية بالجرام", unit: "جرام", priced: true },
   fuel: { title: "الكازيات والغاز", subtitle: "وقود بالليتر أو قناني غاز", unit: "ليتر", priced: true },
   pharmacy: { title: "الصيدليات", subtitle: "أضف أسماء الأدوية", unit: "طلب", priced: false },
+  other: { title: "منتجات أخرى", subtitle: "منتجات متنوعة تضيفها الإدارة", unit: "وحدة", priced: true },
+  offers: { title: "العروض", subtitle: "عروض مميزة يضيفها المدير", unit: "وحدة", priced: true },
 };
+
+export const DEFAULT_TICKER_PRIMARY = "حقق ١٠ طلبات واربح معنا هدية";
+export const DEFAULT_TICKER_SECONDARY = "لحظة — منبج بين يديك";
 
 const makeSeed = (category: LahzaCategory, unit: CatalogSeed["unit"], names: string[]): CatalogSeed[] =>
   names.map((name, index) => ({ code: `${category}-${index + 1}`, name, category, unit }));
