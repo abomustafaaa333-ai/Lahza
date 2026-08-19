@@ -31,6 +31,10 @@ export const categoryMeta: Record<LahzaCategory, { title: string; subtitle: stri
 export const DEFAULT_TICKER_PRIMARY = "حقق ١٠ طلبات واربح معنا هدية";
 export const DEFAULT_TICKER_SECONDARY = "لحظة — منبج بين يديك";
 
+export function normalizeTickerText(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim().length >= 2 ? value.trim() : fallback;
+}
+
 const makeSeed = (category: LahzaCategory, unit: CatalogSeed["unit"], names: string[]): CatalogSeed[] =>
   names.map((name, index) => ({ code: `${category}-${index + 1}`, name, category, unit }));
 
