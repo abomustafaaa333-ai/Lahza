@@ -89,7 +89,7 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
             <span dir="ltr">+963 997 311 078</span><MessageCircle className="h-3.5 w-3.5" />
           </a>
         </div>
-        <button className="brand-mark" onClick={onSecret} title="دخول المالك أو المشرف أو الشريك">
+        <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك">
           <span className="brand-logo-line"><span className="brand-dot" /><span>لحظة</span></span>
           <small>منبج بين يديك</small>
         </button>
