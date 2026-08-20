@@ -10,7 +10,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
-const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped_67e2302b.png";
+const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
 
 type AssignedStore = { id: number; name: string; category: LahzaCategory; active: boolean };
 type PartnerData = { id: number; name: string; storeOpen: boolean; preparationMinutes: number; stores: AssignedStore[] };

@@ -36,7 +36,7 @@ const demoGalleryImages = [
   `${demoAssetPrefix}/assets/lahza-chicken.webp`,
   `${demoAssetPrefix}/assets/lahza-pharmacy.webp`,
 ];
-const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped_67e2302b.png";
+const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
 
 const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
   { id: 1001, name: "عدس أحمر", category: "groceries", unit: "كغ", unitPrice: 25000, available: true },
