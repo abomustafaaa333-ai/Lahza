@@ -36,6 +36,7 @@ const demoGalleryImages = [
   `${demoAssetPrefix}/assets/lahza-chicken.webp`,
   `${demoAssetPrefix}/assets/lahza-pharmacy.webp`,
 ];
+const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped_67e2302b.png";
 
 const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
   { id: 1001, name: "عدس أحمر", category: "groceries", unit: "كغ", unitPrice: 25000, available: true },
@@ -103,7 +104,7 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
           </a>
         </div>
         <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك">
-          <span className="brand-logo-line"><span className="brand-dot" /><span>لحظة</span></span>
+          <span className="flex h-9 w-[116px] items-center justify-center overflow-hidden rounded-xl bg-white"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-9 w-full object-contain" /></span>
           <small>منبج بين يديك</small>
         </button>
         <button className="relative grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95" onClick={onCart} aria-label="عرض السلة">
