@@ -169,6 +169,13 @@ async function requirePartner(ctx: TrpcContext) {
   return { db, partner: found[0] };
 }
 
+async function requirePartnerStore(ctx: TrpcContext, storeId: number) {
+  const { db, partner } = await requirePartner(ctx);
+  const found = await db.select().from(stores).where(and(eq(stores.id, storeId), eq(stores.partnerId, partner.id), eq(stores.active, true))).limit(1);
+  if (!found[0]) throw new Error("هذا المتجر غير معيّن لحسابك أو غير متاح حالياً");
+  return { db, partner, store: found[0] };
+}
+
 function setAdminCookie(ctx: TrpcContext, token: string) {
   ctx.res.cookie(ADMIN_COOKIE, token, {
     ...getSessionCookieOptions(ctx.req),
@@ -253,9 +260,10 @@ const catalogItemInput = z.object({
   storeId: z.number().int().positive().optional(),
 });
 
-const storeInput = z.object({
+export const storeInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المتجر").max(140),
   category: z.enum(categories),
+  partnerId: z.number().int().positive().nullable().optional(),
   active: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
 });
@@ -269,6 +277,7 @@ const partnerAccountInput = z.object({
 const partnerProductInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المنتج").max(160),
   category: z.enum(categories),
+  storeId: z.number().int().positive(),
   unit: z.enum(["وحدة", "جرام", "ليتر", "قنينة", "طلب"]),
   price: z.number().int().min(0).max(10_000_000),
   available: z.boolean().default(true),
@@ -496,7 +505,9 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const found = await db.select({ id: partners.id, name: partners.name, username: partners.username, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes }).from(partners).where(eq(partners.id, session.partnerId)).limit(1);
-      return found[0] ?? null;
+      if (!found[0]) return null;
+      const assignedStores = await db.select().from(stores).where(eq(stores.partnerId, found[0].id)).orderBy(stores.category, stores.sortOrder, stores.name);
+      return { ...found[0], stores: assignedStores };
     }),
     login: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: passwordSchema })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -517,24 +528,38 @@ export const lahzaRouter = router({
         return { success: true };
       }),
     }),
+    stores: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        const { db, partner } = await requirePartner(ctx);
+        return db.select().from(stores).where(eq(stores.partnerId, partner.id)).orderBy(stores.category, stores.sortOrder, stores.name);
+      }),
+    }),
     catalog: router({
       list: publicProcedure.query(async ({ ctx }) => {
         const { db, partner } = await requirePartner(ctx);
-        return db.select().from(catalogItems).where(and(eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false))).orderBy(desc(catalogItems.createdAt));
+        const assignedStores = await db.select({ id: stores.id }).from(stores).where(eq(stores.partnerId, partner.id));
+        if (!assignedStores.length) return [];
+        return db.select().from(catalogItems).where(and(inArray(catalogItems.storeId, assignedStores.map(store => store.id)), eq(catalogItems.deleted, false))).orderBy(desc(catalogItems.createdAt));
       }),
       create: publicProcedure.input(partnerProductInput).mutation(async ({ ctx, input }) => {
-        const { db, partner } = await requirePartner(ctx);
-        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, deleted: false, partnerId: partner.id, imageUrl: input.imageUrl || null });
+        const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
+        if (store.category !== input.category) throw new Error("يمكنك إضافة منتجات القسم الخاص بمتجرك فقط");
+        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, imageUrl: input.imageUrl || null });
         return { success: true };
       }),
       update: publicProcedure.input(partnerProductInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        const { db, partner } = await requirePartner(ctx);
-        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, imageUrl: input.imageUrl || null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false)));
+        const { db, store } = await requirePartnerStore(ctx, input.storeId);
+        if (store.category !== input.category) throw new Error("يمكنك تعديل منتجات القسم الخاص بمتجرك فقط");
+        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, imageUrl: input.imageUrl || null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, partner } = await requirePartner(ctx);
-        await db.update(catalogItems).set({ deleted: true, available: false }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false)));
+        const found = await db.select({ storeId: catalogItems.storeId }).from(catalogItems).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false))).limit(1);
+        if (!found[0]?.storeId) throw new Error("هذا المنتج غير مرتبط بمتجر شريك");
+        const assigned = await db.select({ id: stores.id }).from(stores).where(and(eq(stores.id, found[0].storeId), eq(stores.partnerId, partner.id))).limit(1);
+        if (!assigned[0]) throw new Error("لا تملك صلاحية حذف هذا المنتج");
+        await db.update(catalogItems).set({ deleted: true, available: false }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, assigned[0].id), eq(catalogItems.deleted, false)));
         return { success: true };
       }),
     }),
@@ -675,13 +700,21 @@ export const lahzaRouter = router({
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.insert(stores).values({ name: input.name, category: input.category, active: input.active, sortOrder: input.sortOrder });
+        if (input.partnerId) {
+          const assignedPartner = await db.select({ id: partners.id }).from(partners).where(and(eq(partners.id, input.partnerId), eq(partners.active, true))).limit(1);
+          if (!assignedPartner[0]) throw new Error("اختر حساب شريك نشطاً لتعيين المتجر");
+        }
+        await db.insert(stores).values({ name: input.name, category: input.category, partnerId: input.partnerId ?? null, active: input.active, sortOrder: input.sortOrder });
         return { success: true };
       }),
       update: publicProcedure.input(storeInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        if (input.partnerId) {
+          const assignedPartner = await db.select({ id: partners.id }).from(partners).where(and(eq(partners.id, input.partnerId), eq(partners.active, true))).limit(1);
+          if (!assignedPartner[0]) throw new Error("اختر حساب شريك نشطاً لتعيين المتجر");
+        }
         const { id, ...patch } = input;
         await db.update(stores).set(patch).where(eq(stores.id, id));
         return { success: true };
