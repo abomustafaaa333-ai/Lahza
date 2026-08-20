@@ -106,8 +106,8 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
           <span className="brand-logo-line"><span className="brand-dot" /><span>لحظة</span></span>
           <small>منبج بين يديك</small>
         </button>
-        <button className="relative grid h-10 w-10 place-items-center rounded-2xl bg-slate-50 text-slate-700 transition hover:bg-slate-100 active:scale-95" onClick={onCart} aria-label="عرض السلة">
-          <ShoppingBasket className="h-5 w-5" />
+        <button className="relative grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95" onClick={onCart} aria-label="عرض السلة">
+          <ShoppingBasket className="h-6 w-6" />
           {cartCount > 0 ? <span className="cart-count">{cartCount}</span> : null}
         </button>
       </div>
@@ -118,10 +118,10 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
 function PageHeading({ eyebrow, title, detail, onBack }: { eyebrow: string; title: string; detail: string; onBack: () => void }) {
   return (
     <section className="app-shell pt-7 pb-5">
-      <button className="back-link" onClick={onBack}><ArrowLeft className="h-4 w-4" /> رجوع</button>
-      <p className="section-eyebrow mt-6">{eyebrow}</p>
+      <p className="section-eyebrow">{eyebrow}</p>
       <h1 className="page-title">{title}</h1>
       <p className="page-detail">{detail}</p>
+      <button className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-blue-950 px-6 text-base font-black text-white shadow-md transition hover:bg-blue-900 active:scale-[0.97]" onClick={onBack}><ArrowLeft className="h-5 w-5" /> رجوع</button>
     </section>
   );
 }
@@ -221,7 +221,7 @@ export default function Home() {
   const total = useMemo(() => cart.reduce((sum, item) => sum + lineTotal(item), 0), [cart]);
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة", storeName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers" })) : partnerOffersQuery.data ?? [];
-  const offerTickerMessages = partnerOffers.length ? partnerOffers.map(offer => `${offer.partnerName} — ${offer.text}`) : ["عروض متاجر لحظة — سيظهر أول عرض هنا فور نشره من المتجر"];
+  const tickerOffers: CustomerOffer[] = partnerOffers.length ? partnerOffers : [{ id: -1, text: "عروض متاجر لحظة — سيظهر أول عرض هنا فور نشره من المتجر", partnerName: "لحظة", imageUrl: null }];
   const partnerGallerySlides = isStaticDemo
     ? demoGalleryImages.map((imageUrl, index) => ({ id: 1004 + index, imageUrl, name: index === 0 ? "عرض طعميني — صحن حلويات" : "عرض متجر لحظة التجريبي", partnerName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", unitPrice: 0 }))
     : buildPartnerGallerySlides(partnerOffersQuery.data ?? []);
@@ -365,9 +365,9 @@ export default function Home() {
     <main dir="rtl" className="min-h-screen bg-white text-slate-950">
       <Header onSecret={() => setSecretOpen(true)} onCart={() => screen === "delivery" ? openCheckout() : setScreen("delivery")} cartCount={cart.length} />
       <div className="reward-ticker" aria-label="رسائل لحظة"><div className="reward-ticker-track"><span>{tickerPrimary}<b aria-hidden="true">★</b>{tickerSecondary}</span><span aria-hidden="true">{tickerPrimary}<b>★</b>{tickerSecondary}</span></div></div>
-      <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> عروض المتاجر</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...offerTickerMessages, ...offerTickerMessages].map((message, index) => <span key={`${message}-${index}`}>{message}<b aria-hidden="true">★</b></span>)}</div></div></div>
+      <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> عروض المتاجر</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...tickerOffers, ...tickerOffers].map((offer, index) => <span key={`${offer.id}-${index}`}><button type="button" onClick={() => offer.id > 0 && setSelectedGalleryOffer({ id: offer.id, imageUrl: offer.imageUrl ?? "", name: offer.text, partnerName: offer.partnerName, storeId: offer.storeId ?? null, storeCategory: offer.storeCategory ?? null, unitPrice: offer.productPrice ?? 0 })} className="cursor-pointer text-right transition hover:text-red-700" aria-label={`فتح عرض ${offer.text}`}>{offer.partnerName} — {offer.text}</button><b aria-hidden="true">★</b></span>)}</div></div></div>
 
-      <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <><img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /><div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={() => openOfferLocation(selectedGalleryOffer)} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
+      <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <>{selectedGalleryOffer.imageUrl ? <img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /> : <div className="grid h-52 place-items-center bg-gradient-to-br from-red-600 to-orange-500 text-white"><BadgePercent className="h-14 w-14" /></div>}<div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={() => openOfferLocation(selectedGalleryOffer)} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
 
       {screen === "home" ? (
         <>
