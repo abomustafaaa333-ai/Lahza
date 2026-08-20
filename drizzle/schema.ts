@@ -84,6 +84,7 @@ export const intercityOrders = mysqlTable("intercity_orders", {
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
   orderType: mysqlEnum("orderType", ["delivery", "taxi"]).notNull(),
+  intercityTripId: int("intercityTripId").references(() => intercityTrips.id, { onDelete: "set null" }),
   customerName: varchar("customerName", { length: 80 }).notNull(),
   customerPhone: varchar("customerPhone", { length: 24 }).notNull(),
   paymentMethod: mysqlEnum("paymentMethod", ["sham_cash", "cash"]).notNull(),

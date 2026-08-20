@@ -3,7 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { IntercityBooking } from "@/components/IntercityBooking";
+import { IntercityBooking, type IntercityTripSelection } from "@/components/IntercityBooking";
 import { trpc } from "@/lib/trpc";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, type LahzaCategory } from "@shared/lahza";
 import { ArrowLeft, BadgePercent, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
@@ -116,6 +116,7 @@ function PageHeading({ eyebrow, title, detail, onBack }: { eyebrow: string; titl
 export default function Home() {
   const [, setLocation] = useLocation();
   const [screen, setScreen] = useState<Screen>("home");
+  const [selectedIntercityTrip, setSelectedIntercityTrip] = useState<IntercityTripSelection | null>(null);
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState<LahzaCategory | null>(null);
@@ -159,6 +160,7 @@ export default function Home() {
       setNotes("");
       setPickup("");
       setDestination("");
+      setSelectedIntercityTrip(null);
       setScreen("home");
     },
     onError: error => toast.error(error.message),
@@ -252,6 +254,7 @@ export default function Home() {
       setNotes("");
       setPickup("");
       setDestination("");
+      setSelectedIntercityTrip(null);
       setScreen("home");
       return;
     }
@@ -263,6 +266,7 @@ export default function Home() {
       locationLat: customerLat,
       locationLng: customerLng,
       paymentMethod: payment,
+      intercityTripId: selectedIntercityTrip?.id,
       notes: [notes.trim(), `الموقع: ${customerLocation.trim()}`, customerLocationUrl ? `رابط الخريطة: ${customerLocationUrl}` : ""].filter(Boolean).join("\n") || undefined,
       taxiType: isTaxi ? taxiType : undefined,
       pickupLocation: isTaxi ? pickup : undefined,
@@ -274,6 +278,7 @@ export default function Home() {
   const goHome = () => {
     setScreen("home");
     setActiveCategory(null);
+    setSelectedIntercityTrip(null);
   };
 
   const handleAdminLogin = () => {
@@ -339,7 +344,7 @@ export default function Home() {
               </button>
               <button className="service-card service-card-intercity" onClick={() => setScreen("intercity")}>
                 <span className="service-card-icon"><Route /></span>
-                <span className="service-content"><span className="service-title">منبج إلى جرابلس</span><span className="service-subtitle">رحلات مجمعة للطلبات والسلع الخاصة</span></span>
+                <span className="service-content"><span className="service-title">اطلب من جرابلس</span><span className="service-subtitle">اختر حجزاً ثم اطلب من أقسام منبج</span></span>
                 <ChevronLeft className="service-arrow" />
                 <span className="service-watermark">03</span>
               </button>
@@ -357,7 +362,7 @@ export default function Home() {
 
       {screen === "delivery" ? (
         <>
-          <PageHeading eyebrow="طلبك للبيت" title="اختر احتياجك" detail="أضف المنتجات من القسم المناسب، ثم راجع طلبك قبل الإرسال." onBack={goHome} />
+          <PageHeading eyebrow={selectedIntercityTrip ? "اطلب من جرابلس" : "طلبك للبيت"} title="اختر احتياجك" detail={selectedIntercityTrip ? `طلبك سيُسجل ضمن ${selectedIntercityTrip.title}. أضف المنتجات من أقسام منبج ثم أرسل السلة.` : "أضف المنتجات من القسم المناسب، ثم راجع طلبك قبل الإرسال."} onBack={goHome} />
           <section className="app-shell pb-32">
             <div className="category-grid">
               {(Object.keys(categoryMeta) as LahzaCategory[]).map(category => {
@@ -395,7 +400,7 @@ export default function Home() {
       ) : null}
 
       {screen === "intercity" ? (
-        <IntercityBooking onBack={goHome} isStaticDemo={isStaticDemo} />
+        <IntercityBooking onBack={goHome} isStaticDemo={isStaticDemo} onChooseTrip={trip => { setSelectedIntercityTrip(trip); setScreen("delivery"); toast.success("تم اختيار الحجز. أضف منتجاتك من أقسام منبج."); }} />
       ) : null}
 
       {screen === "offers" ? (
@@ -408,6 +413,7 @@ export default function Home() {
           <section className="app-shell space-y-5 pb-10">
             <div className="checkout-card">
               <div className="checkout-card-title"><ClipboardList className="h-5 w-5 text-red-600" /><span>{checkoutMode === "delivery" ? "ملخص الطلب" : "تفاصيل الرحلة"}</span></div>
+              {selectedIntercityTrip && checkoutMode === "delivery" ? <div className="mt-3 rounded-2xl bg-blue-50 p-3 text-sm text-blue-950"><strong>الحجز المختار: {selectedIntercityTrip.title}</strong><span className="mt-1 block text-xs text-slate-600">{selectedIntercityTrip.bookingCloseLabel} · {selectedIntercityTrip.arrivalLabel}</span></div> : null}
               {checkoutMode === "delivery" ? <CartPreview cart={cart} removeLine={removeLine} total={total} hasPharmacy={hasPharmacy} /> : <div className="taxi-summary"><CarFront className="h-9 w-9 text-blue-900" /><div><strong>{taxiType === "van" ? "سيارة فان" : "تاكسي عادي"}</strong><span>{pickup || "موقع الانطلاق"} <ChevronLeft className="inline h-3 w-3" /> {destination || "الوجهة"}</span></div></div>}
             </div>
             <div className="checkout-card space-y-4">

@@ -301,6 +301,7 @@ export function calculateLineTotal(quantity: number, unitPrice: number, unit: st
 
 export const orderInputSchema = z.object({
   orderType: z.enum(["delivery", "taxi"]),
+  intercityTripId: z.number().int().positive().optional(),
   customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
   customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
   locationUrl: z.string().url("حدد موقعك عبر زر تحديد موقعي قبل إرسال الطلب").max(500),
@@ -398,8 +399,10 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const trips = await db.select().from(intercityTrips).where(eq(intercityTrips.active, true)).orderBy(desc(intercityTrips.createdAt));
       const activeOrders = await db.select({ tripId: intercityOrders.tripId }).from(intercityOrders).where(inArray(intercityOrders.status, ["new", "accepted", "ready", "collected"]));
+      const linkedOrders = await db.select({ tripId: orders.intercityTripId, status: orders.status }).from(orders).where(inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]));
       const reservedByTrip = new Map<number, number>();
       activeOrders.forEach(order => reservedByTrip.set(order.tripId, (reservedByTrip.get(order.tripId) ?? 0) + 1));
+      linkedOrders.forEach(order => { if (order.tripId) reservedByTrip.set(order.tripId, (reservedByTrip.get(order.tripId) ?? 0) + 1); });
       return trips.map(trip => ({ ...trip, reservedCount: reservedByTrip.get(trip.id) ?? 0 }));
     }),
     products: publicProcedure.query(async () => {
@@ -539,7 +542,18 @@ export const lahzaRouter = router({
       let deliveryDistanceMeters = 0;
       let deliveryFee = 0;
       let deliveryPricingPending = false;
-      if (input.orderType === "delivery") {
+      let intercityTrip: typeof intercityTrips.$inferSelect | null = null;
+      if (input.intercityTripId) {
+        const foundTrips = await db.select().from(intercityTrips).where(and(eq(intercityTrips.id, input.intercityTripId), eq(intercityTrips.active, true))).limit(1);
+        intercityTrip = foundTrips[0] ?? null;
+        if (!intercityTrip || intercityTrip.status !== "open") throw new Error("الحجز المختار غير متاح الآن، اختر حجزاً آخر");
+        const linkedReservations = await db.select({ id: orders.id, status: orders.status }).from(orders).where(eq(orders.intercityTripId, intercityTrip.id));
+        const legacyReservations = await db.select({ id: intercityOrders.id }).from(intercityOrders).where(and(eq(intercityOrders.tripId, intercityTrip.id), inArray(intercityOrders.status, ["new", "accepted", "ready", "collected"])));
+        const activeLinkedReservations = linkedReservations.filter(order => ["pending", "confirmed", "preparing", "on_the_way"].includes(order.status)).length;
+        if (!canReserveIntercityTrip(intercityTrip.capacity, legacyReservations.length + activeLinkedReservations)) throw new Error("اكتملت سعة هذا الحجز، اختر حجزاً آخر");
+        deliveryFee = intercityTrip.pickupFee;
+        totalAmount += deliveryFee;
+      } else if (input.orderType === "delivery") {
         try {
           const quote = await getDrivingQuote(input.locationLat, input.locationLng);
           deliveryDistanceMeters = quote.distanceMeters;
@@ -556,6 +570,7 @@ export const lahzaRouter = router({
 
       const created = await db.insert(orders).values({
         orderType: input.orderType,
+        intercityTripId: intercityTrip?.id ?? null,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
         paymentMethod: input.paymentMethod,
@@ -565,7 +580,7 @@ export const lahzaRouter = router({
         taxiType: input.taxiType ?? null,
         pickupLocation: input.pickupLocation ?? null,
         destination: input.destination ?? null,
-        notes: [input.notes, deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
+        notes: [input.notes, intercityTrip ? `حجز جرابلس: ${intercityTrip.title} · ${intercityTrip.bookingCloseLabel} · ${intercityTrip.arrivalLabel}` : "", deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
       });
       const orderId = Number(created[0].insertId);
       if (resolvedLines.length) {

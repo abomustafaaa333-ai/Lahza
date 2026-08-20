@@ -1,0 +1,2 @@
+ALTER TABLE `orders` ADD `intercityTripId` int;--> statement-breakpoint
+ALTER TABLE `orders` ADD CONSTRAINT `orders_intercityTripId_intercity_trips_id_fk` FOREIGN KEY (`intercityTripId`) REFERENCES `intercity_trips`(`id`) ON DELETE set null ON UPDATE no action;

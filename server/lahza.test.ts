@@ -97,6 +97,22 @@ describe("بيانات الطلب الإلزامية", () => {
     expect(parsed.customerPhone).toBe("+963912345678");
   });
 
+  it("يقبل ربط سلة الطلب العادية بحجز جرابلس مختار", () => {
+    const parsed = orderInputSchema.parse({
+      orderType: "delivery",
+      intercityTripId: 4,
+      customerName: "أحمد",
+      customerPhone: "+963912345678",
+      paymentMethod: "cash",
+      locationUrl: "https://www.google.com/maps/search/?api=1&query=36.12345,37.12345",
+      locationLat: 36.12345,
+      locationLng: 37.12345,
+      lines: [{ category: "groceries", itemName: "عدس", quantity: 1, unit: "وحدة" }],
+    });
+
+    expect(parsed.intercityTripId).toBe(4);
+  });
+
   it("يرفض الطلب من دون رابط موقع GPS", () => {
     const parsed = orderInputSchema.safeParse({
       orderType: "delivery",
