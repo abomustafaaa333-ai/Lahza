@@ -89,7 +89,7 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
             <span dir="ltr">+963 997 311 078</span><MessageCircle className="h-3.5 w-3.5" />
           </a>
         </div>
-        <button className="brand-mark" onDoubleClick={onSecret} title="لحظة — منبج بين يديك">
+        <button className="brand-mark" onClick={onSecret} title="دخول المالك أو المشرف أو الشريك">
           <span className="brand-logo-line"><span className="brand-dot" /><span>لحظة</span></span>
           <small>منبج بين يديك</small>
         </button>
@@ -120,7 +120,7 @@ export default function Home() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState<LahzaCategory | null>(null);
   const [secretOpen, setSecretOpen] = useState(false);
-  const [secretRole, setSecretRole] = useState<"owner" | "supervisor">("owner");
+  const [secretRole, setSecretRole] = useState<"owner" | "supervisor" | "partner">("owner");
   const [pin, setPin] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -277,6 +277,11 @@ export default function Home() {
   };
 
   const handleAdminLogin = () => {
+    if (secretRole === "partner") {
+      setSecretOpen(false);
+      setLocation("/partner");
+      return;
+    }
     if (isStaticDemo) {
       if (secretRole !== "owner") {
         toast.error("لوحة المشرف غير مفعّلة في النسخة التجريبية المحلية.");
@@ -419,7 +424,7 @@ export default function Home() {
 
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
       <CategoryDialog category={activeCategory} products={products} onClose={() => setActiveCategory(null)} onAdd={addLine} />
-      <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">دخول الإدارة</DialogTitle><DialogDescription className="text-center">هذه المساحة مخصصة للمالك والمشرفين.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : <><div><Label htmlFor="username">اسم المستخدم</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة المرور</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></>}<Button disabled={!isStaticDemo && adminLogin.isPending} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{!isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
+      <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">اختر نوع الدخول</DialogTitle><DialogDescription className="text-center">اختر حسابك ثم أدخل بياناته في المكان الصحيح.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button><button onClick={() => setSecretRole("partner")} className={secretRole === "partner" ? "role-selected" : ""}>شريك</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN للمالك</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : secretRole === "supervisor" ? <><div><Label htmlFor="username">اسم المستخدم للمشرف</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة مرور المشرف</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></> : <div className="rounded-2xl bg-blue-50 p-4 text-center text-sm leading-6 text-blue-950">ستفتح لك صفحة الشريك لإدخال اسم المستخدم وكلمة المرور اللذين أنشأهما المالك.</div>}<Button disabled={secretRole !== "partner" && !isStaticDemo && adminLogin.isPending} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{secretRole === "partner" ? "الانتقال إلى دخول الشريك" : !isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
     </main>
   );
 }
