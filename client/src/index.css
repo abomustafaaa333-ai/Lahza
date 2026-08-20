@@ -15,7 +15,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .contact-stack { display: grid; gap: .22rem; min-width: 8.4rem; }.contact-pill { display: inline-flex; align-items: center; justify-content: flex-start; gap: .38rem; color: #1e3a8a; font-size: .64rem; font-weight: 800; text-decoration: none; white-space: nowrap; }.contact-pill:hover { color: #1d4ed8; }.contact-whatsapp { color: #15803d; }.contact-whatsapp:hover { color: #166534; }
 .brand-mark { position: absolute; right: 50%; transform: translateX(50%); display: inline-flex; flex-direction: column; align-items: center; gap: .02rem; border: 0; background: transparent; color: #1e3a8a; font-size: 1.43rem; font-weight: 800; letter-spacing: -.06em; line-height: 1; }
 .brand-logo-line { display: inline-flex; align-items: center; gap: .45rem; }
-.brand-mark small { margin-top: 1.2rem; color: #dc2626; font-size: .46rem; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
+.brand-mark small { margin-top: .65rem; color: #dc2626; font-size: .5rem; font-weight: 800; letter-spacing: .02em; white-space: nowrap; }
 .brand-dot { width: .58rem; height: .58rem; background: #dc2626; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); margin-top: -.55rem; }
 .cart-count { position: absolute; top: -3px; left: -3px; display: grid; min-width: 1.15rem; height: 1.15rem; place-items: center; border-radius: 99px; background: #dc2626; color: white; font-size: .6rem; font-weight: 700; }
 .hero-panel { position: relative; overflow: hidden; min-height: 235px; border-radius: 2rem; padding: 2rem 1.55rem; color: white; background: linear-gradient(135deg, #172f70 0%, #1e3a8a 57%, #274ba7 100%); box-shadow: 0 20px 45px -26px rgba(30, 58, 138, .85); }

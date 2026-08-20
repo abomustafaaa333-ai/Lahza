@@ -94,7 +94,7 @@ function lineTotal(line: Pick<CartLine, "quantity" | "unitPrice" | "unit">) {
 function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart: () => void; cartCount: number }) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 pt-9 backdrop-blur-xl">
-      <div className="app-shell flex h-[72px] items-center justify-between gap-3">
+      <div className="app-shell flex h-[92px] items-center justify-between gap-3">
         <div className="contact-stack" aria-label="تواصل مع لحظة">
           <a className="contact-pill" href="tel:+963997311078" aria-label="اتصل بلحظة على الرقم +963997311078">
             <span dir="ltr">+963 997 311 078</span><Phone className="h-3.5 w-3.5" />
@@ -104,7 +104,7 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
           </a>
         </div>
         <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك">
-          <span className="flex h-9 w-[116px] items-center justify-center overflow-hidden rounded-xl bg-white"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-9 w-full object-contain" /></span>
+          <span className="flex h-12 w-[138px] items-center justify-center rounded-xl bg-white"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-12 w-full object-contain" /></span>
           <small>منبج بين يديك</small>
         </button>
         <button className="relative grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95" onClick={onCart} aria-label="عرض السلة">
