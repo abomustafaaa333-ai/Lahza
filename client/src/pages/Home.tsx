@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { IntercityBooking, type IntercityTripSelection } from "@/components/IntercityBooking";
 import { trpc } from "@/lib/trpc";
+import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, type LahzaCategory } from "@shared/lahza";
 import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -27,7 +28,7 @@ type StoreOption = { id: number; name: string; category: LahzaCategory };
 
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 const demoAssetPrefix = isStaticDemo ? "." : "";
-const heroImages = [
+const demoGalleryImages = [
   `${demoAssetPrefix}/assets/lahza-legumes.webp`,
   `${demoAssetPrefix}/assets/lahza-butcher.webp`,
   `${demoAssetPrefix}/assets/lahza-chicken.webp`,
@@ -123,6 +124,18 @@ function PageHeading({ eyebrow, title, detail, onBack }: { eyebrow: string; titl
   );
 }
 
+function PartnerOfferGallery({ slides }: { slides: PartnerGallerySlide[] }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  useEffect(() => {
+    setActiveIndex(0);
+    if (slides.length < 2) return;
+    const timer = window.setInterval(() => setActiveIndex(index => (index + 1) % slides.length), 4800);
+    return () => window.clearInterval(timer);
+  }, [slides.length]);
+  const activeSlide = slides[activeIndex] ?? null;
+  return <div className="hero-image-frame" aria-label="عروض مصورة من متاجر لحظة">{activeSlide ? <><img key={activeSlide.id} src={activeSlide.imageUrl} alt={`عرض ${activeSlide.name} من ${activeSlide.partnerName}`} className="hero-offer-image" /><div className="hero-offer-caption"><strong>{activeSlide.name}</strong><span>{activeSlide.partnerName}{activeSlide.unitPrice ? ` · ${formatSyp(activeSlide.unitPrice)}` : ""}</span></div>{slides.length > 1 ? <div className="hero-gallery-dots" aria-label="صور العروض">{slides.map((slide, index) => <button key={slide.id} type="button" onClick={() => setActiveIndex(index)} aria-label={`عرض الصورة ${index + 1}`} aria-current={index === activeIndex} className={index === activeIndex ? "hero-gallery-dot-active" : ""} />)}</div> : null}</> : <div className="hero-gallery-empty"><BadgePercent className="h-7 w-7" /><strong>عروض المتاجر</strong><span>ستظهر صور منتجات الشركاء هنا فور إضافتها.</span></div>}</div>;
+}
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const [screen, setScreen] = useState<Screen>("home");
@@ -153,6 +166,7 @@ export default function Home() {
   const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const partnerProductsQuery = trpc.lahza.intercity.products.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery({ category: activeCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
   const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
@@ -203,6 +217,9 @@ export default function Home() {
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة" })) : partnerOffersQuery.data ?? [];
   const offerTickerMessages = partnerOffers.length ? partnerOffers.map(offer => `${offer.partnerName} — ${offer.text}`) : ["عروض متاجر لحظة — سيظهر أول عرض هنا فور نشره من المتجر"];
+  const partnerGallerySlides = isStaticDemo
+    ? demoGalleryImages.map((imageUrl, index) => ({ id: index + 1, imageUrl, name: "عرض متجر لحظة التجريبي", partnerName: "شريك لحظة", unitPrice: 0 }))
+    : buildPartnerGallerySlides(partnerProductsQuery.data ?? []);
 
   const addLine = (line: Omit<CartLine, "id">) => {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
@@ -337,9 +354,7 @@ export default function Home() {
           <section className="app-shell pt-7 pb-8">
             <div className="hero-panel">
               <div className="hero-orb hero-orb-one" /><div className="hero-orb hero-orb-two" />
-              <div className="hero-image-frame" aria-label="صور أقسام الخدمات">
-                {heroImages.map((image, index) => <img key={image} src={image} alt="" className="hero-image hero-image-cycle" style={{ animationDelay: `${index * 5}s` }} />)}
-              </div>
+              <PartnerOfferGallery slides={partnerGallerySlides} />
               <div className="relative z-10 max-w-[54%]">
                 <p className="section-eyebrow text-red-100">خدمات منبج على بُعد لحظة</p>
                 <h1 className="hero-title">كل ما تحتاجه،<br /><span>بخطوة واحدة.</span></h1>
