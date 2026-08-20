@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText } from "../shared/lahza";
-import { calculateDeliveryFee, calculateLineTotal, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 
 describe("حساب إجمالي السطر", () => {
   it("يحسب الأصناف العادية بعدد الوحدات", () => {
@@ -95,9 +95,19 @@ describe("تعيين الشريك للمتجر", () => {
 });
 
 describe("عروض المتاجر", () => {
-  it("يربط العرض بمتجر الشريك ويجعل صورة العرض اختيارية", () => {
-    expect(partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", active: true })).toMatchObject({ storeId: 3, text: "خصم اليوم على المعمول", active: true });
-    expect(partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", imageUrl: "https://images.example.com/offer.jpg", active: true }).imageUrl).toBe("https://images.example.com/offer.jpg");
+  it("يربط العرض بمتجر الشريك ويجعل صورته اختيارية مع مدة إلزامية", () => {
+    expect(partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", durationDays: 30, active: true })).toMatchObject({ storeId: 3, text: "خصم اليوم على المعمول", durationDays: 30, active: true });
+    expect(partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", imageUrl: "https://images.example.com/offer.jpg", imageStorageKey: "lahza/offers/store-3/a1", durationDays: 7, active: true }).imageStorageKey).toBe("lahza/offers/store-3/a1");
+  });
+
+  it("يرفض عرضاً بلا مدة أو مدة خارج الحدود المسموحة", () => {
+    expect(() => partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", active: true })).toThrow();
+    expect(() => partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", durationDays: 366, active: true })).toThrow();
+  });
+
+  it("يحسب تاريخ الانتهاء بعد عدد الأيام المختار", () => {
+    const createdAt = new Date("2026-08-21T00:00:00.000Z");
+    expect(calculateOfferExpiry(7, createdAt).toISOString()).toBe("2026-08-28T00:00:00.000Z");
   });
 });
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
@@ -9,6 +9,8 @@ import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normaliz
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
+import { cleanExpiredOffers } from "./expiredOffers";
+import { uploadOfferImage } from "./offerMedia";
 import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
 
@@ -288,8 +290,14 @@ export const partnerOfferInput = z.object({
   storeId: z.number().int().positive(),
   text: z.string().trim().min(3, "أدخل وصف العرض").max(220),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
+  imageStorageKey: z.string().trim().min(1).max(500).optional().or(z.literal("")),
+  durationDays: z.number().int().min(1, "اختر مدة عرض لا تقل عن يوم واحد").max(365, "الحد الأقصى لمدة العرض سنة واحدة"),
   active: z.boolean().default(true),
 });
+
+export function calculateOfferExpiry(durationDays: number, now = new Date()) {
+  return new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+}
 
 const tripStatusSchema = z.enum(["open", "closed", "dispatching", "arrived"]);
 const intercityOrderStatusSchema = z.enum(["new", "accepted", "ready", "collected", "delivered", "cancelled"]);
@@ -482,7 +490,9 @@ export const lahzaRouter = router({
     offers: publicProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const activeOffers = await db.select().from(partnerOffers).where(eq(partnerOffers.active, true)).orderBy(desc(partnerOffers.createdAt));
+      await cleanExpiredOffers();
+      const now = new Date();
+      const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)))).orderBy(desc(partnerOffers.createdAt));
       const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
       const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
@@ -576,24 +586,32 @@ export const lahzaRouter = router({
     offers: router({
       list: publicProcedure.query(async ({ ctx }) => {
         const { db, partner } = await requirePartner(ctx);
+        await cleanExpiredOffers();
         const assignedStores = await db.select({ id: stores.id }).from(stores).where(eq(stores.partnerId, partner.id));
         if (!assignedStores.length) return [];
         return db.select().from(partnerOffers).where(and(eq(partnerOffers.partnerId, partner.id), inArray(partnerOffers.storeId, assignedStores.map(store => store.id)))).orderBy(desc(partnerOffers.createdAt));
       }),
       create: publicProcedure.input(partnerOfferInput).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
-        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, text: input.text, imageUrl: input.imageUrl || null, active: input.active });
+        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active });
         return { success: true };
       }),
       update: publicProcedure.input(partnerOfferInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
-        await db.update(partnerOffers).set({ text: input.text, imageUrl: input.imageUrl || null, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
+        await db.update(partnerOffers).set({ text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive(), storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
-        await db.delete(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
+        const found = await db.select({ imageStorageKey: partnerOffers.imageStorageKey }).from(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id))).limit(1);
+        if (!found[0]) throw new Error("العرض غير موجود أو لا تملك صلاحية حذفه");
+        await db.update(partnerOffers).set({ active: false, deletedAt: new Date(), imageDeletePending: Boolean(found[0].imageStorageKey) }).where(eq(partnerOffers.id, input.id));
+        await cleanExpiredOffers();
         return { success: true };
+      }),
+      uploadImage: publicProcedure.input(z.object({ storeId: z.number().int().positive(), dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
+        const { store } = await requirePartnerStore(ctx, input.storeId);
+        return uploadOfferImage(input.dataUrl, store.id, randomBytes(12).toString("hex"));
       }),
     }),
     intercityOrders: router({

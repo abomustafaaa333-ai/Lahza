@@ -8,6 +8,7 @@
     "build": "rm -rf dist && vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "build:netlify": "vite build --config client/vite.netlify.config.ts",
     "start": "NODE_ENV=production node dist/index.js",
+    "cleanup:expired-offers": "tsx server/expired-offers-job.ts",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
