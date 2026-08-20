@@ -166,7 +166,6 @@ export default function Home() {
   const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
-  const partnerProductsQuery = trpc.lahza.intercity.products.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery({ category: activeCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
   const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
@@ -219,7 +218,7 @@ export default function Home() {
   const offerTickerMessages = partnerOffers.length ? partnerOffers.map(offer => `${offer.partnerName} — ${offer.text}`) : ["عروض متاجر لحظة — سيظهر أول عرض هنا فور نشره من المتجر"];
   const partnerGallerySlides = isStaticDemo
     ? demoGalleryImages.map((imageUrl, index) => ({ id: index + 1, imageUrl, name: "عرض متجر لحظة التجريبي", partnerName: "شريك لحظة", unitPrice: 0 }))
-    : buildPartnerGallerySlides(partnerProductsQuery.data ?? []);
+    : buildPartnerGallerySlides(partnerOffersQuery.data ?? []);
 
   const addLine = (line: Omit<CartLine, "id">) => {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);

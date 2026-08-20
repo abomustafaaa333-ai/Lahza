@@ -1,8 +1,8 @@
 {
   "version": "5",
   "dialect": "mysql",
-  "id": "649171a8-b9cd-4257-a36c-e86bb4c6135d",
-  "prevId": "1568763b-2105-4b0e-bde3-93ca3e561298",
+  "id": "8db317d7-7b79-454a-9a77-74599dcd4b8f",
+  "prevId": "649171a8-b9cd-4257-a36c-e86bb4c6135d",
   "tables": {
     "catalog_items": {
       "name": "catalog_items",
@@ -902,11 +902,25 @@
           "notNull": true,
           "autoincrement": false
         },
+        "storeId": {
+          "name": "storeId",
+          "type": "int",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "text": {
           "name": "text",
           "type": "varchar(220)",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "imageUrl": {
+          "name": "imageUrl",
+          "type": "varchar(500)",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "active": {
@@ -943,6 +957,19 @@
           "tableTo": "partners",
           "columnsFrom": [
             "partnerId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "partner_offers_storeId_stores_id_fk": {
+          "name": "partner_offers_storeId_stores_id_fk",
+          "tableFrom": "partner_offers",
+          "tableTo": "stores",
+          "columnsFrom": [
+            "storeId"
           ],
           "columnsTo": [
             "id"

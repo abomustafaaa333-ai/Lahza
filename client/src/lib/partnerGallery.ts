@@ -1,8 +1,10 @@
 export type PartnerGallerySource = {
   id: number;
-  name: string;
+  name?: string;
+  text?: string;
   imageUrl?: string | null;
   partnerName?: string | null;
+  storeName?: string | null;
   unitPrice?: number | null;
 };
 
@@ -20,6 +22,6 @@ export function buildPartnerGallerySlides(items: PartnerGallerySource[]): Partne
     const imageUrl = item.imageUrl?.trim();
     if (!imageUrl || !/^https:\/\//i.test(imageUrl) || seenUrls.has(imageUrl)) return [];
     seenUrls.add(imageUrl);
-    return [{ id: item.id, name: item.name, imageUrl, partnerName: item.partnerName?.trim() || "متجر لحظة", unitPrice: Math.max(0, Number(item.unitPrice ?? 0)) }];
+    return [{ id: item.id, name: item.name?.trim() || item.text?.trim() || "عرض متجر لحظة", imageUrl, partnerName: item.storeName?.trim() || item.partnerName?.trim() || "متجر لحظة", unitPrice: Math.max(0, Number(item.unitPrice ?? 0)) }];
   });
 }

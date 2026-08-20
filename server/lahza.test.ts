@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText } from "../shared/lahza";
-import { calculateDeliveryFee, calculateLineTotal, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 
 describe("حساب إجمالي السطر", () => {
   it("يحسب الأصناف العادية بعدد الوحدات", () => {
@@ -91,6 +91,13 @@ describe("تعيين الشريك للمتجر", () => {
   it("يقبل تعيين حساب شريك أو إزالة التعيين من بيانات المتجر", () => {
     expect(storeInput.parse({ name: "حلويات الشام", category: "sweets", partnerId: 7, active: true, sortOrder: 1 }).partnerId).toBe(7);
     expect(storeInput.parse({ name: "حلويات الشام", category: "sweets", partnerId: null, active: true, sortOrder: 1 }).partnerId).toBeNull();
+  });
+});
+
+describe("عروض المتاجر", () => {
+  it("يربط العرض بمتجر الشريك ويجعل صورة العرض اختيارية", () => {
+    expect(partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", active: true })).toMatchObject({ storeId: 3, text: "خصم اليوم على المعمول", active: true });
+    expect(partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", imageUrl: "https://images.example.com/offer.jpg", active: true }).imageUrl).toBe("https://images.example.com/offer.jpg");
   });
 });
 

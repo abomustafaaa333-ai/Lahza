@@ -284,6 +284,13 @@ const partnerProductInput = z.object({
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
 });
 
+export const partnerOfferInput = z.object({
+  storeId: z.number().int().positive(),
+  text: z.string().trim().min(3, "أدخل وصف العرض").max(220),
+  imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
+  active: z.boolean().default(true),
+});
+
 const tripStatusSchema = z.enum(["open", "closed", "dispatching", "arrived"]);
 const intercityOrderStatusSchema = z.enum(["new", "accepted", "ready", "collected", "delivered", "cancelled"]);
 const tripInput = z.object({
@@ -477,10 +484,13 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const activeOffers = await db.select().from(partnerOffers).where(eq(partnerOffers.active, true)).orderBy(desc(partnerOffers.createdAt));
       const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
+      const activeStores = await db.select({ id: stores.id, name: stores.name, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
+      const storeById = new Map(activeStores.map(store => [store.id, store]));
       return activeOffers.flatMap(offer => {
         const partner = partnerById.get(offer.partnerId);
-        return partner?.storeOpen ? [{ ...offer, partnerName: partner.name }] : [];
+        const store = offer.storeId ? storeById.get(offer.storeId) : null;
+        return partner?.storeOpen && store?.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
@@ -566,21 +576,23 @@ export const lahzaRouter = router({
     offers: router({
       list: publicProcedure.query(async ({ ctx }) => {
         const { db, partner } = await requirePartner(ctx);
-        return db.select().from(partnerOffers).where(eq(partnerOffers.partnerId, partner.id)).orderBy(desc(partnerOffers.createdAt));
+        const assignedStores = await db.select({ id: stores.id }).from(stores).where(eq(stores.partnerId, partner.id));
+        if (!assignedStores.length) return [];
+        return db.select().from(partnerOffers).where(and(eq(partnerOffers.partnerId, partner.id), inArray(partnerOffers.storeId, assignedStores.map(store => store.id)))).orderBy(desc(partnerOffers.createdAt));
       }),
-      create: publicProcedure.input(z.object({ text: z.string().trim().min(3).max(220), active: z.boolean().default(true) })).mutation(async ({ ctx, input }) => {
-        const { db, partner } = await requirePartner(ctx);
-        await db.insert(partnerOffers).values({ partnerId: partner.id, text: input.text, active: input.active });
+      create: publicProcedure.input(partnerOfferInput).mutation(async ({ ctx, input }) => {
+        const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
+        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, text: input.text, imageUrl: input.imageUrl || null, active: input.active });
         return { success: true };
       }),
-      update: publicProcedure.input(z.object({ id: z.number().int().positive(), text: z.string().trim().min(3).max(220), active: z.boolean() })).mutation(async ({ ctx, input }) => {
-        const { db, partner } = await requirePartner(ctx);
-        await db.update(partnerOffers).set({ text: input.text, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id)));
+      update: publicProcedure.input(partnerOfferInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
+        await db.update(partnerOffers).set({ text: input.text, imageUrl: input.imageUrl || null, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
         return { success: true };
       }),
-      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        const { db, partner } = await requirePartner(ctx);
-        await db.delete(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id)));
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive(), storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
+        await db.delete(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
         return { success: true };
       }),
     }),
