@@ -3,14 +3,15 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { IntercityBooking } from "@/components/IntercityBooking";
 import { trpc } from "@/lib/trpc";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, type LahzaCategory } from "@shared/lahza";
-import { ArrowLeft, BadgePercent, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
-type Screen = "home" | "delivery" | "taxi" | "checkout";
+type Screen = "home" | "delivery" | "taxi" | "intercity" | "offers" | "checkout";
 type CartLine = {
   id: string;
   catalogItemId?: number;
@@ -22,11 +23,21 @@ type CartLine = {
   priceKnown: boolean;
 };
 
+const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
+const demoAssetPrefix = isStaticDemo ? "." : "";
 const heroImages = [
-  "/assets/lahza-legumes.webp",
-  "/assets/lahza-butcher.webp",
-  "/assets/lahza-chicken.webp",
-  "/assets/lahza-pharmacy.webp",
+  `${demoAssetPrefix}/assets/lahza-legumes.webp`,
+  `${demoAssetPrefix}/assets/lahza-butcher.webp`,
+  `${demoAssetPrefix}/assets/lahza-chicken.webp`,
+  `${demoAssetPrefix}/assets/lahza-pharmacy.webp`,
+];
+
+const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
+  { id: 1001, name: "عدس أحمر", category: "groceries", unit: "كغ", unitPrice: 25000, available: true },
+  { id: 1002, name: "فروج طازج", category: "chicken", unit: "كغ", unitPrice: 45000, available: true },
+  { id: 1003, name: "جرة غاز منزلية", category: "fuel", unit: "قنينة", unitPrice: 0, available: true },
+  { id: 1004, name: "عرض طعميني — صحن حلويات", category: "offers", unit: "وحدة", unitPrice: 30000, available: true },
+  { id: 1005, name: "عرض منبج — خصم على التوصيل", category: "offers", unit: "وحدة", unitPrice: 0, available: true },
 ];
 
 function getDeviceId() {
@@ -127,9 +138,10 @@ export default function Home() {
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
 
-  const catalogQuery = trpc.lahza.catalog.list.useQuery();
-  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery();
-  const products = catalogQuery.data ?? [];
+  const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
   const tickerPrimary = normalizeTickerText(interfaceSettingsQuery.data?.tickerPrimary, DEFAULT_TICKER_PRIMARY);
   const tickerSecondary = normalizeTickerText(interfaceSettingsQuery.data?.tickerSecondary, DEFAULT_TICKER_SECONDARY);
   const adminLogin = trpc.lahza.admin.login.useMutation({
@@ -154,6 +166,7 @@ export default function Home() {
   const touchPresence = trpc.lahza.customers.touch.useMutation();
 
   useEffect(() => {
+    if (isStaticDemo) return;
     const deviceId = getDeviceId();
     const reportPresence = () => touchPresence.mutate({ deviceId });
     reportPresence();
@@ -167,6 +180,8 @@ export default function Home() {
 
   const total = useMemo(() => cart.reduce((sum, item) => sum + lineTotal(item), 0), [cart]);
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
+  const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة" })) : partnerOffersQuery.data ?? [];
+  const offerTickerMessages = partnerOffers.map(offer => `${offer.partnerName} — ${offer.text}`);
 
   const addLine = (line: Omit<CartLine, "id">) => {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
@@ -231,6 +246,15 @@ export default function Home() {
       toast.error("أكمل موقع الانطلاق والوجهة");
       return;
     }
+    if (isStaticDemo) {
+      toast.success("تم تسجيل الطلب كتجربة محلية فقط ولن يُرسل إلى أي جهة.");
+      setCart([]);
+      setNotes("");
+      setPickup("");
+      setDestination("");
+      setScreen("home");
+      return;
+    }
     createOrder.mutate({
       orderType: isTaxi ? "taxi" : "delivery",
       customerName: checkoutName.trim(),
@@ -252,10 +276,30 @@ export default function Home() {
     setActiveCategory(null);
   };
 
+  const handleAdminLogin = () => {
+    if (isStaticDemo) {
+      if (secretRole !== "owner") {
+        toast.error("لوحة المشرف غير مفعّلة في النسخة التجريبية المحلية.");
+        return;
+      }
+      if (pin !== "1122") {
+        toast.error("رمز المالك غير صحيح.");
+        return;
+      }
+      setSecretOpen(false);
+      toast.success("تم فتح لوحة المالك التجريبية.");
+      setLocation("/admin");
+      return;
+    }
+    if (secretRole === "owner") adminLogin.mutate({ role: "owner", pin });
+    else adminLogin.mutate({ role: "supervisor", username, password });
+  };
+
   return (
     <main dir="rtl" className="min-h-screen bg-white text-slate-950">
       <Header onSecret={() => setSecretOpen(true)} onCart={() => screen === "delivery" ? openCheckout() : setScreen("delivery")} cartCount={cart.length} />
       <div className="reward-ticker" aria-label="رسائل لحظة"><div className="reward-ticker-track"><span>{tickerPrimary}<b aria-hidden="true">★</b>{tickerSecondary}</span><span aria-hidden="true">{tickerPrimary}<b>★</b>{tickerSecondary}</span></div></div>
+      {offerTickerMessages.length ? <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> عروض المتاجر</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...offerTickerMessages, ...offerTickerMessages].map((message, index) => <span key={`${message}-${index}`}>{message}<b aria-hidden="true">★</b></span>)}</div></div></div> : null}
 
       {screen === "home" ? (
         <>
@@ -287,6 +331,18 @@ export default function Home() {
                 <span className="service-content"><span className="service-title">سيارة أجرة</span><span className="service-subtitle">تاكسي عادي أو فان عند الحاجة</span></span>
                 <ChevronLeft className="service-arrow" />
                 <span className="service-watermark">02</span>
+              </button>
+              <button className="service-card service-card-intercity" onClick={() => setScreen("intercity")}>
+                <span className="service-card-icon"><Route /></span>
+                <span className="service-content"><span className="service-title">منبج إلى جرابلس</span><span className="service-subtitle">رحلات مجمعة للطلبات والسلع الخاصة</span></span>
+                <ChevronLeft className="service-arrow" />
+                <span className="service-watermark">03</span>
+              </button>
+              <button className="service-card service-card-offers" onClick={() => setScreen("offers")}>
+                <span className="service-card-icon"><BadgePercent /></span>
+                <span className="service-content"><span className="service-title">العروض</span><span className="service-subtitle">اكتشف عروض متاجر لحظة المتاحة الآن</span></span>
+                <ChevronLeft className="service-arrow" />
+                <span className="service-watermark">04</span>
               </button>
             </div>
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400"><Bike className="h-4 w-4 text-red-600" /><span>خدمة محلية مخصصة لمنبج</span></div>
@@ -333,6 +389,14 @@ export default function Home() {
         </>
       ) : null}
 
+      {screen === "intercity" ? (
+        <IntercityBooking onBack={goHome} isStaticDemo={isStaticDemo} />
+      ) : null}
+
+      {screen === "offers" ? (
+        <PartnerOffersScreen offers={partnerOffers} onBack={goHome} loading={partnerOffersQuery.isLoading && !isStaticDemo} />
+      ) : null}
+
       {screen === "checkout" ? (
         <>
           <PageHeading eyebrow="تأكيد الطلب" title={checkoutMode === "delivery" ? "راجع طلبك" : "تأكيد رحلتك"} detail="أدخل بيانات التواصل وحدد موقعك، ثم أرسل طلبك." onBack={() => setScreen(checkoutMode === "delivery" ? "delivery" : "taxi")} />
@@ -355,7 +419,7 @@ export default function Home() {
 
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
       <CategoryDialog category={activeCategory} products={products} onClose={() => setActiveCategory(null)} onAdd={addLine} />
-      <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">دخول الإدارة</DialogTitle><DialogDescription className="text-center">هذه المساحة مخصصة للمالك والمشرفين.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : <><div><Label htmlFor="username">اسم المستخدم</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة المرور</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></>}<Button disabled={adminLogin.isPending} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={() => secretRole === "owner" ? adminLogin.mutate({ role: "owner", pin }) : adminLogin.mutate({ role: "supervisor", username, password })}>{adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
+      <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">دخول الإدارة</DialogTitle><DialogDescription className="text-center">هذه المساحة مخصصة للمالك والمشرفين.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : <><div><Label htmlFor="username">اسم المستخدم</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة المرور</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></>}<Button disabled={!isStaticDemo && adminLogin.isPending} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{!isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
     </main>
   );
 }
@@ -392,4 +456,8 @@ function CategoryDialog({ category, products, onClose, onAdd }: { category: Lahz
 
 function CartPreview({ cart, removeLine, total, hasPharmacy }: { cart: CartLine[]; removeLine: (id: string) => void; total: number; hasPharmacy: boolean }) {
   return <div className="mt-3"><div className="divide-y divide-slate-100">{cart.map(item => <div key={item.id} className="cart-line"><div><strong>{item.itemName}</strong><span>{item.quantity} {item.unit}</span></div><div className="flex items-center gap-3">{item.priceKnown ? <strong className="text-sm text-blue-900">{formatSyp(lineTotal(item))}</strong> : <small className="text-slate-400">السعر عند التأكيد</small>}<button onClick={() => removeLine(item.id)} aria-label="حذف"><Trash2 className="h-4 w-4 text-red-400" /></button></div></div>)}</div>{hasPharmacy ? <p className="pharmacy-note"><Pill className="h-4 w-4" />الأدوية لا تدخل في المجموع، ويؤكد سعرها المندوب.</p> : null}<p className="mt-3 text-center text-[11px] leading-5 text-slate-400">رسوم التوصيل يحددها المندوب بعد استلام الطلب.</p><div className="total-row"><span>إجمالي المنتجات المبدئي</span><strong>{formatSyp(total)}</strong></div></div>;
+}
+
+function PartnerOffersScreen({ offers, loading, onBack }: { offers: Array<{ id: number; text: string; partnerName: string }>; loading: boolean; onBack: () => void }) {
+  return <><PageHeading eyebrow="عروض الشركاء" title="عروض متاجر لحظة" detail="تظهر العروض النشطة فور تفعيلها من المتجر الشريك." onBack={onBack} /><section className="app-shell pb-12">{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل العروض...</div> : offers.length ? <div className="grid gap-4 sm:grid-cols-2">{offers.map(offer => <article key={offer.id} className="rounded-3xl border border-amber-200 bg-gradient-to-l from-amber-50 to-white p-5 shadow-sm"><span className="inline-flex rounded-full bg-amber-200 px-3 py-1 text-xs font-black text-amber-950">عرض نشط</span><h2 className="mt-4 text-xl font-black text-blue-950">{offer.partnerName}</h2><p className="mt-2 text-sm leading-7 text-slate-700">{offer.text}</p><span className="mt-5 block text-xs font-bold text-red-600">يظهر أيضاً في شريط عروض المتاجر</span></article>)}</div> : <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><BadgePercent className="mx-auto h-7 w-7 text-red-600" /><h2 className="mt-3 text-lg font-black text-blue-950">لا توجد عروض نشطة الآن</h2><p className="mt-2 text-sm leading-7 text-slate-500">سيظهر العرض هنا فور إضافته وتفعيله من لوحة الشريك.</p></div>}</section></>;
 }

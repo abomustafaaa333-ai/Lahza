@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customerPresence, customerProfiles, lahzaEmployees, orderLines, orders, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, orderLines, orders, partnerOffers, partners, supervisors, systemSettings } from "../drizzle/schema";
 import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText, type LahzaCategory } from "../shared/lahza";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -14,6 +14,7 @@ import type { TrpcContext } from "./_core/context";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
+const PARTNER_COOKIE = "lahza_partner_session";
 const categories = ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers"] as const;
 const adminRoles = ["owner", "supervisor"] as const;
 const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled"] as const;
@@ -21,6 +22,7 @@ const MANBIJ_CENTER = { lat: 36.5281, lng: 37.9549 };
 
 type AdminRole = (typeof adminRoles)[number];
 type AdminSession = { role: AdminRole; supervisorId?: number };
+type PartnerSession = { partnerId: number };
 
 const passwordSchema = z.string().min(4, "يجب أن تتكون كلمة المرور من 4 أحرف أو أرقام على الأقل").max(100);
 const coordinateSchema = z.number().finite("إحداثيات الموقع غير صالحة");
@@ -34,6 +36,10 @@ export const DELIVERY_PRICING_PENDING_NOTE = "رسوم التوصيل: يحدد�
 
 export function pendingDeliveryCalculation() {
   return { deliveryDistanceMeters: 0, deliveryFee: 0, deliveryPricingPending: true };
+}
+
+export function canReserveIntercityTrip(capacity: number, reservedOrders: number) {
+  return Number.isInteger(capacity) && capacity > 0 && reservedOrders >= 0 && reservedOrders < capacity;
 }
 
 export function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSecondary?: unknown }) {
@@ -113,6 +119,14 @@ async function createSession(payload: AdminSession) {
     .sign(sessionKey());
 }
 
+async function createPartnerSession(payload: PartnerSession) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("12h")
+    .sign(sessionKey());
+}
+
 async function readSession(ctx: TrpcContext): Promise<AdminSession | null> {
   const token = parse(ctx.req.headers.cookie ?? "")[ADMIN_COOKIE];
   if (!token) return null;
@@ -120,6 +134,18 @@ async function readSession(ctx: TrpcContext): Promise<AdminSession | null> {
     const { payload } = await jwtVerify(token, sessionKey());
     if (payload.role !== "owner" && payload.role !== "supervisor") return null;
     return { role: payload.role, supervisorId: typeof payload.supervisorId === "number" ? payload.supervisorId : undefined };
+  } catch {
+    return null;
+  }
+}
+
+async function readPartnerSession(ctx: TrpcContext): Promise<PartnerSession | null> {
+  const token = parse(ctx.req.headers.cookie ?? "")[PARTNER_COOKIE];
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, sessionKey());
+    if (typeof payload.partnerId !== "number") return null;
+    return { partnerId: payload.partnerId };
   } catch {
     return null;
   }
@@ -133,8 +159,25 @@ async function requireAdmin(ctx: TrpcContext, allowed: AdminRole[] = [...adminRo
   return session;
 }
 
+async function requirePartner(ctx: TrpcContext) {
+  const session = await readPartnerSession(ctx);
+  if (!session) throw new Error("سجل دخولك بحساب الشريك أولاً");
+  const db = await getDb();
+  if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+  const found = await db.select().from(partners).where(and(eq(partners.id, session.partnerId), eq(partners.active, true))).limit(1);
+  if (!found[0]) throw new Error("حساب الشريك غير متاح حالياً");
+  return { db, partner: found[0] };
+}
+
 function setAdminCookie(ctx: TrpcContext, token: string) {
   ctx.res.cookie(ADMIN_COOKIE, token, {
+    ...getSessionCookieOptions(ctx.req),
+    maxAge: 12 * 60 * 60 * 1000,
+  });
+}
+
+function setPartnerCookie(ctx: TrpcContext, token: string) {
+  ctx.res.cookie(PARTNER_COOKIE, token, {
     ...getSessionCookieOptions(ctx.req),
     maxAge: 12 * 60 * 60 * 1000,
   });
@@ -207,6 +250,47 @@ const catalogItemInput = z.object({
   unit: z.enum(["وحدة", "جرام", "ليتر", "قنينة", "طلب"]),
   price: z.number().int().min(0).max(10_000_000),
   available: z.boolean().default(true),
+});
+
+const partnerAccountInput = z.object({
+  name: z.string().trim().min(2, "أدخل اسم المتجر").max(120),
+  username: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9_]+$/, "استخدم أحرفاً إنجليزية أو أرقاماً أو شرطة سفلية"),
+  password: passwordSchema,
+});
+
+const partnerProductInput = z.object({
+  name: z.string().trim().min(2, "أدخل اسم المنتج").max(160),
+  category: z.enum(categories),
+  unit: z.enum(["وحدة", "جرام", "ليتر", "قنينة", "طلب"]),
+  price: z.number().int().min(0).max(10_000_000),
+  available: z.boolean().default(true),
+  imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
+});
+
+const tripStatusSchema = z.enum(["open", "closed", "dispatching", "arrived"]);
+const intercityOrderStatusSchema = z.enum(["new", "accepted", "ready", "collected", "delivered", "cancelled"]);
+const tripInput = z.object({
+  title: z.string().trim().min(4).max(140),
+  bookingCloseLabel: z.string().trim().min(3).max(160),
+  arrivalLabel: z.string().trim().min(3).max(160),
+  capacity: z.number().int().min(1).max(1000),
+  pickupFee: z.number().int().min(0).max(10_000_000),
+  doorstepFee: z.number().int().min(0).max(10_000_000),
+  status: tripStatusSchema.default("open"),
+  active: z.boolean().default(true),
+});
+
+const intercityOrderInput = z.object({
+  tripId: z.number().int().positive(),
+  catalogItemId: z.number().int().positive().optional(),
+  partnerId: z.number().int().positive().optional(),
+  customerName: z.string().trim().min(2).max(80),
+  customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
+  locationUrl: z.string().url("حدد موقعك عبر زر تحديد موقعي قبل إرسال الطلب").max(500),
+  itemName: z.string().trim().min(2).max(180),
+  quantity: z.string().trim().min(1).max(32).default("1"),
+  deliveryChoice: z.enum(["pickup_point", "doorstep"]),
+  notes: z.string().trim().max(500).optional(),
 });
 
 const deviceIdSchema = z.string().trim().min(16, "معرف الجهاز غير صالح").max(80);
@@ -308,6 +392,135 @@ export const lahzaRouter = router({
       return { success: true };
     }),
   }),
+  intercity: router({
+    trips: publicProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const trips = await db.select().from(intercityTrips).where(eq(intercityTrips.active, true)).orderBy(desc(intercityTrips.createdAt));
+      const activeOrders = await db.select({ tripId: intercityOrders.tripId }).from(intercityOrders).where(inArray(intercityOrders.status, ["new", "accepted", "ready", "collected"]));
+      const reservedByTrip = new Map<number, number>();
+      activeOrders.forEach(order => reservedByTrip.set(order.tripId, (reservedByTrip.get(order.tripId) ?? 0) + 1));
+      return trips.map(trip => ({ ...trip, reservedCount: reservedByTrip.get(trip.id) ?? 0 }));
+    }),
+    products: publicProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const items = await db.select().from(catalogItems).where(and(eq(catalogItems.deleted, false), eq(catalogItems.available, true)));
+      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
+      const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
+      return items.flatMap(item => {
+        const partner = item.partnerId ? partnerById.get(item.partnerId) : null;
+        return partner?.storeOpen ? [{ ...item, partnerName: partner.name }] : [];
+      });
+    }),
+    offers: publicProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const activeOffers = await db.select().from(partnerOffers).where(eq(partnerOffers.active, true)).orderBy(desc(partnerOffers.createdAt));
+      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
+      const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
+      return activeOffers.flatMap(offer => {
+        const partner = partnerById.get(offer.partnerId);
+        return partner?.storeOpen ? [{ ...offer, partnerName: partner.name }] : [];
+      });
+    }),
+    createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const trip = await db.select().from(intercityTrips).where(and(eq(intercityTrips.id, input.tripId), eq(intercityTrips.active, true))).limit(1);
+      if (!trip[0] || trip[0].status !== "open") throw new Error("هذه الرحلة غير متاحة للحجز الآن");
+      const reserved = await db.select({ id: intercityOrders.id }).from(intercityOrders).where(and(eq(intercityOrders.tripId, input.tripId), inArray(intercityOrders.status, ["new", "accepted", "ready", "collected"])));
+      if (!canReserveIntercityTrip(trip[0].capacity, reserved.length)) throw new Error("اكتملت سعة هذه الرحلة، اختر رحلة أخرى");
+      const product = input.catalogItemId ? (await db.select().from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1))[0] : null;
+      const partnerId = product?.partnerId ?? input.partnerId ?? null;
+      const itemAmount = product?.unitPrice ?? 0;
+      const tripFee = input.deliveryChoice === "doorstep" ? trip[0].doorstepFee : trip[0].pickupFee;
+      const created = await db.insert(intercityOrders).values({ tripId: trip[0].id, partnerId, catalogItemId: product?.id ?? null, customerName: input.customerName, customerPhone: input.customerPhone, locationUrl: input.locationUrl, itemName: product?.name ?? input.itemName, quantity: input.quantity, deliveryChoice: input.deliveryChoice, itemAmount, tripFee, status: "new", notes: input.notes ?? null });
+      return { success: true, orderId: Number(created[0].insertId), totalAmount: itemAmount + tripFee };
+    }),
+  }),
+  partner: router({
+    session: publicProcedure.query(async ({ ctx }) => {
+      const session = await readPartnerSession(ctx);
+      if (!session) return null;
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const found = await db.select({ id: partners.id, name: partners.name, username: partners.username, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes }).from(partners).where(eq(partners.id, session.partnerId)).limit(1);
+      return found[0] ?? null;
+    }),
+    login: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: passwordSchema })).mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const found = await db.select().from(partners).where(and(eq(partners.username, input.username), eq(partners.active, true))).limit(1);
+      if (!found[0] || !await verifySecret(input.password, found[0].passwordHash)) throw new Error("بيانات دخول الشريك غير صحيحة");
+      setPartnerCookie(ctx, await createPartnerSession({ partnerId: found[0].id }));
+      return { id: found[0].id, name: found[0].name };
+    }),
+    logout: publicProcedure.mutation(({ ctx }) => {
+      ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
+      return { success: true };
+    }),
+    store: router({
+      update: publicProcedure.input(z.object({ storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+        const { db, partner } = await requirePartner(ctx);
+        await db.update(partners).set({ storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes }).where(eq(partners.id, partner.id));
+        return { success: true };
+      }),
+    }),
+    catalog: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        const { db, partner } = await requirePartner(ctx);
+        return db.select().from(catalogItems).where(and(eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false))).orderBy(desc(catalogItems.createdAt));
+      }),
+      create: publicProcedure.input(partnerProductInput).mutation(async ({ ctx, input }) => {
+        const { db, partner } = await requirePartner(ctx);
+        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, deleted: false, partnerId: partner.id, imageUrl: input.imageUrl || null });
+        return { success: true };
+      }),
+      update: publicProcedure.input(partnerProductInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const { db, partner } = await requirePartner(ctx);
+        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, imageUrl: input.imageUrl || null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false)));
+        return { success: true };
+      }),
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const { db, partner } = await requirePartner(ctx);
+        await db.update(catalogItems).set({ deleted: true, available: false }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false)));
+        return { success: true };
+      }),
+    }),
+    offers: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        const { db, partner } = await requirePartner(ctx);
+        return db.select().from(partnerOffers).where(eq(partnerOffers.partnerId, partner.id)).orderBy(desc(partnerOffers.createdAt));
+      }),
+      create: publicProcedure.input(z.object({ text: z.string().trim().min(3).max(220), active: z.boolean().default(true) })).mutation(async ({ ctx, input }) => {
+        const { db, partner } = await requirePartner(ctx);
+        await db.insert(partnerOffers).values({ partnerId: partner.id, text: input.text, active: input.active });
+        return { success: true };
+      }),
+      update: publicProcedure.input(z.object({ id: z.number().int().positive(), text: z.string().trim().min(3).max(220), active: z.boolean() })).mutation(async ({ ctx, input }) => {
+        const { db, partner } = await requirePartner(ctx);
+        await db.update(partnerOffers).set({ text: input.text, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id)));
+        return { success: true };
+      }),
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const { db, partner } = await requirePartner(ctx);
+        await db.delete(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id)));
+        return { success: true };
+      }),
+    }),
+    intercityOrders: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        const { db, partner } = await requirePartner(ctx);
+        return db.select().from(intercityOrders).where(eq(intercityOrders.partnerId, partner.id)).orderBy(desc(intercityOrders.createdAt));
+      }),
+      updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["accepted", "ready", "cancelled"]) })).mutation(async ({ ctx, input }) => {
+        const { db, partner } = await requirePartner(ctx);
+        await db.update(intercityOrders).set({ status: input.status }).where(and(eq(intercityOrders.id, input.id), eq(intercityOrders.partnerId, partner.id)));
+        return { success: true };
+      }),
+    }),
+  }),
   orders: router({
     create: publicProcedure.input(orderInputSchema).mutation(async ({ input }) => {
       const db = await ensureCatalogSeed();
@@ -389,6 +602,77 @@ export const lahzaRouter = router({
     }),
   }),
   admin: router({
+    partners: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return db.select({ id: partners.id, name: partners.name, username: partners.username, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes, createdAt: partners.createdAt }).from(partners).orderBy(desc(partners.createdAt));
+      }),
+      create: publicProcedure.input(partnerAccountInput).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const exists = await db.select({ id: partners.id }).from(partners).where(eq(partners.username, input.username)).limit(1);
+        if (exists[0]) throw new Error("اسم مستخدم الشريك مستخدم بالفعل");
+        await db.insert(partners).values({ name: input.name, username: input.username, passwordHash: await hashSecret(input.password), active: true, storeOpen: true, preparationMinutes: 20 });
+        return { success: true };
+      }),
+      update: publicProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(120), active: z.boolean(), storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.update(partners).set({ name: input.name, active: input.active, storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes }).where(eq(partners.id, input.id));
+        return { success: true };
+      }),
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.delete(partners).where(eq(partners.id, input.id));
+        return { success: true };
+      }),
+    }),
+    intercity: router({
+      trips: router({
+        list: publicProcedure.query(async ({ ctx }) => {
+          await requireAdmin(ctx);
+          const db = await getDb();
+          if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+          return db.select().from(intercityTrips).orderBy(desc(intercityTrips.createdAt));
+        }),
+        create: publicProcedure.input(tripInput).mutation(async ({ ctx, input }) => {
+          await requireAdmin(ctx, ["owner"]);
+          const db = await getDb();
+          if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+          await db.insert(intercityTrips).values(input);
+          return { success: true };
+        }),
+        update: publicProcedure.input(tripInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+          await requireAdmin(ctx, ["owner"]);
+          const db = await getDb();
+          if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+          const { id, ...patch } = input;
+          await db.update(intercityTrips).set(patch).where(eq(intercityTrips.id, id));
+          return { success: true };
+        }),
+      }),
+      orders: router({
+        list: publicProcedure.query(async ({ ctx }) => {
+          await requireAdmin(ctx);
+          const db = await getDb();
+          if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+          return db.select().from(intercityOrders).orderBy(desc(intercityOrders.createdAt));
+        }),
+        updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: intercityOrderStatusSchema })).mutation(async ({ ctx, input }) => {
+          await requireAdmin(ctx);
+          const db = await getDb();
+          if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+          await db.update(intercityOrders).set({ status: input.status }).where(eq(intercityOrders.id, input.id));
+          return { success: true };
+        }),
+      }),
+    }),
     session: publicProcedure.query(async ({ ctx }) => readSession(ctx)),
     login: publicProcedure.input(z.discriminatedUnion("role", [
       z.object({ role: z.literal("owner"), pin: passwordSchema }),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText } from "../shared/lahza";
-import { calculateDeliveryFee, calculateLineTotal, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, pendingDeliveryCalculation, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, pendingDeliveryCalculation, readTickerSettings, tickerSettingsInputSchema } from "./lahza";
 
 describe("حساب إجمالي السطر", () => {
   it("يحسب الأصناف العادية بعدد الوحدات", () => {
@@ -28,6 +28,17 @@ describe("حساب رسوم التوصيل", () => {
   it("يُبقي الطلب قابلاً للحفظ عند تعذر خدمة الخرائط ويؤجل التسعير للإدارة", () => {
     expect(pendingDeliveryCalculation()).toEqual({ deliveryDistanceMeters: 0, deliveryFee: 0, deliveryPricingPending: true });
     expect(DELIVERY_PRICING_PENDING_NOTE).toContain("يحددها فريق لحظة لاحقاً");
+  });
+});
+
+describe("سعة رحلة منبج إلى جرابلس", () => {
+  it("تسمح بالحجز ما دامت السعة المتبقية موجبة", () => {
+    expect(canReserveIntercityTrip(8, 7)).toBe(true);
+  });
+
+  it("ترفض الحجز عند امتلاء الرحلة أو وجود سعة غير صالحة", () => {
+    expect(canReserveIntercityTrip(8, 8)).toBe(false);
+    expect(canReserveIntercityTrip(0, 0)).toBe(false);
   });
 });
 
@@ -59,6 +70,13 @@ describe("الأقسام ومحتوى الواجهة الجديد", () => {
   it("يحضّر قيم الشريطين قبل الحفظ ولا يمرر حقولاً فارغة إلى قاعدة البيانات", () => {
     expect(tickerSettingsInputSchema.parse({ tickerPrimary: "عرض اليوم", tickerSecondary: "توصيل سريع" })).toEqual({ tickerPrimary: "عرض اليوم", tickerSecondary: "توصيل سريع" });
     expect(tickerSettingsInputSchema.parse({})).toEqual({ tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
+  });
+
+  it("ينشئ قيمتي SQL صريحتين للشريطين حتى عند وصول مدخلات ناقصة", () => {
+    expect(readTickerSettings({ tickerPrimary: "نص صالح" })).toEqual({
+      tickerPrimary: "نص صالح",
+      tickerSecondary: DEFAULT_TICKER_SECONDARY,
+    });
   });
 });
 

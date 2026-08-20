@@ -12,15 +12,71 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const partners = mysqlTable("partners", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  username: varchar("username", { length: 64 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
+  active: boolean("active").notNull().default(true),
+  storeOpen: boolean("storeOpen").notNull().default(true),
+  preparationMinutes: int("preparationMinutes").notNull().default(20),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const catalogItems = mysqlTable("catalog_items", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 80 }).notNull().unique(),
   name: varchar("name", { length: 160 }).notNull(),
-  category: mysqlEnum("category", ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy"]).notNull(),
+  category: mysqlEnum("category", ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers"]).notNull(),
   unit: varchar("unit", { length: 16 }).notNull(),
   unitPrice: int("unitPrice").notNull().default(0),
   available: boolean("available").notNull().default(true),
   deleted: boolean("deleted").notNull().default(false),
+  partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
+  imageUrl: varchar("imageUrl", { length: 500 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const partnerOffers = mysqlTable("partner_offers", {
+  id: int("id").autoincrement().primaryKey(),
+  partnerId: int("partnerId").notNull().references(() => partners.id, { onDelete: "cascade" }),
+  text: varchar("text", { length: 220 }).notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const intercityTrips = mysqlTable("intercity_trips", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 140 }).notNull(),
+  bookingCloseLabel: varchar("bookingCloseLabel", { length: 160 }).notNull(),
+  arrivalLabel: varchar("arrivalLabel", { length: 160 }).notNull(),
+  capacity: int("capacity").notNull().default(0),
+  pickupFee: int("pickupFee").notNull().default(0),
+  doorstepFee: int("doorstepFee").notNull().default(0),
+  status: mysqlEnum("status", ["open", "closed", "dispatching", "arrived"]).notNull().default("open"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const intercityOrders = mysqlTable("intercity_orders", {
+  id: int("id").autoincrement().primaryKey(),
+  tripId: int("tripId").notNull().references(() => intercityTrips.id, { onDelete: "cascade" }),
+  partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
+  catalogItemId: int("catalogItemId").references(() => catalogItems.id, { onDelete: "set null" }),
+  customerName: varchar("customerName", { length: 80 }).notNull(),
+  customerPhone: varchar("customerPhone", { length: 24 }).notNull(),
+  locationUrl: varchar("locationUrl", { length: 500 }).notNull(),
+  itemName: varchar("itemName", { length: 180 }).notNull(),
+  quantity: varchar("quantity", { length: 32 }).notNull().default("1"),
+  deliveryChoice: mysqlEnum("deliveryChoice", ["pickup_point", "doorstep"]).notNull().default("pickup_point"),
+  itemAmount: int("itemAmount").notNull().default(0),
+  tripFee: int("tripFee").notNull().default(0),
+  status: mysqlEnum("status", ["new", "accepted", "ready", "collected", "delivered", "cancelled"]).notNull().default("new"),
+  notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -63,6 +119,8 @@ export const systemSettings = mysqlTable("system_settings", {
   deliveryPricePerKm: int("deliveryPricePerKm").notNull().default(2),
   originLatE6: int("originLatE6").notNull().default(36528100),
   originLngE6: int("originLngE6").notNull().default(37954900),
+  tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),
+  tickerSecondary: varchar("tickerSecondary", { length: 220 }).notNull().default("لحظة — منبج بين يديك"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 

@@ -4,6 +4,7 @@ import path from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  base: process.env.VITE_LAHZA_STATIC_DEMO === "true" ? "./" : "/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
