@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
@@ -10,7 +10,7 @@ import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
 import { cleanExpiredOffers } from "./expiredOffers";
-import { uploadOfferImage } from "./offerMedia";
+import { deleteOfferImage, uploadOfferImage } from "./offerMedia";
 import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
 
@@ -829,6 +829,38 @@ export const lahzaRouter = router({
           await db.update(intercityOrders).set({ status: input.status }).where(eq(intercityOrders.id, input.id));
           return { success: true };
         }),
+      }),
+    }),
+    offers: router({
+      expired: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await cleanExpiredOffers();
+        const now = new Date();
+        const rows = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, false), lte(partnerOffers.expiresAt, now))).orderBy(desc(partnerOffers.expiresAt));
+        const [storeRows, partnerRows] = await Promise.all([
+          db.select({ id: stores.id, name: stores.name }).from(stores),
+          db.select({ id: partners.id, name: partners.name }).from(partners),
+        ]);
+        const storeById = new Map(storeRows.map(store => [store.id, store.name]));
+        const partnerById = new Map(partnerRows.map(partner => [partner.id, partner.name]));
+        return rows.map(offer => ({ ...offer, storeName: offer.storeId ? storeById.get(offer.storeId) ?? "متجر محذوف" : "متجر غير محدد", partnerName: partnerById.get(offer.partnerId) ?? "شريك غير محدد" }));
+      }),
+      removeExpired: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await cleanExpiredOffers();
+        const found = await db.select({ id: partnerOffers.id, active: partnerOffers.active, expiresAt: partnerOffers.expiresAt, imageStorageKey: partnerOffers.imageStorageKey }).from(partnerOffers).where(eq(partnerOffers.id, input.id)).limit(1);
+        const offer = found[0];
+        if (!offer || offer.active || !offer.expiresAt || offer.expiresAt > new Date()) throw new Error("لا يمكن حذف إلا عرض منتهي من قائمة التنبيهات");
+        if (offer.imageStorageKey) {
+          const imageResult = await deleteOfferImage(offer.imageStorageKey);
+          if (!imageResult.deleted) throw new Error("تعذر حذف صورة العرض من التخزين السحابي؛ لم يُحذف العرض حتى لا تبقى الصورة بلا إدارة");
+        }
+        await db.delete(partnerOffers).where(eq(partnerOffers.id, offer.id));
+        return { success: true };
       }),
     }),
     session: publicProcedure.query(async ({ ctx }) => readSession(ctx)),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText } from "../shared/lahza";
 import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { isOfferExpiredAt } from "./expiredOffers";
 
 describe("حساب إجمالي السطر", () => {
   it("يحسب الأصناف العادية بعدد الوحدات", () => {
@@ -108,6 +109,13 @@ describe("عروض المتاجر", () => {
   it("يحسب تاريخ الانتهاء بعد عدد الأيام المختار", () => {
     const createdAt = new Date("2026-08-21T00:00:00.000Z");
     expect(calculateOfferExpiry(7, createdAt).toISOString()).toBe("2026-08-28T00:00:00.000Z");
+  });
+
+  it("يُظهر التنبيه الإداري بعد انتهاء العرض دون اعتباره منتهياً قبله", () => {
+    const now = new Date("2026-08-21T12:00:00.000Z");
+    expect(isOfferExpiredAt(new Date("2026-08-21T12:00:00.000Z"), now)).toBe(true);
+    expect(isOfferExpiredAt(new Date("2026-08-21T12:00:01.000Z"), now)).toBe(false);
+    expect(isOfferExpiredAt(null, now)).toBe(false);
   });
 });
 

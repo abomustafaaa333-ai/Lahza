@@ -13,6 +13,10 @@ const expiryColumns = [
   ["deletedAt", "TIMESTAMP NULL"],
 ] as const;
 
+export function isOfferExpiredAt(expiresAt: Date | null, now = new Date()) {
+  return Boolean(expiresAt && expiresAt.getTime() <= now.getTime());
+}
+
 export async function ensureOfferExpiryColumns(db: Db) {
   const [rows] = await db.execute("SHOW COLUMNS FROM `partner_offers`");
   const present = new Set(Array.isArray(rows) ? rows.map(row => String((row as { Field?: unknown }).Field ?? "")) : []);
@@ -31,7 +35,8 @@ export async function expireOffers(db: Db, now = new Date()) {
     await db.update(partnerOffers).set({
       active: false,
       deletedAt: now,
-      imageDeletePending: Boolean(offer.imageStorageKey),
+      // يحتفظ بصورة العرض إلى أن يحذفها المالك أو المشرف يدوياً من لوحة الإدارة.
+      imageDeletePending: false,
     }).where(eq(partnerOffers.id, offer.id));
   }
   return expired.length;
@@ -61,6 +66,5 @@ export async function cleanExpiredOffers(now = new Date()) {
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
   await ensureOfferExpiryColumns(db);
   const expired = await expireOffers(db, now);
-  const imagesDeleted = await deletePendingOfferImages(db);
-  return { expired, imagesDeleted };
+  return { expired, imagesDeleted: 0 };
 }

@@ -4,15 +4,16 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { buildEmployeeOrderWhatsAppUrl, buildWhatsAppLocationUrl, mapUrlFromNotes, shareCustomerContact, shareOrderImage } from "@/lib/adminShare";
 import { categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, orderStatusLabels, type LahzaCategory } from "@shared/lahza";
-import { ArrowRight, BadgeDollarSign, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X } from "lucide-react";
+import { ArrowRight, BadgeDollarSign, BellRing, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
-type Tab = "orders" | "catalog" | "stores" | "delivery" | "customers" | "employees" | "team" | "partners" | "intercity" | "settings";
+type Tab = "orders" | "catalog" | "expiredOffers" | "stores" | "delivery" | "customers" | "employees" | "team" | "partners" | "intercity" | "settings";
 const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: boolean }[] = [
   { id: "orders", label: "الطلبات", icon: ClipboardList },
   { id: "catalog", label: "الأسعار", icon: BadgeDollarSign },
+  { id: "expiredOffers", label: "عروض منتهية", icon: BellRing },
   { id: "stores", label: "المتاجر", icon: Store, ownerOnly: true },
   { id: "delivery", label: "رسوم التوصيل", icon: MapPinned },
   { id: "customers", label: "الحضور", icon: UsersRound, ownerOnly: true },
@@ -46,9 +47,21 @@ export default function Admin() {
     {menuOpen ? <button className="admin-backdrop" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" /> : null}
     <section className="admin-content">
       <header className="admin-topbar"><button className="admin-menu-button" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button><div><p>لوحة التحكم</p><h1>{availableTabs.find(item => item.id === tab)?.label}</h1></div><button className="admin-home-link" onClick={() => setLocation("/")}><span>واجهة العميل</span><ArrowRight className="h-4 w-4" /></button></header>
-      <div className="admin-page">{tab === "orders" ? <OrdersPanel /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
+      <div className="admin-page">{tab === "orders" ? <OrdersPanel /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" ? <ExpiredOffersPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
     </section>
   </div>;
+}
+
+function ExpiredOffersPanel() {
+  const utils = trpc.useUtils();
+  const offersQuery = trpc.lahza.admin.offers.expired.useQuery();
+  const remove = trpc.lahza.admin.offers.removeExpired.useMutation({
+    onSuccess: () => { utils.lahza.admin.offers.expired.invalidate(); toast.success("تم حذف العرض وصورته من التخزين السحابي"); },
+    onError: error => toast.error(error.message),
+  });
+  if (offersQuery.isLoading) return <PanelLoading text="جارٍ فحص العروض المنتهية" />;
+  const offers = offersQuery.data ?? [];
+  return <div className="space-y-5"><section className="admin-section"><div className="admin-section-heading"><div><p>تنبيه إداري</p><h2>العروض المنتهية</h2></div><BellRing className="h-5 w-5 text-red-600" /></div><p className="settings-copy">تُخفى العروض المنتهية من العملاء تلقائياً، بينما تبقى صورها محفوظة حتى يحذفها المالك أو المشرف من هنا يدوياً.</p>{offers.length ? <div className="mt-5 space-y-3">{offers.map(offer => <article key={offer.id} className="rounded-2xl border border-red-100 bg-red-50/40 p-4"><div className="flex gap-3">{offer.imageUrl ? <img src={offer.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover" /> : <div className="grid h-16 w-16 place-items-center rounded-xl bg-white text-red-400"><BellRing className="h-5 w-5" /></div>}<div className="min-w-0 flex-1"><strong className="block text-sm text-blue-950">{offer.text}</strong><span className="mt-1 block text-xs text-slate-500">{offer.storeName} · {offer.partnerName}</span><span className="mt-1 block text-xs font-bold text-red-600">انتهى في {offer.expiresAt ? new Date(offer.expiresAt).toLocaleDateString("ar-SY", { year: "numeric", month: "long", day: "numeric" }) : "تاريخ غير محدد"}</span></div></div><Button disabled={remove.isPending} onClick={() => { if (confirm(`حذف العرض «${offer.text}» وصورته نهائياً من التخزين السحابي؟`)) remove.mutate({ id: offer.id }); }} className="mt-4 rounded-xl bg-red-600 hover:bg-red-700"><Trash2 className="h-4 w-4" /> حذف العرض والصورة</Button></article>)}</div> : <Empty icon={BellRing} title="لا توجد عروض منتهية" text="ستظهر هنا العروض فور انتهاء مدتها كي تحذفها الإدارة يدوياً." />}</section></div>;
 }
 
 function OrdersPanel() {

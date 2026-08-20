@@ -12,7 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
-type Screen = "home" | "delivery" | "taxi" | "intercity" | "offers" | "checkout";
+type Screen = "home" | "delivery" | "stores" | "store" | "productQuantity" | "storeOffers" | "offerQuantity" | "taxi" | "intercity" | "offers" | "checkout";
 type CartLine = {
   id: string;
   catalogItemId?: number;
@@ -25,6 +25,8 @@ type CartLine = {
 };
 
 type StoreOption = { id: number; name: string; category: LahzaCategory };
+type StoreProduct = { id: number; name: string; unit: string; unitPrice: number; available: boolean };
+type CustomerOffer = { id: number; text: string; partnerName: string; storeName?: string | null; storeId?: number | null; storeCategory?: string | null; imageUrl?: string | null };
 
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 const demoAssetPrefix = isStaticDemo ? "." : "";
@@ -144,6 +146,8 @@ export default function Home() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState<LahzaCategory | null>(null);
   const [selectedStore, setSelectedStore] = useState<StoreOption | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<StoreProduct | null>(null);
+  const [selectedOffer, setSelectedOffer] = useState<CustomerOffer | null>(null);
   const [selectedGalleryOffer, setSelectedGalleryOffer] = useState<PartnerGallerySlide | null>(null);
   const [focusedOfferId, setFocusedOfferId] = useState<number | null>(null);
   const [secretOpen, setSecretOpen] = useState(false);
@@ -222,11 +226,10 @@ export default function Home() {
     ? demoGalleryImages.map((imageUrl, index) => ({ id: 1004 + index, imageUrl, name: index === 0 ? "عرض طعميني — صحن حلويات" : "عرض متجر لحظة التجريبي", partnerName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", unitPrice: 0 }))
     : buildPartnerGallerySlides(partnerOffersQuery.data ?? []);
 
-  const addLine = (line: Omit<CartLine, "id">) => {
+  const addLine = (line: Omit<CartLine, "id">, returnTo: Screen = "store") => {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
     toast.success("أُضيف إلى السلة");
-    setActiveCategory(null);
-    setSelectedStore(null);
+    setScreen(returnTo);
   };
 
   const removeLine = (id: string) => {
@@ -317,6 +320,8 @@ export default function Home() {
     setScreen("home");
     setActiveCategory(null);
     setSelectedStore(null);
+    setSelectedProduct(null);
+    setSelectedOffer(null);
     setSelectedIntercityTrip(null);
   };
 
@@ -326,16 +331,10 @@ export default function Home() {
     setScreen("offers");
   };
 
-  const openOfferStore = (offer: { storeId?: number | null; storeCategory?: string | null; storeName?: string | null; partnerName: string }) => {
-    if (!offer.storeId || !offer.storeCategory || !(offer.storeCategory in categoryMeta)) {
-      toast.error("متجر هذا العرض غير متاح حالياً.");
-      return;
-    }
-    const category = offer.storeCategory as LahzaCategory;
+  const chooseOffer = (offer: CustomerOffer) => {
+    setSelectedOffer(offer);
     setFocusedOfferId(null);
-    setScreen("delivery");
-    setActiveCategory(category);
-    setSelectedStore({ id: offer.storeId, name: offer.storeName ?? offer.partnerName, category });
+    setScreen("offerQuantity");
   };
 
   const handleAdminLogin = () => {
@@ -426,7 +425,7 @@ export default function Home() {
                 const meta = categoryMeta[category];
                 const Icon = categoryIcons[category];
                 const count = cart.filter(line => line.category === category).length;
-                return <button key={category} onClick={() => { setSelectedStore(null); setActiveCategory(category); }} className="category-card">
+                return <button key={category} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setActiveCategory(category); setScreen("stores"); }} className="category-card">
                   <span className={`category-icon bg-gradient-to-br ${categoryColors[category]}`}><Icon className="h-5 w-5" /></span>
                   <span className="category-card-copy"><span>{meta.title}</span><small>{meta.subtitle}</small></span>
                   {count > 0 ? <span className="category-badge">{count}</span> : <Plus className="h-4 w-4 text-slate-300" />}
@@ -437,6 +436,11 @@ export default function Home() {
           <div className="bottom-cta"><div><span>السلة</span><strong>{cart.length ? `${cart.length} أصناف` : "فارغة"}</strong></div><Button disabled={!cart.length} onClick={openCheckout} className="rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700">متابعة <ChevronLeft className="mr-1 h-4 w-4" /></Button></div>
         </>
       ) : null}
+
+      {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("delivery"); setActiveCategory(null); }} onChoose={store => { setSelectedStore(store); setScreen("store"); }} /> : null}
+      {screen === "store" && selectedStore ? <StoreProductsScreen store={selectedStore} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("stores"); setSelectedProduct(null); }} onChooseProduct={product => { setSelectedProduct(product); setScreen("productQuantity"); }} onOpenOffers={() => setScreen("storeOffers")} /> : null}
+      {screen === "productQuantity" && selectedStore && selectedProduct ? <ProductQuantityScreen store={selectedStore} product={selectedProduct} onBack={() => setScreen("store")} onAdd={quantity => addLine({ category: selectedStore.category, itemName: selectedProduct.name, quantity, unit: selectedProduct.unit, unitPrice: selectedProduct.unitPrice, catalogItemId: selectedProduct.id < 0 ? undefined : selectedProduct.id, priceKnown: selectedStore.category !== "pharmacy" && selectedProduct.unitPrice > 0 }, "store")} /> : null}
+      {screen === "storeOffers" && selectedStore ? <StoreOffersScreen store={selectedStore} offers={(partnerOffers as CustomerOffer[]).filter(offer => offer.storeId === selectedStore.id)} loading={partnerOffersQuery.isLoading && !isStaticDemo} onBack={() => setScreen("store")} onChoose={chooseOffer} /> : null}
 
       {screen === "taxi" ? (
         <>
@@ -461,8 +465,10 @@ export default function Home() {
       ) : null}
 
       {screen === "offers" ? (
-        <OfferDestinationScreen offers={partnerOffers} onBack={goHome} loading={partnerOffersQuery.isLoading && !isStaticDemo} focusedOfferId={focusedOfferId} onOrder={openOfferStore} />
+        <OfferDestinationScreen offers={partnerOffers as CustomerOffer[]} onBack={goHome} loading={partnerOffersQuery.isLoading && !isStaticDemo} focusedOfferId={focusedOfferId} onChoose={chooseOffer} />
       ) : null}
+
+      {screen === "offerQuantity" && selectedOffer ? <OfferQuantityScreen offer={selectedOffer} onBack={() => setScreen(selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers")} onAdd={quantity => { const category = selectedOffer.storeCategory && selectedOffer.storeCategory in categoryMeta ? selectedOffer.storeCategory as LahzaCategory : "offers"; addLine({ category, itemName: selectedOffer.text, quantity, unit: "وحدة", unitPrice: 0, priceKnown: false }, selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers"); }} /> : null}
 
       {screen === "checkout" ? (
         <>
@@ -486,53 +492,46 @@ export default function Home() {
       ) : null}
 
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
-      <StorePickerDialog category={selectedStore ? null : activeCategory} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} onChoose={store => setSelectedStore(store)} onClose={() => { setActiveCategory(null); setSelectedStore(null); }} />
-      <CategoryDialog category={selectedStore ? activeCategory : null} storeName={selectedStore?.name ?? ""} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => setSelectedStore(null)} onClose={() => { setActiveCategory(null); setSelectedStore(null); }} onAdd={addLine} />
       <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">اختر نوع الدخول</DialogTitle><DialogDescription className="text-center">اختر حسابك ثم أدخل بياناته في المكان الصحيح.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button><button onClick={() => setSecretRole("partner")} className={secretRole === "partner" ? "role-selected" : ""}>شريك</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN للمالك</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : secretRole === "supervisor" ? <><div><Label htmlFor="username">اسم المستخدم للمشرف</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة مرور المشرف</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></> : <div className="rounded-2xl bg-blue-50 p-4 text-center text-sm leading-6 text-blue-950">ستفتح لك صفحة الشريك لإدخال اسم المستخدم وكلمة المرور اللذين أنشأهما المالك.</div>}<Button disabled={secretRole !== "partner" && !isStaticDemo && adminLogin.isPending} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{secretRole === "partner" ? "الانتقال إلى دخول الشريك" : !isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
     </main>
   );
 }
 
-function StorePickerDialog({ category, stores, loading, onChoose, onClose }: { category: LahzaCategory | null; stores: StoreOption[]; loading: boolean; onChoose: (store: StoreOption) => void; onClose: () => void }) {
-  if (!category) return null;
+function StoresScreen({ category, stores, loading, onBack, onChoose }: { category: LahzaCategory; stores: StoreOption[]; loading: boolean; onBack: () => void; onChoose: (store: StoreOption) => void }) {
   const meta = categoryMeta[category];
-  return <Dialog open={Boolean(category)} onOpenChange={open => !open && onClose()}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><DialogTitle className="text-right text-xl">متاجر {meta.title}</DialogTitle><DialogDescription className="text-right">اختر المتجر الذي تريد الطلب منه، ثم أضف المنتجات إلى السلة.</DialogDescription></DialogHeader><div className="mt-4">{loading ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="grid gap-3 sm:grid-cols-2">{stores.map(store => <button key={store.id} type="button" onClick={() => onChoose(store)} className="rounded-2xl border border-slate-100 bg-gradient-to-bl from-white to-slate-50 p-4 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md active:scale-[.98]"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-900"><Store className="h-5 w-5" /></span><strong className="mt-3 block text-base text-blue-950">{store.name}</strong><small className="mt-1 block text-xs text-slate-500">عرض منتجات المتجر</small></button>)}</div> : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center"><Store className="mx-auto h-7 w-7 text-slate-400" /><strong className="mt-3 block text-blue-950">لا توجد متاجر مضافة بعد</strong><p className="mt-2 text-sm leading-6 text-slate-500">سيظهر أي متجر يضيفه المالك إلى قسم {meta.title} هنا.</p></div>}</div></DialogContent></Dialog>;
+  return <><PageHeading eyebrow="متاجر القسم" title={`متاجر ${meta.title}`} detail="اختر متجراً لعرض منتجاته وعروضه في صفحة مستقلة." onBack={onBack} /><section className="app-shell pb-12">{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="grid gap-3 sm:grid-cols-2">{stores.map(store => <button key={store.id} onClick={() => onChoose(store)} className="rounded-3xl border border-slate-100 bg-gradient-to-bl from-white to-slate-50 p-5 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md active:scale-[.98]"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-900"><Store className="h-5 w-5" /></span><strong className="mt-4 block text-lg text-blue-950">{store.name}</strong><small className="mt-1 block text-xs text-slate-500">فتح صفحة المتجر</small></button>)}</div> : <EmptyStoreList categoryTitle={meta.title} />}</section></>;
 }
 
-function CategoryDialog({ category, storeName, products, loading, onBack, onClose, onAdd }: { category: LahzaCategory | null; storeName: string; products: { id: number; name: string; unit: string; unitPrice: number; available: boolean }[]; loading: boolean; onBack: () => void; onClose: () => void; onAdd: (line: Omit<CartLine, "id">) => void }) {
-  const [selectedId, setSelectedId] = useState("");
-  const [manualName, setManualName] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [medicine, setMedicine] = useState("");
-  if (!category) return null;
-  const meta = categoryMeta[category];
-  const options = products.filter(product => product.available);
-  const selected = options.find(item => String(item.id) === selectedId);
-  const isPharmacy = category === "pharmacy";
-  const selectedUnit = selectedId === "manual" ? meta.unit : selected?.unit ?? meta.unit;
-  const addCurrent = () => {
-    if (isPharmacy) {
-      if (!medicine.trim()) return toast.error("أدخل اسم الدواء أو ما تحتاجه من الصيدلية");
-      onAdd({ category, itemName: medicine.trim(), quantity: 1, unit: "طلب", unitPrice: 0, priceKnown: false });
-      setMedicine("");
-      return;
-    }
-    const parsed = Number(quantity);
-    const name = selectedId === "manual" ? manualName.trim() : selected?.name;
-    if (!name || !Number.isFinite(parsed) || parsed <= 0) return toast.error("اختر الصنف وأدخل كمية صالحة");
-    const unit = selectedUnit;
-    onAdd({ category, itemName: name, quantity: parsed, unit, unitPrice: selectedId === "manual" ? 0 : selected?.unitPrice ?? 0, catalogItemId: selectedId === "manual" || (selected?.id ?? 0) < 0 ? undefined : selected?.id, priceKnown: selectedId !== "manual" && (selected?.unitPrice ?? 0) > 0 });
-    setSelectedId(""); setManualName(""); setQuantity("1");
-  };
-  return <Dialog open={Boolean(category)} onOpenChange={open => !open && onClose()}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><DialogTitle className="text-right text-xl">{meta.title}</DialogTitle><DialogDescription className="text-right">{isPharmacy ? "اكتب أسماء الأدوية أو المستلزمات المطلوبة. لا تظهر أسعار هذا القسم." : "اختر صنفاً وأدخل الكمية المناسبة."}</DialogDescription></DialogHeader>{isPharmacy ? <div className="mt-4 space-y-4"><Textarea value={medicine} onChange={e => setMedicine(e.target.value)} placeholder="مثال: دواء سعال للأطفال، فيتامين C..." /><Button onClick={addCurrent} className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700"><Plus className="h-4 w-4" /> إضافة طلب الصيدلية</Button></div> : <div className="mt-4 space-y-4"><div><Label>الصنف</Label><select value={selectedId} onChange={e => setSelectedId(e.target.value)} className="form-select"><option value="">اختر من القائمة</option>{options.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}<option value="manual">صنف غير موجود — إدخال يدوي</option></select></div>{selectedId === "manual" ? <div><Label>اسم الصنف</Label><Input value={manualName} onChange={e => setManualName(e.target.value)} placeholder="اكتب اسم الصنف" /></div> : null}<div><Label>الكمية {selectedUnit !== "وحدة" ? `(${selectedUnit})` : ""}</Label><div className="quantity-control"><button onClick={() => setQuantity(value => String(Math.max(selectedUnit === "ليتر" ? 0.1 : 1, Number(value || 1) - (selectedUnit === "جرام" ? 50 : 1))))}><Minus className="h-4 w-4" /></button><Input type="number" min={selectedUnit === "ليتر" ? "0.1" : "1"} step={selectedUnit === "جرام" ? "50" : "1"} value={quantity} onChange={e => setQuantity(e.target.value)} /><button onClick={() => setQuantity(value => String(Number(value || 0) + (selectedUnit === "جرام" ? 50 : 1)))}><Plus className="h-4 w-4" /></button></div></div>{selected && selected.unitPrice > 0 ? <div className="price-note"><span>السعر الحالي</span><strong>{formatSyp(selected.unitPrice)} {selected.unit === "جرام" ? "/ كغ" : selected.unit === "ليتر" ? "/ ليتر" : selected.unit === "قنينة" ? "/ قنينة" : ""}</strong></div> : <div className="price-note price-note-muted">يحدد السعر النهائي من لوحة الإدارة عند توفره.</div>}<Button onClick={addCurrent} className="w-full rounded-xl bg-red-600 hover:bg-red-700"><PackagePlus className="h-4 w-4" /> أضف إلى السلة</Button></div>}</DialogContent></Dialog>;
+function StoreProductsScreen({ store, products, loading, onBack, onChooseProduct, onOpenOffers }: { store: StoreOption; products: StoreProduct[]; loading: boolean; onBack: () => void; onChooseProduct: (product: StoreProduct) => void; onOpenOffers: () => void }) {
+  return <><PageHeading eyebrow="صفحة المتجر" title={store.name} detail="اختر منتجاً لتحديد كميته، أو افتح عروض المتجر." onBack={onBack} /><section className="app-shell pb-12"><button onClick={onOpenOffers} className="mb-5 flex w-full items-center justify-between rounded-3xl bg-gradient-to-l from-red-600 to-rose-600 p-5 text-right text-white shadow-lg shadow-red-100"><span><strong className="block text-lg">عروض {store.name}</strong><small className="mt-1 block text-red-100">افتح صفحة عروض المتجر</small></span><BadgePercent className="h-7 w-7" /></button>{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المنتجات...</div> : products.filter(product => product.available).length ? <div className="grid gap-3 sm:grid-cols-2">{products.filter(product => product.available).map(product => <button key={product.id} onClick={() => onChooseProduct(product)} className="rounded-3xl border border-slate-100 bg-white p-4 text-right shadow-sm transition hover:border-blue-200 hover:shadow-md active:scale-[.98]"><strong className="block text-base text-blue-950">{product.name}</strong><span className="mt-2 block text-sm font-bold text-red-600">{store.category === "pharmacy" || !product.unitPrice ? "يحدد السعر عند التأكيد" : formatSyp(product.unitPrice)}</span><small className="mt-1 block text-xs text-slate-500">اضغط لاختيار الكمية</small></button>)}</div> : <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><PackagePlus className="mx-auto h-7 w-7 text-slate-400" /><strong className="mt-3 block text-blue-950">لا توجد منتجات متاحة حالياً</strong></div>}</section></>;
 }
+
+function ProductQuantityScreen({ store, product, onBack, onAdd }: { store: StoreOption; product: StoreProduct; onBack: () => void; onAdd: (quantity: number) => void }) {
+  const [quantity, setQuantity] = useState("1");
+  const parsed = Number(quantity);
+  const add = () => { if (!Number.isFinite(parsed) || parsed <= 0) return toast.error("أدخل كمية صالحة"); onAdd(parsed); };
+  return <><PageHeading eyebrow={store.name} title="حدد الكمية" detail="اختر كمية المنتج ثم أضفه إلى السلة." onBack={onBack} /><section className="app-shell pb-12"><div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm"><p className="text-xs font-bold text-slate-400">الصنف المختار</p><h2 className="mt-1 text-xl font-black text-blue-950">{product.name}</h2><p className="mt-2 text-sm font-bold text-red-600">{store.category === "pharmacy" || !product.unitPrice ? "يحدد السعر عند التأكيد" : formatSyp(product.unitPrice)}</p><div className="mt-6"><Label>الكمية {product.unit !== "وحدة" ? `(${product.unit})` : ""}</Label><div className="quantity-control mt-2"><button onClick={() => setQuantity(value => String(Math.max(product.unit === "ليتر" ? 0.1 : 1, Number(value || 1) - (product.unit === "جرام" ? 50 : 1))))}><Minus className="h-4 w-4" /></button><Input type="number" min={product.unit === "ليتر" ? "0.1" : "1"} step={product.unit === "جرام" ? "50" : "1"} value={quantity} onChange={event => setQuantity(event.target.value)} /><button onClick={() => setQuantity(value => String(Number(value || 0) + (product.unit === "جرام" ? 50 : 1)))}><Plus className="h-4 w-4" /></button></div></div><Button onClick={add} className="mt-6 w-full rounded-2xl bg-red-600 py-6 hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> أضف إلى السلة</Button></div></section></>;
+}
+
+function StoreOffersScreen({ store, offers, loading, onBack, onChoose }: { store: StoreOption; offers: CustomerOffer[]; loading: boolean; onBack: () => void; onChoose: (offer: CustomerOffer) => void }) {
+  return <><PageHeading eyebrow="عروض المتجر" title={`عروض ${store.name}`} detail="اضغط على العرض المختار ثم حدّد كميته فقط." onBack={onBack} /><section className="app-shell pb-12">{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل العروض...</div> : offers.length ? <div className="grid gap-4 sm:grid-cols-2">{offers.map(offer => <button key={offer.id} onClick={() => onChoose(offer)} className="overflow-hidden rounded-3xl border border-amber-200 bg-gradient-to-l from-amber-50 to-white text-right shadow-sm transition hover:-translate-y-0.5 active:scale-[.98]">{offer.imageUrl ? <img src={offer.imageUrl} alt="" className="h-40 w-full object-cover" /> : null}<span className="block p-5"><span className="inline-flex rounded-full bg-amber-200 px-3 py-1 text-xs font-black text-amber-950">عرض نشط</span><strong className="mt-4 block text-lg text-blue-950">{offer.text}</strong><small className="mt-2 block text-red-600">اضغط لاختيار الكمية</small></span></button>)}</div> : <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><BadgePercent className="mx-auto h-7 w-7 text-red-600" /><h2 className="mt-3 text-lg font-black text-blue-950">لا توجد عروض نشطة لهذا المتجر</h2></div>}</section></>;
+}
+
+function OfferQuantityScreen({ offer, onBack, onAdd }: { offer: CustomerOffer; onBack: () => void; onAdd: (quantity: number) => void }) {
+  const [quantity, setQuantity] = useState("1");
+  const parsed = Number(quantity);
+  const add = () => { if (!Number.isFinite(parsed) || parsed <= 0) return toast.error("أدخل كمية صالحة"); onAdd(parsed); };
+  return <><PageHeading eyebrow={offer.storeName ?? offer.partnerName} title="حدد كمية العرض" detail="تم اختيار صنف العرض تلقائياً؛ عدّل الكمية فقط ثم أضفه إلى السلة." onBack={onBack} /><section className="app-shell pb-12"><div className="rounded-3xl border border-amber-200 bg-gradient-to-l from-amber-50 to-white p-5 shadow-sm">{offer.imageUrl ? <img src={offer.imageUrl} alt="" className="mb-5 h-44 w-full rounded-2xl object-cover" /> : null}<Label>صنف العرض</Label><div className="mt-2 rounded-2xl border border-amber-200 bg-white px-4 py-3 text-lg font-black text-blue-950">{offer.text}</div><p className="mt-2 text-xs text-slate-500">تم تحديد صنف العرض؛ لا حاجة لكتابة اسم صنف جديد.</p><div className="mt-6"><Label>الكمية</Label><div className="quantity-control mt-2"><button onClick={() => setQuantity(value => String(Math.max(1, Number(value || 1) - 1)))}><Minus className="h-4 w-4" /></button><Input type="number" min="1" step="1" value={quantity} onChange={event => setQuantity(event.target.value)} /><button onClick={() => setQuantity(value => String(Number(value || 0) + 1))}><Plus className="h-4 w-4" /></button></div></div><Button onClick={add} className="mt-6 w-full rounded-2xl bg-red-600 py-6 hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> أضف العرض إلى السلة</Button></div></section></>;
+}
+
+function EmptyStoreList({ categoryTitle }: { categoryTitle: string }) { return <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><Store className="mx-auto h-7 w-7 text-slate-400" /><strong className="mt-3 block text-blue-950">لا توجد متاجر مضافة بعد</strong><p className="mt-2 text-sm leading-6 text-slate-500">سيظهر أي متجر يضيفه المالك إلى قسم {categoryTitle} هنا.</p></div>; }
 
 function CartPreview({ cart, removeLine, total, hasPharmacy }: { cart: CartLine[]; removeLine: (id: string) => void; total: number; hasPharmacy: boolean }) {
   return <div className="mt-3"><div className="divide-y divide-slate-100">{cart.map(item => <div key={item.id} className="cart-line"><div><strong>{item.itemName}</strong><span>{item.quantity} {item.unit}</span></div><div className="flex items-center gap-3">{item.priceKnown ? <strong className="text-sm text-blue-900">{formatSyp(lineTotal(item))}</strong> : <small className="text-slate-400">السعر عند التأكيد</small>}<button onClick={() => removeLine(item.id)} aria-label="حذف"><Trash2 className="h-4 w-4 text-red-400" /></button></div></div>)}</div>{hasPharmacy ? <p className="pharmacy-note"><Pill className="h-4 w-4" />الأدوية لا تدخل في المجموع، ويؤكد سعرها المندوب.</p> : null}<p className="mt-3 text-center text-[11px] leading-5 text-slate-400">رسوم التوصيل يحددها المندوب بعد استلام الطلب.</p><div className="total-row"><span>إجمالي المنتجات المبدئي</span><strong>{formatSyp(total)}</strong></div></div>;
 }
 
-function OfferDestinationScreen({ offers, loading, onBack, focusedOfferId, onOrder }: { offers: Array<{ id: number; text: string; partnerName: string; storeName?: string | null; storeId?: number | null; storeCategory?: string | null }>; loading: boolean; onBack: () => void; focusedOfferId: number | null; onOrder: (offer: { storeId?: number | null; storeCategory?: string | null; storeName?: string | null; partnerName: string }) => void }) {
-  return <><PageHeading eyebrow="عروض الشركاء" title="عروض متاجر لحظة" detail="اختر عرضاً ثم اطلبه مباشرة من متجره." onBack={onBack} /><section className="app-shell pb-12">{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل العروض...</div> : offers.length ? <div className="grid gap-4 sm:grid-cols-2">{offers.map(offer => <article key={offer.id} className={`rounded-3xl border bg-gradient-to-l from-amber-50 to-white p-5 shadow-sm transition ${focusedOfferId === offer.id ? "border-red-500 ring-4 ring-red-100" : "border-amber-200"}`}><span className="inline-flex rounded-full bg-amber-200 px-3 py-1 text-xs font-black text-amber-950">عرض نشط</span><h2 className="mt-4 text-xl font-black text-blue-950">{offer.text}</h2><p className="mt-2 text-sm font-bold leading-7 text-red-600">{offer.storeName ?? offer.partnerName}</p><Button onClick={() => onOrder(offer)} className="mt-5 w-full rounded-xl bg-red-600 hover:bg-red-700"><ShoppingBasket className="h-4 w-4" /> اطلب من المتجر</Button></article>)}</div> : <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><BadgePercent className="mx-auto h-7 w-7 text-red-600" /><h2 className="mt-3 text-lg font-black text-blue-950">لا توجد عروض نشطة الآن</h2><p className="mt-2 text-sm leading-7 text-slate-500">سيظهر العرض هنا فور إضافته وتفعيله من لوحة الشريك.</p></div>}</section></>;
+function OfferDestinationScreen({ offers, loading, onBack, focusedOfferId, onChoose }: { offers: CustomerOffer[]; loading: boolean; onBack: () => void; focusedOfferId: number | null; onChoose: (offer: CustomerOffer) => void }) {
+  return <><PageHeading eyebrow="عروض الشركاء" title="عروض متاجر لحظة" detail="اختر عرضاً ثم عدّل الكمية وأضفه إلى السلة مباشرةً." onBack={onBack} /><section className="app-shell pb-12">{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل العروض...</div> : offers.length ? <div className="grid gap-4 sm:grid-cols-2">{offers.map(offer => <button key={offer.id} onClick={() => onChoose(offer)} className={`overflow-hidden rounded-3xl border bg-gradient-to-l from-amber-50 to-white text-right shadow-sm transition hover:-translate-y-0.5 active:scale-[.98] ${focusedOfferId === offer.id ? "border-red-500 ring-4 ring-red-100" : "border-amber-200"}`}>{offer.imageUrl ? <img src={offer.imageUrl} alt="" className="h-40 w-full object-cover" /> : null}<span className="block p-5"><span className="inline-flex rounded-full bg-amber-200 px-3 py-1 text-xs font-black text-amber-950">عرض نشط</span><strong className="mt-4 block text-xl text-blue-950">{offer.text}</strong><span className="mt-2 block text-sm font-bold leading-7 text-red-600">{offer.storeName ?? offer.partnerName}</span><span className="mt-4 block text-xs font-bold text-blue-900">اضغط لاختيار الكمية</span></span></button>)}</div> : <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><BadgePercent className="mx-auto h-7 w-7 text-red-600" /><h2 className="mt-3 text-lg font-black text-blue-950">لا توجد عروض نشطة الآن</h2><p className="mt-2 text-sm leading-7 text-slate-500">سيظهر العرض هنا فور إضافته وتفعيله من لوحة الشريك.</p></div>}</section></>;
 }
 
 function PartnerOffersScreen({ offers, loading, onBack }: { offers: Array<{ id: number; text: string; partnerName: string }>; loading: boolean; onBack: () => void }) {
