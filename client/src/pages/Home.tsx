@@ -181,7 +181,7 @@ export default function Home() {
   const total = useMemo(() => cart.reduce((sum, item) => sum + lineTotal(item), 0), [cart]);
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة" })) : partnerOffersQuery.data ?? [];
-  const offerTickerMessages = partnerOffers.map(offer => `${offer.partnerName} — ${offer.text}`);
+  const offerTickerMessages = partnerOffers.length ? partnerOffers.map(offer => `${offer.partnerName} — ${offer.text}`) : ["عروض متاجر لحظة — سيظهر أول عرض هنا فور نشره من المتجر"];
 
   const addLine = (line: Omit<CartLine, "id">) => {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
@@ -304,7 +304,7 @@ export default function Home() {
     <main dir="rtl" className="min-h-screen bg-white text-slate-950">
       <Header onSecret={() => setSecretOpen(true)} onCart={() => screen === "delivery" ? openCheckout() : setScreen("delivery")} cartCount={cart.length} />
       <div className="reward-ticker" aria-label="رسائل لحظة"><div className="reward-ticker-track"><span>{tickerPrimary}<b aria-hidden="true">★</b>{tickerSecondary}</span><span aria-hidden="true">{tickerPrimary}<b>★</b>{tickerSecondary}</span></div></div>
-      {offerTickerMessages.length ? <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> عروض المتاجر</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...offerTickerMessages, ...offerTickerMessages].map((message, index) => <span key={`${message}-${index}`}>{message}<b aria-hidden="true">★</b></span>)}</div></div></div> : null}
+      <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> عروض المتاجر</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...offerTickerMessages, ...offerTickerMessages].map((message, index) => <span key={`${message}-${index}`}>{message}<b aria-hidden="true">★</b></span>)}</div></div></div>
 
       {screen === "home" ? (
         <>
