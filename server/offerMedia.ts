@@ -3,11 +3,14 @@ import { createHash } from "node:crypto";
 const MAX_IMAGE_DATA_URL_LENGTH = 8_000_000;
 
 function cloudinaryConfig() {
-  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
-  const apiKey = process.env.CLOUDINARY_API_KEY;
-  const apiSecret = process.env.CLOUDINARY_API_SECRET;
-  if (!cloudName || !apiKey || !apiSecret) return null;
-  return { cloudName, apiKey, apiSecret };
+  const values = {
+    CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME,
+    CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
+    CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+  };
+  const missing = Object.entries(values).filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length) return { config: null, missing } as const;
+  return { config: { cloudName: values.CLOUDINARY_CLOUD_NAME!, apiKey: values.CLOUDINARY_API_KEY!, apiSecret: values.CLOUDINARY_API_SECRET! }, missing: [] } as const;
 }
 
 function signature(values: Record<string, string | number>, apiSecret: string) {
@@ -25,8 +28,9 @@ export function isOfferImageDataUrl(value: string) {
 
 export async function uploadOfferImage(dataUrl: string, storeId: number, token: string) {
   if (!isOfferImageDataUrl(dataUrl)) throw new Error("اختر صورة بصيغة PNG أو JPG أو WEBP وحجم مناسب");
-  const config = cloudinaryConfig();
-  if (!config) throw new Error("لم تُربط مساحة صور العروض بعد. أضف إعدادات Cloudinary أولاً.");
+  const cloudinary = cloudinaryConfig();
+  if (!cloudinary.config) throw new Error(`لم يقرأ الخادم إعدادات Cloudinary التالية: ${cloudinary.missing.join("، ")}. احفظها في خدمة Lahza وأعد النشر.`);
+  const { config } = cloudinary;
 
   const timestamp = Math.floor(Date.now() / 1000);
   const publicId = `lahza/offers/store-${storeId}/${token}`;
@@ -44,8 +48,9 @@ export async function uploadOfferImage(dataUrl: string, storeId: number, token: 
 }
 
 export async function deleteOfferImage(imageStorageKey: string) {
-  const config = cloudinaryConfig();
-  if (!config) return { deleted: false, reason: "not-configured" as const };
+  const cloudinary = cloudinaryConfig();
+  if (!cloudinary.config) return { deleted: false, reason: "not-configured" as const };
+  const { config } = cloudinary;
 
   const timestamp = Math.floor(Date.now() / 1000);
   const body = new FormData();
