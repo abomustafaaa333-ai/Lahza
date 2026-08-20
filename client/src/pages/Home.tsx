@@ -124,7 +124,7 @@ function PageHeading({ eyebrow, title, detail, onBack }: { eyebrow: string; titl
   );
 }
 
-function PartnerOfferGallery({ slides }: { slides: PartnerGallerySlide[] }) {
+function PartnerOfferGallery({ slides, onOpen }: { slides: PartnerGallerySlide[]; onOpen: (slide: PartnerGallerySlide) => void }) {
   const [activeIndex, setActiveIndex] = useState(0);
   useEffect(() => {
     setActiveIndex(0);
@@ -133,7 +133,7 @@ function PartnerOfferGallery({ slides }: { slides: PartnerGallerySlide[] }) {
     return () => window.clearInterval(timer);
   }, [slides.length]);
   const activeSlide = slides[activeIndex] ?? null;
-  return <div className="hero-image-frame" aria-label="عروض مصورة من متاجر لحظة">{activeSlide ? <><img key={activeSlide.id} src={activeSlide.imageUrl} alt={`عرض ${activeSlide.name} من ${activeSlide.partnerName}`} className="hero-offer-image" /><div className="hero-offer-caption"><strong>{activeSlide.name}</strong><span>{activeSlide.partnerName}{activeSlide.unitPrice ? ` · ${formatSyp(activeSlide.unitPrice)}` : ""}</span></div>{slides.length > 1 ? <div className="hero-gallery-dots" aria-label="صور العروض">{slides.map((slide, index) => <button key={slide.id} type="button" onClick={() => setActiveIndex(index)} aria-label={`عرض الصورة ${index + 1}`} aria-current={index === activeIndex} className={index === activeIndex ? "hero-gallery-dot-active" : ""} />)}</div> : null}</> : <div className="hero-gallery-empty"><BadgePercent className="h-7 w-7" /><strong>عروض المتاجر</strong><span>ستظهر صور منتجات الشركاء هنا فور إضافتها.</span></div>}</div>;
+  return <div className="hero-image-frame" aria-label="عروض مصورة من متاجر لحظة">{activeSlide ? <><button type="button" onClick={() => onOpen(activeSlide)} className="block w-full cursor-zoom-in text-right" aria-label={`فتح عرض ${activeSlide.name}`}><img key={activeSlide.id} src={activeSlide.imageUrl} alt={`عرض ${activeSlide.name} من ${activeSlide.partnerName}`} className="hero-offer-image" /><div className="hero-offer-caption"><strong>{activeSlide.name}</strong><span>{activeSlide.partnerName}{activeSlide.unitPrice ? ` · ${formatSyp(activeSlide.unitPrice)}` : ""}</span></div></button>{slides.length > 1 ? <div className="hero-gallery-dots" aria-label="صور العروض">{slides.map((slide, index) => <button key={slide.id} type="button" onClick={() => setActiveIndex(index)} aria-label={`عرض الصورة ${index + 1}`} aria-current={index === activeIndex} className={index === activeIndex ? "hero-gallery-dot-active" : ""} />)}</div> : null}</> : <div className="hero-gallery-empty"><BadgePercent className="h-7 w-7" /><strong>عروض المتاجر</strong><span>ستظهر صور العروض النشطة هنا فور إضافتها.</span></div>}</div>;
 }
 
 export default function Home() {
@@ -144,6 +144,8 @@ export default function Home() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState<LahzaCategory | null>(null);
   const [selectedStore, setSelectedStore] = useState<StoreOption | null>(null);
+  const [selectedGalleryOffer, setSelectedGalleryOffer] = useState<PartnerGallerySlide | null>(null);
+  const [focusedOfferId, setFocusedOfferId] = useState<number | null>(null);
   const [secretOpen, setSecretOpen] = useState(false);
   const [secretRole, setSecretRole] = useState<"owner" | "supervisor" | "partner">("owner");
   const [pin, setPin] = useState("");
@@ -214,10 +216,10 @@ export default function Home() {
 
   const total = useMemo(() => cart.reduce((sum, item) => sum + lineTotal(item), 0), [cart]);
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
-  const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة" })) : partnerOffersQuery.data ?? [];
+  const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة", storeName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers" })) : partnerOffersQuery.data ?? [];
   const offerTickerMessages = partnerOffers.length ? partnerOffers.map(offer => `${offer.partnerName} — ${offer.text}`) : ["عروض متاجر لحظة — سيظهر أول عرض هنا فور نشره من المتجر"];
   const partnerGallerySlides = isStaticDemo
-    ? demoGalleryImages.map((imageUrl, index) => ({ id: index + 1, imageUrl, name: "عرض متجر لحظة التجريبي", partnerName: "شريك لحظة", unitPrice: 0 }))
+    ? demoGalleryImages.map((imageUrl, index) => ({ id: 1004 + index, imageUrl, name: index === 0 ? "عرض طعميني — صحن حلويات" : "عرض متجر لحظة التجريبي", partnerName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", unitPrice: 0 }))
     : buildPartnerGallerySlides(partnerOffersQuery.data ?? []);
 
   const addLine = (line: Omit<CartLine, "id">) => {
@@ -318,6 +320,24 @@ export default function Home() {
     setSelectedIntercityTrip(null);
   };
 
+  const openOfferLocation = (offer: PartnerGallerySlide) => {
+    setSelectedGalleryOffer(null);
+    setFocusedOfferId(offer.id);
+    setScreen("offers");
+  };
+
+  const openOfferStore = (offer: { storeId?: number | null; storeCategory?: string | null; storeName?: string | null; partnerName: string }) => {
+    if (!offer.storeId || !offer.storeCategory || !(offer.storeCategory in categoryMeta)) {
+      toast.error("متجر هذا العرض غير متاح حالياً.");
+      return;
+    }
+    const category = offer.storeCategory as LahzaCategory;
+    setFocusedOfferId(null);
+    setScreen("delivery");
+    setActiveCategory(category);
+    setSelectedStore({ id: offer.storeId, name: offer.storeName ?? offer.partnerName, category });
+  };
+
   const handleAdminLogin = () => {
     if (secretRole === "partner") {
       setSecretOpen(false);
@@ -348,12 +368,14 @@ export default function Home() {
       <div className="reward-ticker" aria-label="رسائل لحظة"><div className="reward-ticker-track"><span>{tickerPrimary}<b aria-hidden="true">★</b>{tickerSecondary}</span><span aria-hidden="true">{tickerPrimary}<b>★</b>{tickerSecondary}</span></div></div>
       <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> عروض المتاجر</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...offerTickerMessages, ...offerTickerMessages].map((message, index) => <span key={`${message}-${index}`}>{message}<b aria-hidden="true">★</b></span>)}</div></div></div>
 
+      <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <><img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /><div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={() => openOfferLocation(selectedGalleryOffer)} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
+
       {screen === "home" ? (
         <>
           <section className="app-shell pt-7 pb-8">
             <div className="hero-panel">
               <div className="hero-orb hero-orb-one" /><div className="hero-orb hero-orb-two" />
-              <PartnerOfferGallery slides={partnerGallerySlides} />
+              <PartnerOfferGallery slides={partnerGallerySlides} onOpen={setSelectedGalleryOffer} />
               <div className="relative z-10 max-w-[54%]">
                 <p className="section-eyebrow text-red-100">خدمات منبج على بُعد لحظة</p>
                 <h1 className="hero-title">كل ما تحتاجه،<br /><span>بخطوة واحدة.</span></h1>
@@ -439,7 +461,7 @@ export default function Home() {
       ) : null}
 
       {screen === "offers" ? (
-        <PartnerOffersScreen offers={partnerOffers} onBack={goHome} loading={partnerOffersQuery.isLoading && !isStaticDemo} />
+        <OfferDestinationScreen offers={partnerOffers} onBack={goHome} loading={partnerOffersQuery.isLoading && !isStaticDemo} focusedOfferId={focusedOfferId} onOrder={openOfferStore} />
       ) : null}
 
       {screen === "checkout" ? (
@@ -507,6 +529,10 @@ function CategoryDialog({ category, storeName, products, loading, onBack, onClos
 
 function CartPreview({ cart, removeLine, total, hasPharmacy }: { cart: CartLine[]; removeLine: (id: string) => void; total: number; hasPharmacy: boolean }) {
   return <div className="mt-3"><div className="divide-y divide-slate-100">{cart.map(item => <div key={item.id} className="cart-line"><div><strong>{item.itemName}</strong><span>{item.quantity} {item.unit}</span></div><div className="flex items-center gap-3">{item.priceKnown ? <strong className="text-sm text-blue-900">{formatSyp(lineTotal(item))}</strong> : <small className="text-slate-400">السعر عند التأكيد</small>}<button onClick={() => removeLine(item.id)} aria-label="حذف"><Trash2 className="h-4 w-4 text-red-400" /></button></div></div>)}</div>{hasPharmacy ? <p className="pharmacy-note"><Pill className="h-4 w-4" />الأدوية لا تدخل في المجموع، ويؤكد سعرها المندوب.</p> : null}<p className="mt-3 text-center text-[11px] leading-5 text-slate-400">رسوم التوصيل يحددها المندوب بعد استلام الطلب.</p><div className="total-row"><span>إجمالي المنتجات المبدئي</span><strong>{formatSyp(total)}</strong></div></div>;
+}
+
+function OfferDestinationScreen({ offers, loading, onBack, focusedOfferId, onOrder }: { offers: Array<{ id: number; text: string; partnerName: string; storeName?: string | null; storeId?: number | null; storeCategory?: string | null }>; loading: boolean; onBack: () => void; focusedOfferId: number | null; onOrder: (offer: { storeId?: number | null; storeCategory?: string | null; storeName?: string | null; partnerName: string }) => void }) {
+  return <><PageHeading eyebrow="عروض الشركاء" title="عروض متاجر لحظة" detail="اختر عرضاً ثم اطلبه مباشرة من متجره." onBack={onBack} /><section className="app-shell pb-12">{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل العروض...</div> : offers.length ? <div className="grid gap-4 sm:grid-cols-2">{offers.map(offer => <article key={offer.id} className={`rounded-3xl border bg-gradient-to-l from-amber-50 to-white p-5 shadow-sm transition ${focusedOfferId === offer.id ? "border-red-500 ring-4 ring-red-100" : "border-amber-200"}`}><span className="inline-flex rounded-full bg-amber-200 px-3 py-1 text-xs font-black text-amber-950">عرض نشط</span><h2 className="mt-4 text-xl font-black text-blue-950">{offer.text}</h2><p className="mt-2 text-sm font-bold leading-7 text-red-600">{offer.storeName ?? offer.partnerName}</p><Button onClick={() => onOrder(offer)} className="mt-5 w-full rounded-xl bg-red-600 hover:bg-red-700"><ShoppingBasket className="h-4 w-4" /> اطلب من المتجر</Button></article>)}</div> : <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><BadgePercent className="mx-auto h-7 w-7 text-red-600" /><h2 className="mt-3 text-lg font-black text-blue-950">لا توجد عروض نشطة الآن</h2><p className="mt-2 text-sm leading-7 text-slate-500">سيظهر العرض هنا فور إضافته وتفعيله من لوحة الشريك.</p></div>}</section></>;
 }
 
 function PartnerOffersScreen({ offers, loading, onBack }: { offers: Array<{ id: number; text: string; partnerName: string }>; loading: boolean; onBack: () => void }) {

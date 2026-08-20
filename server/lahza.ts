@@ -484,13 +484,13 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const activeOffers = await db.select().from(partnerOffers).where(eq(partnerOffers.active, true)).orderBy(desc(partnerOffers.createdAt));
       const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
-      const activeStores = await db.select({ id: stores.id, name: stores.name, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
+      const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       const storeById = new Map(activeStores.map(store => [store.id, store]));
       return activeOffers.flatMap(offer => {
         const partner = partnerById.get(offer.partnerId);
         const store = offer.storeId ? storeById.get(offer.storeId) : null;
-        return partner?.storeOpen && store?.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name }] : [];
+        return partner?.storeOpen && store?.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name, storeCategory: store.category }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
