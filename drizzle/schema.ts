@@ -55,6 +55,7 @@ export const partnerOffers = mysqlTable("partner_offers", {
   id: int("id").autoincrement().primaryKey(),
   partnerId: int("partnerId").notNull().references(() => partners.id, { onDelete: "cascade" }),
   storeId: int("storeId").references(() => stores.id, { onDelete: "cascade" }),
+  catalogItemId: int("catalogItemId").references(() => catalogItems.id, { onDelete: "set null" }),
   text: varchar("text", { length: 220 }).notNull(),
   imageUrl: varchar("imageUrl", { length: 500 }),
   imageStorageKey: varchar("imageStorageKey", { length: 500 }),

@@ -288,6 +288,7 @@ const partnerProductInput = z.object({
 
 export const partnerOfferInput = z.object({
   storeId: z.number().int().positive(),
+  catalogItemId: z.number().int().positive("اختر صنف العرض من منتجات متجرك"),
   text: z.string().trim().min(3, "أدخل وصف العرض").max(220),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
   imageStorageKey: z.string().trim().min(1).max(500).optional().or(z.literal("")),
@@ -495,12 +496,16 @@ export const lahzaRouter = router({
       const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)))).orderBy(desc(partnerOffers.createdAt));
       const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
       const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
+      const offerProductIds = activeOffers.flatMap(offer => offer.catalogItemId ? [offer.catalogItemId] : []);
+      const offerProducts = offerProductIds.length ? await db.select({ id: catalogItems.id, name: catalogItems.name, unit: catalogItems.unit, unitPrice: catalogItems.unitPrice, storeId: catalogItems.storeId, partnerId: catalogItems.partnerId }).from(catalogItems).where(and(inArray(catalogItems.id, offerProductIds), eq(catalogItems.deleted, false), eq(catalogItems.available, true))) : [];
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       const storeById = new Map(activeStores.map(store => [store.id, store]));
+      const productById = new Map(offerProducts.map(product => [product.id, product]));
       return activeOffers.flatMap(offer => {
         const partner = partnerById.get(offer.partnerId);
         const store = offer.storeId ? storeById.get(offer.storeId) : null;
-        return partner?.storeOpen && store?.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name, storeCategory: store.category }] : [];
+        const product = offer.catalogItemId ? productById.get(offer.catalogItemId) : null;
+        return partner?.storeOpen && store?.partnerId === partner.id && product?.storeId === store.id && product.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product.name, productUnit: product.unit, productPrice: product.unitPrice }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
@@ -594,13 +599,17 @@ export const lahzaRouter = router({
       create: publicProcedure.input(partnerOfferInput).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         await cleanExpiredOffers();
-        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active });
+        const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
+        if (!product[0]) throw new Error("اختر صنفاً متاحاً من منتجات متجرك لهذا العرض");
+        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, catalogItemId: product[0].id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active });
         return { success: true };
       }),
       update: publicProcedure.input(partnerOfferInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         await cleanExpiredOffers();
-        await db.update(partnerOffers).set({ text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
+        const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
+        if (!product[0]) throw new Error("اختر صنفاً متاحاً من منتجات متجرك لهذا العرض");
+        await db.update(partnerOffers).set({ catalogItemId: product[0].id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive(), storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

@@ -1,0 +1,2 @@
+ALTER TABLE `partner_offers` ADD `catalogItemId` int;--> statement-breakpoint
+ALTER TABLE `partner_offers` ADD CONSTRAINT `partner_offers_catalogItemId_catalog_items_id_fk` FOREIGN KEY (`catalogItemId`) REFERENCES `catalog_items`(`id`) ON DELETE set null ON UPDATE no action;

@@ -8,6 +8,7 @@ type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 const expiryColumns = [
   ["imageStorageKey", "VARCHAR(500) NULL"],
   ["imageDeletePending", "BOOLEAN NOT NULL DEFAULT FALSE"],
+  ["catalogItemId", "INT NULL"],
   ["durationDays", "INT NULL"],
   ["expiresAt", "TIMESTAMP NULL"],
   ["deletedAt", "TIMESTAMP NULL"],
