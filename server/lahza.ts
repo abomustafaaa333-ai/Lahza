@@ -593,16 +593,19 @@ export const lahzaRouter = router({
       }),
       create: publicProcedure.input(partnerOfferInput).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
+        await cleanExpiredOffers();
         await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active });
         return { success: true };
       }),
       update: publicProcedure.input(partnerOfferInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
+        await cleanExpiredOffers();
         await db.update(partnerOffers).set({ text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive(), storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
+        await cleanExpiredOffers();
         const found = await db.select({ imageStorageKey: partnerOffers.imageStorageKey }).from(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id))).limit(1);
         if (!found[0]) throw new Error("العرض غير موجود أو لا تملك صلاحية حذفه");
         await db.update(partnerOffers).set({ active: false, deletedAt: new Date(), imageDeletePending: Boolean(found[0].imageStorageKey) }).where(eq(partnerOffers.id, input.id));
