@@ -7,7 +7,11 @@ export type LahzaCategory =
   | "fuel"
   | "pharmacy"
   | "other"
-  | "offers";
+  | "offers"
+  | "sweets"
+  | "clothing"
+  | "mobile_accessories"
+  | "beauty_boutique";
 
 export type CatalogSeed = {
   code: string;
@@ -26,6 +30,10 @@ export const categoryMeta: Record<LahzaCategory, { title: string; subtitle: stri
   pharmacy: { title: "الصيدليات", subtitle: "أضف أسماء الأدوية", unit: "طلب", priced: false },
   other: { title: "منتجات أخرى", subtitle: "منتجات متنوعة تضيفها الإدارة", unit: "وحدة", priced: true },
   offers: { title: "العروض", subtitle: "عروض مميزة يضيفها المدير", unit: "وحدة", priced: true },
+  sweets: { title: "الحلويات والمعجنات", subtitle: "حلويات، كيك ومعجنات طازجة", unit: "وحدة", priced: true },
+  clothing: { title: "الألبسة", subtitle: "ملابس وإكسسوارات متنوعة", unit: "وحدة", priced: true },
+  mobile_accessories: { title: "الموبايلات والإكسسوارات", subtitle: "هواتف وملحقات وأجهزة", unit: "وحدة", priced: true },
+  beauty_boutique: { title: "مواد التجميل والبوتيك", subtitle: "عناية شخصية ومستحضرات تجميل", unit: "وحدة", priced: true },
 };
 
 export const DEFAULT_TICKER_PRIMARY = "حقق ١٠ طلبات واربح معنا هدية";

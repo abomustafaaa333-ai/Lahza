@@ -24,16 +24,28 @@ export const partners = mysqlTable("partners", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const stores = mysqlTable("stores", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 140 }).notNull(),
+  category: mysqlEnum("category", ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers", "sweets", "clothing", "mobile_accessories", "beauty_boutique"]).notNull(),
+  partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
+  active: boolean("active").notNull().default(true),
+  sortOrder: int("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const catalogItems = mysqlTable("catalog_items", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 80 }).notNull().unique(),
   name: varchar("name", { length: 160 }).notNull(),
-  category: mysqlEnum("category", ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers"]).notNull(),
+  category: mysqlEnum("category", ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers", "sweets", "clothing", "mobile_accessories", "beauty_boutique"]).notNull(),
   unit: varchar("unit", { length: 16 }).notNull(),
   unitPrice: int("unitPrice").notNull().default(0),
   available: boolean("available").notNull().default(true),
   deleted: boolean("deleted").notNull().default(false),
   partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
+  storeId: int("storeId").references(() => stores.id, { onDelete: "set null" }),
   imageUrl: varchar("imageUrl", { length: 500 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

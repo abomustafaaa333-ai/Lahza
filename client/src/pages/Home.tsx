@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { IntercityBooking, type IntercityTripSelection } from "@/components/IntercityBooking";
 import { trpc } from "@/lib/trpc";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, type LahzaCategory } from "@shared/lahza";
-import { ArrowLeft, BadgePercent, Bike, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, ShoppingBasket, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -22,6 +22,8 @@ type CartLine = {
   unitPrice: number;
   priceKnown: boolean;
 };
+
+type StoreOption = { id: number; name: string; category: LahzaCategory };
 
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 const demoAssetPrefix = isStaticDemo ? "." : "";
@@ -59,6 +61,10 @@ const categoryIcons = {
   pharmacy: Pill,
   other: PackagePlus,
   offers: BadgePercent,
+  sweets: CakeSlice,
+  clothing: Shirt,
+  mobile_accessories: Smartphone,
+  beauty_boutique: Sparkles,
 };
 
 const categoryColors = {
@@ -71,6 +77,10 @@ const categoryColors = {
   pharmacy: "from-emerald-100 to-teal-50 text-emerald-800",
   other: "from-violet-100 to-indigo-50 text-indigo-800",
   offers: "from-red-100 to-orange-50 text-red-800",
+  sweets: "from-pink-100 to-rose-50 text-pink-800",
+  clothing: "from-fuchsia-100 to-purple-50 text-fuchsia-800",
+  mobile_accessories: "from-cyan-100 to-blue-50 text-cyan-800",
+  beauty_boutique: "from-amber-100 to-orange-50 text-amber-800",
 };
 
 function lineTotal(line: Pick<CartLine, "quantity" | "unitPrice" | "unit">) {
@@ -120,6 +130,7 @@ export default function Home() {
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState<LahzaCategory | null>(null);
+  const [selectedStore, setSelectedStore] = useState<StoreOption | null>(null);
   const [secretOpen, setSecretOpen] = useState(false);
   const [secretRole, setSecretRole] = useState<"owner" | "supervisor" | "partner">("owner");
   const [pin, setPin] = useState("");
@@ -142,7 +153,15 @@ export default function Home() {
   const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery({ category: activeCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
+  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
+  const categoryStores: StoreOption[] = isStaticDemo && activeCategory
+    ? [{ id: -1, name: "متجر لحظة التجريبي", category: activeCategory }]
+    : categoryStoresQuery.data ?? [];
+  const selectedStoreProducts = isStaticDemo
+    ? products.filter(product => product.category === activeCategory)
+    : storeProductsQuery.data?.products ?? [];
   const tickerPrimary = normalizeTickerText(interfaceSettingsQuery.data?.tickerPrimary, DEFAULT_TICKER_PRIMARY);
   const tickerSecondary = normalizeTickerText(interfaceSettingsQuery.data?.tickerSecondary, DEFAULT_TICKER_SECONDARY);
   const adminLogin = trpc.lahza.admin.login.useMutation({
@@ -189,6 +208,7 @@ export default function Home() {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
     toast.success("أُضيف إلى السلة");
     setActiveCategory(null);
+    setSelectedStore(null);
   };
 
   const removeLine = (id: string) => {
@@ -278,6 +298,7 @@ export default function Home() {
   const goHome = () => {
     setScreen("home");
     setActiveCategory(null);
+    setSelectedStore(null);
     setSelectedIntercityTrip(null);
   };
 
@@ -369,7 +390,7 @@ export default function Home() {
                 const meta = categoryMeta[category];
                 const Icon = categoryIcons[category];
                 const count = cart.filter(line => line.category === category).length;
-                return <button key={category} onClick={() => setActiveCategory(category)} className="category-card">
+                return <button key={category} onClick={() => { setSelectedStore(null); setActiveCategory(category); }} className="category-card">
                   <span className={`category-icon bg-gradient-to-br ${categoryColors[category]}`}><Icon className="h-5 w-5" /></span>
                   <span className="category-card-copy"><span>{meta.title}</span><small>{meta.subtitle}</small></span>
                   {count > 0 ? <span className="category-badge">{count}</span> : <Plus className="h-4 w-4 text-slate-300" />}
@@ -429,22 +450,27 @@ export default function Home() {
       ) : null}
 
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
-      <CategoryDialog category={activeCategory} products={products} onClose={() => setActiveCategory(null)} onAdd={addLine} />
+      <StorePickerDialog category={selectedStore ? null : activeCategory} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} onChoose={store => setSelectedStore(store)} onClose={() => { setActiveCategory(null); setSelectedStore(null); }} />
+      <CategoryDialog category={selectedStore ? activeCategory : null} storeName={selectedStore?.name ?? ""} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => setSelectedStore(null)} onClose={() => { setActiveCategory(null); setSelectedStore(null); }} onAdd={addLine} />
       <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">اختر نوع الدخول</DialogTitle><DialogDescription className="text-center">اختر حسابك ثم أدخل بياناته في المكان الصحيح.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button><button onClick={() => setSecretRole("partner")} className={secretRole === "partner" ? "role-selected" : ""}>شريك</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN للمالك</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : secretRole === "supervisor" ? <><div><Label htmlFor="username">اسم المستخدم للمشرف</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة مرور المشرف</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></> : <div className="rounded-2xl bg-blue-50 p-4 text-center text-sm leading-6 text-blue-950">ستفتح لك صفحة الشريك لإدخال اسم المستخدم وكلمة المرور اللذين أنشأهما المالك.</div>}<Button disabled={secretRole !== "partner" && !isStaticDemo && adminLogin.isPending} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{secretRole === "partner" ? "الانتقال إلى دخول الشريك" : !isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
     </main>
   );
 }
 
-function CategoryDialog({ category, products, onClose, onAdd }: { category: LahzaCategory | null; products: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[]; onClose: () => void; onAdd: (line: Omit<CartLine, "id">) => void }) {
+function StorePickerDialog({ category, stores, loading, onChoose, onClose }: { category: LahzaCategory | null; stores: StoreOption[]; loading: boolean; onChoose: (store: StoreOption) => void; onClose: () => void }) {
+  if (!category) return null;
+  const meta = categoryMeta[category];
+  return <Dialog open={Boolean(category)} onOpenChange={open => !open && onClose()}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><DialogTitle className="text-right text-xl">متاجر {meta.title}</DialogTitle><DialogDescription className="text-right">اختر المتجر الذي تريد الطلب منه، ثم أضف المنتجات إلى السلة.</DialogDescription></DialogHeader><div className="mt-4">{loading ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="grid gap-3 sm:grid-cols-2">{stores.map(store => <button key={store.id} type="button" onClick={() => onChoose(store)} className="rounded-2xl border border-slate-100 bg-gradient-to-bl from-white to-slate-50 p-4 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md active:scale-[.98]"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-900"><Store className="h-5 w-5" /></span><strong className="mt-3 block text-base text-blue-950">{store.name}</strong><small className="mt-1 block text-xs text-slate-500">عرض منتجات المتجر</small></button>)}</div> : <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center"><Store className="mx-auto h-7 w-7 text-slate-400" /><strong className="mt-3 block text-blue-950">لا توجد متاجر مضافة بعد</strong><p className="mt-2 text-sm leading-6 text-slate-500">سيظهر أي متجر يضيفه المالك إلى قسم {meta.title} هنا.</p></div>}</div></DialogContent></Dialog>;
+}
+
+function CategoryDialog({ category, storeName, products, loading, onBack, onClose, onAdd }: { category: LahzaCategory | null; storeName: string; products: { id: number; name: string; unit: string; unitPrice: number; available: boolean }[]; loading: boolean; onBack: () => void; onClose: () => void; onAdd: (line: Omit<CartLine, "id">) => void }) {
   const [selectedId, setSelectedId] = useState("");
   const [manualName, setManualName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [medicine, setMedicine] = useState("");
   if (!category) return null;
   const meta = categoryMeta[category];
-  const localFallback = catalogSeed.filter(item => item.category === category).map((item, index) => ({ id: -index - 1, ...item, unitPrice: 0, available: true }));
-  const available = products.filter(product => product.category === category && product.available);
-  const options = available.length ? available : localFallback;
+  const options = products.filter(product => product.available);
   const selected = options.find(item => String(item.id) === selectedId);
   const isPharmacy = category === "pharmacy";
   const selectedUnit = selectedId === "manual" ? meta.unit : selected?.unit ?? meta.unit;

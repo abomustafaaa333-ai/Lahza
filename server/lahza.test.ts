@@ -57,6 +57,13 @@ describe("الأقسام ومحتوى الواجهة الجديد", () => {
     expect(categoryMeta.offers.priced).toBe(true);
   });
 
+  it("يُعرّف أقسام المتاجر الجديدة لاختيار المتجر ثم منتجاته", () => {
+    expect(categoryMeta.sweets.title).toBe("الحلويات والمعجنات");
+    expect(categoryMeta.clothing.title).toBe("الألبسة");
+    expect(categoryMeta.mobile_accessories.title).toBe("الموبايلات والإكسسوارات");
+    expect(categoryMeta.beauty_boutique.title).toBe("مواد التجميل والبوتيك");
+  });
+
   it("يوفر نصين افتراضيين منفصلين للشريط المتحرك", () => {
     expect(DEFAULT_TICKER_PRIMARY).toContain("١٠ طلبات");
     expect(DEFAULT_TICKER_SECONDARY).toContain("منبج");
@@ -111,6 +118,21 @@ describe("بيانات الطلب الإلزامية", () => {
     });
 
     expect(parsed.intercityTripId).toBe(4);
+  });
+
+  it("يقبل طلب منتج من أحد الأقسام الجديدة", () => {
+    const parsed = orderInputSchema.parse({
+      orderType: "delivery",
+      customerName: "أحمد",
+      customerPhone: "+963912345678",
+      paymentMethod: "cash",
+      locationUrl: "https://www.google.com/maps/search/?api=1&query=36.12345,37.12345",
+      locationLat: 36.12345,
+      locationLng: 37.12345,
+      lines: [{ category: "sweets", itemName: "كعكة شوكولا", quantity: 1, unit: "وحدة" }],
+    });
+
+    expect(parsed.lines[0]?.category).toBe("sweets");
   });
 
   it("يرفض الطلب من دون رابط موقع GPS", () => {

@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, orderLines, orders, partnerOffers, partners, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
 import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText, type LahzaCategory } from "../shared/lahza";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -15,7 +15,7 @@ import type { TrpcContext } from "./_core/context";
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
-const categories = ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers"] as const;
+const categories = ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers", "sweets", "clothing", "mobile_accessories", "beauty_boutique"] as const;
 const adminRoles = ["owner", "supervisor"] as const;
 const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled"] as const;
 const MANBIJ_CENTER = { lat: 36.5281, lng: 37.9549 };
@@ -250,6 +250,14 @@ const catalogItemInput = z.object({
   unit: z.enum(["وحدة", "جرام", "ليتر", "قنينة", "طلب"]),
   price: z.number().int().min(0).max(10_000_000),
   available: z.boolean().default(true),
+  storeId: z.number().int().positive().optional(),
+});
+
+const storeInput = z.object({
+  name: z.string().trim().min(2, "أدخل اسم المتجر").max(140),
+  category: z.enum(categories),
+  active: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).max(10_000).default(0),
 });
 
 const partnerAccountInput = z.object({
@@ -297,6 +305,15 @@ const deviceIdSchema = z.string().trim().min(16, "معرف الجهاز غير �
 export function calculateLineTotal(quantity: number, unitPrice: number, unit: string) {
   if (unit === "جرام") return Math.round((quantity / 1000) * unitPrice);
   return Math.round(quantity * unitPrice);
+}
+
+async function findStoreForCatalog(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, storeId: number | undefined, category: LahzaCategory) {
+  if (!storeId) return null;
+  const found = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
+  const store = found[0];
+  if (!store) throw new Error("المتجر المختار غير موجود");
+  if (store.category !== category) throw new Error("يجب أن يكون المنتج ضمن القسم نفسه للمتجر المختار");
+  return store;
 }
 
 export const orderInputSchema = z.object({
@@ -353,6 +370,7 @@ export const lahzaRouter = router({
       await requireAdmin(ctx);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const store = await findStoreForCatalog(db, input.storeId, input.category);
       await db.insert(catalogItems).values({
         code: `custom-${input.category}-${randomBytes(8).toString("hex")}`,
         name: input.name,
@@ -361,6 +379,7 @@ export const lahzaRouter = router({
         unitPrice: input.price,
         available: input.available,
         deleted: false,
+        storeId: store?.id ?? null,
       });
       return { success: true };
     }),
@@ -368,7 +387,8 @@ export const lahzaRouter = router({
       await requireAdmin(ctx);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
+      const store = await findStoreForCatalog(db, input.storeId, input.category);
+      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
       return { success: true };
     }),
     updatePrice: publicProcedure.input(z.object({ id: z.number().int().positive(), price: z.number().int().min(0).max(10_000_000) })).mutation(async ({ ctx, input }) => {
@@ -391,6 +411,33 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await db.update(catalogItems).set({ deleted: true, available: false }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
       return { success: true };
+    }),
+  }),
+  storefront: router({
+    stores: publicProcedure.input(z.object({ category: z.enum(categories) })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true))).orderBy(stores.sortOrder, stores.name);
+      const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen }).from(partners);
+      const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
+      return categoryStores.filter(store => {
+        if (!store.partnerId) return true;
+        const partner = partnerById.get(store.partnerId);
+        return Boolean(partner?.active && partner.storeOpen);
+      });
+    }),
+    products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true))).limit(1);
+      const store = found[0];
+      if (!store) throw new Error("هذا المتجر غير متاح حالياً");
+      if (store.partnerId) {
+        const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
+        if (!partner[0]?.active || !partner[0].storeOpen) throw new Error("هذا المتجر مغلق حالياً");
+      }
+      const products = await db.select().from(catalogItems).where(and(eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name);
+      return { store, products };
     }),
   }),
   intercity: router({
@@ -617,6 +664,36 @@ export const lahzaRouter = router({
     }),
   }),
   admin: router({
+    stores: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return db.select().from(stores).orderBy(stores.category, stores.sortOrder, stores.name);
+      }),
+      create: publicProcedure.input(storeInput).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.insert(stores).values({ name: input.name, category: input.category, active: input.active, sortOrder: input.sortOrder });
+        return { success: true };
+      }),
+      update: publicProcedure.input(storeInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const { id, ...patch } = input;
+        await db.update(stores).set(patch).where(eq(stores.id, id));
+        return { success: true };
+      }),
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.delete(stores).where(eq(stores.id, input.id));
+        return { success: true };
+      }),
+    }),
     partners: router({
       list: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner"]);
