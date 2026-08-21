@@ -8,7 +8,7 @@ import { trpc } from "@/lib/trpc";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, toNewSyp, type LahzaCategory } from "@shared/lahza";
-import { getAdminHomeShortcut } from "@shared/adminHomeShortcut";
+import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
@@ -179,6 +179,7 @@ export default function Home() {
   const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery({ category: activeCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
   const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
@@ -236,7 +237,9 @@ export default function Home() {
   const partnerGallerySlides = isStaticDemo
     ? demoGalleryImages.map((imageUrl, index) => ({ id: 1004 + index, imageUrl, name: index === 0 ? "عرض طعميني — صحن حلويات" : "عرض متجر لحظة التجريبي", partnerName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", unitPrice: 0 }))
     : buildPartnerGallerySlides(partnerOffersQuery.data ?? []);
-  const adminHomeShortcut = getAdminHomeShortcut(adminSessionQuery.data?.role);
+  const homeShortcut = !isStaticDemo && partnerSessionQuery.isLoading
+    ? null
+    : getHomeShortcut({ adminRole: adminSessionQuery.data?.role, partnerActive: Boolean(partnerSessionQuery.data) });
 
   const addLine = (line: Omit<CartLine, "id">, returnTo: Screen = "store") => {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
@@ -428,7 +431,7 @@ export default function Home() {
                 <span className="service-watermark">04</span>
               </button>
             </div>
-            {adminHomeShortcut ? <button type="button" onClick={() => setLocation(adminHomeShortcut.path)} className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-right text-blue-950 shadow-sm transition hover:bg-blue-100 active:scale-[0.98]" aria-label={`فتح ${adminHomeShortcut.label}`}><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white"><LayoutDashboard className="h-5 w-5" /></span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">{adminHomeShortcut.label}</strong><small className="text-xs font-medium text-slate-600">{adminHomeShortcut.description}</small></span><ChevronLeft className="h-5 w-5 text-blue-900" /></button> : null}
+            {homeShortcut ? <button type="button" onClick={() => setLocation(homeShortcut.path)} className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-right text-blue-950 shadow-sm transition hover:bg-blue-100 active:scale-[0.98]" aria-label={`فتح ${homeShortcut.label}`}><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white"><LayoutDashboard className="h-5 w-5" /></span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">{homeShortcut.label}</strong><small className="text-xs font-medium text-slate-600">{homeShortcut.description}</small></span><ChevronLeft className="h-5 w-5 text-blue-900" /></button> : null}
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400"><Bike className="h-4 w-4 text-red-600" /><span>خدمة محلية مخصصة لمنبج</span></div>
           </section>
         </>

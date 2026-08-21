@@ -3,7 +3,7 @@ export type AdminHomeRole = "owner" | "supervisor";
 export type AdminHomeShortcut = {
   label: string;
   description: string;
-  path: "/admin";
+  path: "/admin" | "/partner/store";
 };
 
 export function getAdminHomeShortcut(role: AdminHomeRole | null | undefined): AdminHomeShortcut | null {
@@ -16,4 +16,12 @@ export function getAdminHomeShortcut(role: AdminHomeRole | null | undefined): Ad
   }
 
   return null;
+}
+
+export function getHomeShortcut(input: { adminRole: AdminHomeRole | null | undefined; partnerActive: boolean }): AdminHomeShortcut | null {
+  if (input.partnerActive) {
+    return { label: "متجري", description: "إدارة منتجاتك وعروضك", path: "/partner/store" };
+  }
+
+  return getAdminHomeShortcut(input.adminRole);
 }
