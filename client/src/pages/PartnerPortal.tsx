@@ -43,7 +43,7 @@ function PartnerDashboard({ partner, onLogout, onHome }: { partner: PartnerData;
   const [tab, setTab] = useState<StoreTab>("products");
   const [productMode, setProductMode] = useState<ProductMode>("list");
   const [editingProduct, setEditingProduct] = useState<PartnerProduct | null>(null);
-  const [storeOpen, setStoreOpen] = useState(partner.storeOpen);
+  const [storeOpen, setStoredStoreOpen] = useState(partner.storeOpen);
   const [preparationMinutes, setPreparationMinutes] = useState(String(partner.preparationMinutes));
   const [preview, setPreview] = useState<{ src: string; alt: string } | null>(null);
   const stores = storesQuery.data ?? partner.stores;
@@ -53,6 +53,16 @@ function PartnerDashboard({ partner, onLogout, onHome }: { partner: PartnerData;
   const refreshProducts = () => { utils.lahza.partner.catalog.list.invalidate(); utils.lahza.storefront.products.invalidate(); };
   const refreshOffers = () => { utils.lahza.partner.offers.list.invalidate(); utils.lahza.intercity.offers.invalidate(); };
   const updateAccount = trpc.lahza.partner.store.update.useMutation({ onSuccess: () => { utils.lahza.partner.session.invalidate(); toast.success("تم حفظ حالة الحساب"); }, onError: error => toast.error(error.message) });
+  const setStoreOpen = (value: boolean | ((current: boolean) => boolean)) => {
+    if (!preparationMinutes) {
+      toast.error("أدخل وقت التجهيز أولاً ثم غيّر حالة المتجر");
+      return;
+    }
+    const previousStoreOpen = storeOpen;
+    const nextStoreOpen = typeof value === "function" ? value(storeOpen) : value;
+    setStoredStoreOpen(nextStoreOpen);
+    updateAccount.mutate({ storeOpen: nextStoreOpen, preparationMinutes: Number(preparationMinutes) }, { onError: () => setStoredStoreOpen(previousStoreOpen) });
+  };
   const createProduct = trpc.lahza.partner.catalog.create.useMutation({ onSuccess: () => { refreshProducts(); toast.success("تمت إضافة المنتج"); }, onError: error => toast.error(error.message) });
   const updateProduct = trpc.lahza.partner.catalog.update.useMutation({ onSuccess: () => { refreshProducts(); toast.success("تم تحديث المنتج"); }, onError: error => toast.error(error.message) });
   const removeProduct = trpc.lahza.partner.catalog.remove.useMutation({ onSuccess: () => { refreshProducts(); toast.success("تم حذف المنتج"); }, onError: error => toast.error(error.message) });
