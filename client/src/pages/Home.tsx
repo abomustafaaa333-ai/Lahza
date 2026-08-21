@@ -243,6 +243,10 @@ export default function Home() {
       toast.error("أضف صنفاً واحداً على الأقل قبل المتابعة");
       return;
     }
+    if (screen === "delivery" && total < minimumDeliveryOrderSyp) {
+      toast.error(`الحد الأدنى لمجموع الطلب هو ${formatSyp(minimumDeliveryOrderSyp)}. أضف منتجات أخرى قبل المتابعة.`);
+      return;
+    }
     setCheckoutMode("delivery");
     setScreen("checkout");
   };
