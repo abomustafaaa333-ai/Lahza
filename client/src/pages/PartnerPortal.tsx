@@ -6,7 +6,7 @@ import { offerDaysRemaining } from "@/lib/offerExpiry";
 import { trpc } from "@/lib/trpc";
 import { categoryMeta, formatSyp, toNewSyp, type LahzaCategory } from "@shared/lahza";
 import { ArrowRight, BadgePercent, ClipboardList, Image, ImagePlus, Loader2, LogOut, PackagePlus, Store, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
@@ -24,18 +24,11 @@ export default function PartnerPortal() {
   const sessionQuery = trpc.lahza.partner.session.useQuery();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const openStore = window.location.pathname === "/partner/store";
-  useEffect(() => {
-    if (sessionQuery.data && !openStore) setLocation("/");
-  }, [openStore, sessionQuery.data, setLocation]);
-  const login = trpc.lahza.partner.login.useMutation({ onSuccess: result => { utils.lahza.partner.session.invalidate(); toast.success(`أهلاً بك يا ${result.name}. ستجد زر متجري في الواجهة الرئيسية.`); setLocation("/"); }, onError: error => toast.error(error.message) });
+  const login = trpc.lahza.partner.login.useMutation({ onSuccess: result => { utils.lahza.partner.session.invalidate(); toast.success(`أهلاً بك في متجر ${result.name}`); setLocation("/partner/store"); }, onError: error => toast.error(error.message) });
   const logout = trpc.lahza.partner.logout.useMutation({ onSuccess: () => { utils.lahza.partner.session.invalidate(); setLocation("/"); } });
 
   if (sessionQuery.isLoading) return <Loading text="جارٍ فتح لوحة الشريك..." />;
   if (!sessionQuery.data) return <main dir="rtl" className="min-h-screen bg-slate-50 px-4 py-10"><section className="mx-auto max-w-md rounded-[2rem] border border-slate-200 bg-white p-6 shadow-lg"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-950 text-white"><Store className="h-6 w-6" /></div><div className="mt-5 h-10 w-28 overflow-hidden rounded-xl bg-white"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-10 w-full object-contain" /></div><p className="mt-2 text-sm font-bold text-red-600">بوابة الشركاء</p><h1 className="mt-1 text-2xl font-black text-blue-950">دخول المتجر</h1><p className="mt-2 text-sm leading-7 text-slate-500">استخدم حساب الشريك الذي أنشأه لك المالك.</p><div className="mt-6 space-y-4"><div><Label>اسم المستخدم</Label><Input dir="ltr" value={username} onChange={event => setUsername(event.target.value)} /></div><div><Label>كلمة المرور</Label><Input dir="ltr" type="password" value={password} onChange={event => setPassword(event.target.value)} /></div><Button disabled={login.isPending || !username.trim() || !password} onClick={() => login.mutate({ username: username.trim(), password })} className="h-11 w-full rounded-2xl bg-blue-950 hover:bg-blue-900">{login.isPending ? "جارٍ الدخول..." : "فتح لوحة المتجر"}</Button><Button variant="ghost" onClick={() => setLocation("/")} className="w-full rounded-xl text-slate-500"><ArrowRight className="h-4 w-4" /> العودة إلى لحظة</Button></div></section></main>;
-  if (!openStore) {
-    return <Loading text="جارٍ العودة إلى الصفحة الرئيسية..." />;
-  }
   return <PartnerDashboard partner={sessionQuery.data} onLogout={() => logout.mutate()} onHome={() => setLocation("/")} />;
 }
 
