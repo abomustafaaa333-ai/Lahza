@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
 describe("اختصار الصفحة الرئيسية للإدارة", () => {
@@ -181,6 +181,12 @@ describe("عروض المتاجر", () => {
     expect(isOfferExpiredAt(new Date("2026-08-21T12:00:00.000Z"), now)).toBe(true);
     expect(isOfferExpiredAt(new Date("2026-08-21T12:00:01.000Z"), now)).toBe(false);
     expect(isOfferExpiredAt(null, now)).toBe(false);
+  });
+});
+
+describe("صور منتجات الشريك", () => {
+  it("يقبل المنتج رابط صورة HTTPS اختياري لتظهر معاينته داخل المتجر", () => {
+    expect(partnerProductInput.parse({ name: "علبة معمول", category: "sweets", storeId: 3, unit: "وحدة", price: 500, available: true, imageUrl: "https://images.example.com/maamoul.jpg" }).imageUrl).toContain("maamoul.jpg");
   });
 });
 

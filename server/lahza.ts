@@ -303,7 +303,7 @@ const partnerAccountInput = z.object({
   password: passwordSchema,
 });
 
-const partnerProductInput = z.object({
+export const partnerProductInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المنتج").max(160),
   category: z.enum(categories),
   storeId: z.number().int().positive(),
@@ -627,6 +627,10 @@ export const lahzaRouter = router({
         if (!assigned[0]) throw new Error("لا تملك صلاحية حذف هذا المنتج");
         await db.update(catalogItems).set({ deleted: true, available: false }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, assigned[0].id), eq(catalogItems.deleted, false)));
         return { success: true };
+      }),
+      uploadImage: publicProcedure.input(z.object({ storeId: z.number().int().positive(), dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
+        const { store } = await requirePartnerStore(ctx, input.storeId);
+        return uploadOfferImage(input.dataUrl, store.id, `product-${randomBytes(12).toString("hex")}`);
       }),
     }),
     offers: router({
