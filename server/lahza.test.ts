@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
+import { getAdminHomeShortcut } from "../shared/adminHomeShortcut";
 import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
+
+describe("اختصار الصفحة الرئيسية للإدارة", () => {
+  it("يظهر لوحة التحكم للمالك ولوحة الإشراف للمشرف ولا يظهر للعميل", () => {
+    expect(getAdminHomeShortcut("owner")).toMatchObject({ label: "لوحة التحكم", path: "/admin" });
+    expect(getAdminHomeShortcut("supervisor")).toMatchObject({ label: "لوحة الإشراف", path: "/admin" });
+    expect(getAdminHomeShortcut(null)).toBeNull();
+  });
+});
 
 describe("حساب إجمالي السطر", () => {
   it("يحسب الأصناف العادية بعدد الوحدات", () => {
