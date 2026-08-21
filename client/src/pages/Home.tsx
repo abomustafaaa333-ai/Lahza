@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { IntercityBooking, type IntercityTripSelection } from "@/components/IntercityBooking";
 import { trpc } from "@/lib/trpc";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
-import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, type LahzaCategory } from "@shared/lahza";
+import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, toNewSyp, type LahzaCategory } from "@shared/lahza";
 import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
@@ -243,8 +243,8 @@ export default function Home() {
       toast.error("أضف صنفاً واحداً على الأقل قبل المتابعة");
       return;
     }
-    if (screen === "delivery" && total < minimumDeliveryOrderSyp) {
-      toast.error(`الحد الأدنى لمجموع الطلب هو ${formatSyp(minimumDeliveryOrderSyp)}. أضف منتجات أخرى قبل المتابعة.`);
+    if (screen === "delivery" && toNewSyp(total) < minimumDeliveryOrderSyp) {
+      toast.error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumDeliveryOrderSyp)}. أضف منتجات أخرى قبل المتابعة.`);
       return;
     }
     setCheckoutMode("delivery");
@@ -283,8 +283,8 @@ export default function Home() {
 
   const submitCheckout = () => {
     const isTaxi = checkoutMode === "taxi";
-    if (!isTaxi && total < minimumDeliveryOrderSyp) {
-      toast.error(`الحد الأدنى لمجموع الطلب هو ${formatSyp(minimumDeliveryOrderSyp)}`);
+    if (!isTaxi && toNewSyp(total) < minimumDeliveryOrderSyp) {
+      toast.error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumDeliveryOrderSyp)}`);
       return;
     }
     if (!checkoutName.trim() || !customerLocation.trim() || !locationVerified || !customerLocationUrl || customerLat === null || customerLng === null) {

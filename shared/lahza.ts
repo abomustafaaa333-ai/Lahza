@@ -38,6 +38,7 @@ export const categoryMeta: Record<LahzaCategory, { title: string; subtitle: stri
 
 export const DEFAULT_TICKER_PRIMARY = "حقق ١٠ طلبات واربح معنا هدية";
 export const DEFAULT_TICKER_SECONDARY = "لحظة — منبج بين يديك";
+export const SYP_CONVERSION_FACTOR = 100;
 
 export function normalizeTickerText(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim().length >= 2 ? value.trim() : fallback;
@@ -56,7 +57,20 @@ export const catalogSeed: CatalogSeed[] = [
   { code: "fuel-gas-cylinder", name: "جرة غاز", category: "fuel", unit: "قنينة" },
 ];
 
-export const formatSyp = (value: number) => `${new Intl.NumberFormat("ar-SY").format(value)} ل.س`;
+function safeMoneyValue(value: number) {
+  return Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+/** يحوّل قيمة مخزّنة بالليرة السابقة إلى القيمة المكافئة بالليرة السورية الجديدة. */
+export const toNewSyp = (legacyValue: number) => Math.round((safeMoneyValue(legacyValue) / SYP_CONVERSION_FACTOR) * 100) / 100;
+
+/** يحوّل قيمة يدخلها المستخدم بالليرة السورية الجديدة إلى قيمة التخزين التاريخية. */
+export const toLegacySyp = (newValue: number) => Math.round(safeMoneyValue(newValue) * SYP_CONVERSION_FACTOR);
+
+export const formatNewSyp = (value: number) => `${new Intl.NumberFormat("ar-SY", { maximumFractionDigits: 2 }).format(safeMoneyValue(value))} ل.س جديدة`;
+
+/** يعرض القيم التاريخية المخزنة دائماً بالليرة السورية الجديدة. */
+export const formatSyp = (legacyValue: number) => formatNewSyp(toNewSyp(legacyValue));
 
 export const orderStatusLabels = {
   pending: "جديد",

@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
-import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText, type LahzaCategory } from "../shared/lahza";
+import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
@@ -28,6 +28,7 @@ type PartnerSession = { partnerId: number };
 
 const passwordSchema = z.string().min(4, "يجب أن تتكون كلمة المرور من 4 أحرف أو أرقام على الأقل").max(100);
 const coordinateSchema = z.number().finite("إحداثيات الموقع غير صالحة");
+const newSypMoneyInput = z.number().finite("أدخل سعراً صالحاً").min(0).max(10_000_000);
 
 export function calculateDeliveryFee(distanceMeters: number, pricePerKm: number) {
   const billableKm = Math.max(1, Math.ceil(Math.max(0, distanceMeters) / 1000));
@@ -257,7 +258,7 @@ const catalogItemInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم الصنف").max(160),
   category: z.enum(categories),
   unit: z.enum(["وحدة", "جرام", "ليتر", "قنينة", "طلب"]),
-  price: z.number().int().min(0).max(10_000_000),
+  price: newSypMoneyInput,
   available: z.boolean().default(true),
   storeId: z.number().int().positive().optional(),
 });
@@ -281,7 +282,7 @@ const partnerProductInput = z.object({
   category: z.enum(categories),
   storeId: z.number().int().positive(),
   unit: z.enum(["وحدة", "جرام", "ليتر", "قنينة", "طلب"]),
-  price: z.number().int().min(0).max(10_000_000),
+  price: newSypMoneyInput,
   available: z.boolean().default(true),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
 });
@@ -307,8 +308,8 @@ const tripInput = z.object({
   bookingCloseLabel: z.string().trim().min(3).max(160),
   arrivalLabel: z.string().trim().min(3).max(160),
   capacity: z.number().int().min(1).max(1000),
-  pickupFee: z.number().int().min(0).max(10_000_000),
-  doorstepFee: z.number().int().min(0).max(10_000_000),
+  pickupFee: newSypMoneyInput,
+  doorstepFee: newSypMoneyInput,
   status: tripStatusSchema.default("open"),
   active: z.boolean().default(true),
 });
@@ -334,8 +335,8 @@ export function calculateLineTotal(quantity: number, unitPrice: number, unit: st
 
 export const MINIMUM_DELIVERY_ORDER_SYP = 300;
 
-export function meetsMinimumDeliveryOrder(itemsTotal: number) {
-  return itemsTotal >= MINIMUM_DELIVERY_ORDER_SYP;
+export function meetsMinimumDeliveryOrder(itemsTotalInLegacySyp: number) {
+  return toNewSyp(itemsTotalInLegacySyp) >= MINIMUM_DELIVERY_ORDER_SYP;
 }
 
 async function findStoreForCatalog(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, storeId: number | undefined, category: LahzaCategory) {
@@ -407,7 +408,7 @@ export const lahzaRouter = router({
         name: input.name,
         category: input.category,
         unit: input.unit,
-        unitPrice: input.price,
+        unitPrice: toLegacySyp(input.price),
         available: input.available,
         deleted: false,
         storeId: store?.id ?? null,
@@ -419,14 +420,14 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const store = await findStoreForCatalog(db, input.storeId, input.category);
-      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
+      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
       return { success: true };
     }),
-    updatePrice: publicProcedure.input(z.object({ id: z.number().int().positive(), price: z.number().int().min(0).max(10_000_000) })).mutation(async ({ ctx, input }) => {
+    updatePrice: publicProcedure.input(z.object({ id: z.number().int().positive(), price: newSypMoneyInput })).mutation(async ({ ctx, input }) => {
       await requireAdmin(ctx);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await db.update(catalogItems).set({ unitPrice: input.price }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
+      await db.update(catalogItems).set({ unitPrice: toLegacySyp(input.price) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
       return { success: true };
     }),
     updateAvailability: publicProcedure.input(z.object({ id: z.number().int().positive(), available: z.boolean() })).mutation(async ({ ctx, input }) => {
@@ -575,13 +576,13 @@ export const lahzaRouter = router({
       create: publicProcedure.input(partnerProductInput).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك إضافة منتجات القسم الخاص بمتجرك فقط");
-        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, imageUrl: input.imageUrl || null });
+        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, imageUrl: input.imageUrl || null });
         return { success: true };
       }),
       update: publicProcedure.input(partnerProductInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك تعديل منتجات القسم الخاص بمتجرك فقط");
-        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: input.price, available: input.available, imageUrl: input.imageUrl || null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
+        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, imageUrl: input.imageUrl || null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -661,7 +662,7 @@ export const lahzaRouter = router({
       });
       const itemsTotal = totalAmount;
       if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(itemsTotal)) {
-        throw new Error(`الحد الأدنى لمجموع الطلب هو ${MINIMUM_DELIVERY_ORDER_SYP.toLocaleString("ar-SY")} ليرة سورية`);
+        throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(MINIMUM_DELIVERY_ORDER_SYP)}`);
       }
       let deliveryDistanceMeters = 0;
       let deliveryFee = 0;
@@ -822,15 +823,15 @@ export const lahzaRouter = router({
           await requireAdmin(ctx, ["owner"]);
           const db = await getDb();
           if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-          await db.insert(intercityTrips).values(input);
+          await db.insert(intercityTrips).values({ ...input, pickupFee: toLegacySyp(input.pickupFee), doorstepFee: toLegacySyp(input.doorstepFee) });
           return { success: true };
         }),
         update: publicProcedure.input(tripInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
           await requireAdmin(ctx, ["owner"]);
           const db = await getDb();
           if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-          const { id, ...patch } = input;
-          await db.update(intercityTrips).set(patch).where(eq(intercityTrips.id, id));
+          const { id, pickupFee, doorstepFee, ...patch } = input;
+          await db.update(intercityTrips).set({ ...patch, pickupFee: toLegacySyp(pickupFee), doorstepFee: toLegacySyp(doorstepFee) }).where(eq(intercityTrips.id, id));
           return { success: true };
         }),
       }),
@@ -924,11 +925,11 @@ export const lahzaRouter = router({
           originLabel: "مركز مدينة منبج",
         };
       }),
-      update: publicProcedure.input(z.object({ pricePerKm: z.number().int().min(0).max(1_000_000), originLat: coordinateSchema.min(-90).max(90), originLng: coordinateSchema.min(-180).max(180) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ pricePerKm: newSypMoneyInput, originLat: coordinateSchema.min(-90).max(90), originLng: coordinateSchema.min(-180).max(180) })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.update(systemSettings).set({ deliveryPricePerKm: input.pricePerKm, originLatE6: Math.round(input.originLat * 1_000_000), originLngE6: Math.round(input.originLng * 1_000_000) }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ deliveryPricePerKm: toLegacySyp(input.pricePerKm), originLatE6: Math.round(input.originLat * 1_000_000), originLngE6: Math.round(input.originLng * 1_000_000) }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),

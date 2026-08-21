@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText } from "../shared/lahza";
+import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
@@ -18,13 +18,27 @@ describe("حساب إجمالي السطر", () => {
 });
 
 describe("الحد الأدنى للطلب", () => {
-  it("يرفض مجموعاً أقل من 300 ليرة", () => {
-    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP - 1)).toBe(false);
+  it("يرفض مجموعاً أقل من 300 ليرة سورية جديدة", () => {
+    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP * SYP_CONVERSION_FACTOR - 1)).toBe(false);
   });
 
-  it("يقبل مجموعاً يساوي 300 ليرة أو يتجاوزه", () => {
-    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP)).toBe(true);
-    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP + 1)).toBe(true);
+  it("يقبل مجموعاً يساوي 300 ليرة سورية جديدة أو يتجاوزه", () => {
+    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP * SYP_CONVERSION_FACTOR)).toBe(true);
+    expect(meetsMinimumDeliveryOrder((MINIMUM_DELIVERY_ORDER_SYP + 1) * SYP_CONVERSION_FACTOR)).toBe(true);
+  });
+});
+
+describe("الليرة السورية الجديدة", () => {
+  it("يحوّل القيم التاريخية من الليرة السابقة إلى الجديدة والعكس بدقة", () => {
+    expect(toNewSyp(100_000)).toBe(1_000);
+    expect(toLegacySyp(1_000)).toBe(100_000);
+    expect(toNewSyp(2)).toBe(0.02);
+    expect(toLegacySyp(0.02)).toBe(2);
+  });
+
+  it("يعرض السعر دائماً بوصفه ليرة سورية جديدة", () => {
+    expect(formatSyp(50_000)).toContain("ل.س جديدة");
+    expect(formatNewSyp(300)).toContain("ل.س جديدة");
   });
 });
 

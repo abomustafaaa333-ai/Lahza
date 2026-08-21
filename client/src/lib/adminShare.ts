@@ -40,8 +40,8 @@ export function buildEmployeeOrderWhatsAppUrl(employeePhone: string, order: Shar
     `الهاتف: ${order.customerPhone}`,
     ...orderRows,
     order.orderType === "delivery" && order.deliveryDistanceMeters ? `مسافة الطريق: ${(order.deliveryDistanceMeters / 1000).toFixed(1)} كم` : "",
-    order.orderType === "delivery" && order.deliveryFee !== undefined ? `رسوم التوصيل: ${new Intl.NumberFormat("ar-SY").format(order.deliveryFee)} ل.س` : "",
-    `الإجمالي: ${new Intl.NumberFormat("ar-SY").format(order.totalAmount)} ل.س`,
+    order.orderType === "delivery" && order.deliveryFee !== undefined ? `رسوم التوصيل: ${formatSyp(order.deliveryFee)}` : "",
+    `الإجمالي: ${formatSyp(order.totalAmount)}`,
     mapUrl ? `الموقع: ${mapUrl}` : "الموقع: لا يتوفر رابط GPS لهذا الطلب",
   ].filter(Boolean).join("\n");
   return `https://wa.me/${employeePhone.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
@@ -146,9 +146,9 @@ function dataRows(order: ShareableOrder) {
     `الهاتف: ${order.customerPhone}`,
     ...orderRows,
     order.orderType === "delivery" && order.deliveryDistanceMeters ? `مسافة الطريق: ${(order.deliveryDistanceMeters / 1000).toFixed(1)} كم` : "",
-    order.orderType === "delivery" && order.deliveryFee !== undefined ? `رسوم التوصيل: ${new Intl.NumberFormat("ar-SY").format(order.deliveryFee)} ل.س` : "",
+    order.orderType === "delivery" && order.deliveryFee !== undefined ? `رسوم التوصيل: ${formatSyp(order.deliveryFee)}` : "",
     `الدفع: ${order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}`,
-    order.orderType === "delivery" ? `الإجمالي المبدئي: ${new Intl.NumberFormat("ar-SY").format(order.totalAmount)} ل.س` : "السعر: يحدد لاحقاً",
+    order.orderType === "delivery" ? `الإجمالي المبدئي: ${formatSyp(order.totalAmount)}` : "السعر: يحدد لاحقاً",
   ];
 }
 
@@ -225,3 +225,4 @@ export async function shareCustomerContact(customerName: string, customerPhone: 
   const file = new Blob([buildContactVCard(customerName, customerPhone)], { type: "text/vcard" });
   return shareBlob(file, `lahza-contact-${safeName}.vcf`, `جهة اتصال ${customerName}`);
 }
+import { formatSyp } from "@shared/lahza";
