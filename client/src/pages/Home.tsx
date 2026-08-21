@@ -10,7 +10,7 @@ import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partn
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, toNewSyp, type LahzaCategory } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
-import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -201,6 +201,29 @@ export default function Home() {
     },
     onError: error => toast.error(error.message),
   });
+  const partnerLogin = trpc.lahza.partner.login.useMutation({
+    onSuccess: result => {
+      utils.lahza.partner.session.invalidate();
+      setSecretOpen(false);
+      toast.success(`أهلاً بك في متجر ${result.name}`);
+      setLocation("/");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const adminHomeLogout = trpc.lahza.admin.logout.useMutation({
+    onSuccess: () => {
+      utils.lahza.admin.session.setData(undefined, null);
+      toast.success("تم تسجيل الخروج من لوحة التحكم");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const partnerHomeLogout = trpc.lahza.partner.logout.useMutation({
+    onSuccess: () => {
+      utils.lahza.partner.session.setData(undefined, null);
+      toast.success("تم تسجيل الخروج من حساب الشريك");
+    },
+    onError: error => toast.error(error.message),
+  });
   const createOrder = trpc.lahza.orders.create.useMutation({
     onSuccess: result => {
       toast.success(`تم إرسال الطلب رقم #${result.orderId} بنجاح`);
@@ -241,6 +264,7 @@ export default function Home() {
   const homeShortcut = !isStaticDemo && partnerSessionQuery.isLoading
     ? null
     : getHomeShortcut({ adminRole: adminSessionQuery.data?.role, partnerActive: Boolean(partnerSessionQuery.data) });
+  const homeAccountKind = homeShortcut?.path === "/partner/store" ? "partner" : homeShortcut?.path === "/admin" ? "admin" : null;
 
   const addLine = (line: Omit<CartLine, "id">, returnTo: Screen = "store") => {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
@@ -360,8 +384,7 @@ export default function Home() {
 
   const handleAdminLogin = () => {
     if (secretRole === "partner") {
-      setSecretOpen(false);
-      setLocation("/partner");
+      partnerLogin.mutate({ username: username.trim(), password });
       return;
     }
     if (isStaticDemo) {
@@ -432,7 +455,7 @@ export default function Home() {
                 <span className="service-watermark">04</span>
               </button>
             </div>
-            {homeShortcut ? <button type="button" onClick={() => setLocation(homeShortcut.path)} className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-right text-blue-950 shadow-sm transition hover:bg-blue-100 active:scale-[0.98]" aria-label={`فتح ${homeShortcut.label}`}><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white">{homeShortcut.path === "/partner/store" ? <Store className="h-5 w-5" /> : <LayoutDashboard className="h-5 w-5" />}</span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">{homeShortcut.label}</strong><small className="text-xs font-medium text-slate-600">{homeShortcut.description}</small></span><ChevronLeft className="h-5 w-5 text-blue-900" /></button> : null}
+            {homeShortcut ? <div className="mt-5 space-y-2"><button type="button" onClick={() => setLocation(homeShortcut.path)} className="flex w-full items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-right text-blue-950 shadow-sm transition hover:bg-blue-100 active:scale-[0.98]" aria-label={`فتح ${homeShortcut.label}`}><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white">{homeShortcut.path === "/partner/store" ? <Store className="h-5 w-5" /> : <LayoutDashboard className="h-5 w-5" />}</span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">{homeShortcut.label}</strong><small className="text-xs font-medium text-slate-600">{homeShortcut.description}</small></span><ChevronLeft className="h-5 w-5 text-blue-900" /></button><button type="button" onClick={() => homeAccountKind === "partner" ? partnerHomeLogout.mutate() : adminHomeLogout.mutate()} disabled={partnerHomeLogout.isPending || adminHomeLogout.isPending} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed"><LogOut className="h-4 w-4" />{partnerHomeLogout.isPending || adminHomeLogout.isPending ? "جارٍ تسجيل الخروج..." : "تسجيل الخروج"}</button></div> : null}
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400"><Bike className="h-4 w-4 text-red-600" /><span>خدمة محلية مخصصة لمنبج</span></div>
           </section>
         </>
@@ -515,7 +538,7 @@ export default function Home() {
       ) : null}
 
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
-      <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">اختر نوع الدخول</DialogTitle><DialogDescription className="text-center">اختر حسابك ثم أدخل بياناته في المكان الصحيح.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button><button onClick={() => setSecretRole("partner")} className={secretRole === "partner" ? "role-selected" : ""}>شريك</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN للمالك</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : secretRole === "supervisor" ? <><div><Label htmlFor="username">اسم المستخدم للمشرف</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة مرور المشرف</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></> : <div className="rounded-2xl bg-blue-50 p-4 text-center text-sm leading-6 text-blue-950">ستفتح لك صفحة الشريك لإدخال اسم المستخدم وكلمة المرور اللذين أنشأهما المالك.</div>}<Button disabled={secretRole !== "partner" && !isStaticDemo && adminLogin.isPending} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{secretRole === "partner" ? "الانتقال إلى دخول الشريك" : !isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
+      <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">اختر نوع الدخول</DialogTitle><DialogDescription className="text-center">اختر حسابك ثم أدخل بياناته في المكان الصحيح.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button><button onClick={() => setSecretRole("partner")} className={secretRole === "partner" ? "role-selected" : ""}>شريك</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN للمالك</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : <><div><Label htmlFor="username">اسم المستخدم {secretRole === "partner" ? "للشريك" : "للمشرف"}</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة المرور {secretRole === "partner" ? "للشريك" : "للمشرف"}</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></>}<Button disabled={secretRole === "partner" ? partnerLogin.isPending || !username.trim() || !password : !isStaticDemo && (adminLogin.isPending || (secretRole === "owner" ? !pin : !username.trim() || !password))} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{secretRole === "partner" ? partnerLogin.isPending ? "جارٍ فتح حساب الشريك..." : "دخول الشريك" : !isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
     </main>
   );
 }
