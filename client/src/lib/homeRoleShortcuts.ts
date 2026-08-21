@@ -12,3 +12,8 @@ export function getHomeRoleShortcuts(adminRole?: "owner" | "supervisor", hasPart
   if (hasPartnerSession) shortcuts.push({ id: "partner", label: "متجري", detail: "إدارة منتجاتك وعروضك", path: "/partner/store" });
   return shortcuts;
 }
+
+export function getConfirmedHomeRoleShortcuts(input: { adminRole?: "owner" | "supervisor"; hasPartnerSession: boolean; sessionsLoading: boolean }): HomeRoleShortcut[] {
+  if (input.sessionsLoading) return [];
+  return getHomeRoleShortcuts(input.adminRole, input.hasPartnerSession);
+}
