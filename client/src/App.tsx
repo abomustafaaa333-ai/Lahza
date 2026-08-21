@@ -15,7 +15,7 @@ const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 
 function Router() {
   const AdminPage = isStaticDemo ? DemoAdmin : Admin;
-  return <Switch><Route path="/" component={Home} /><Route path="/download" component={DownloadApp} /><Route path="/partner" component={PartnerPortal} /><Route path="/admin" component={AdminPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
+  return <Switch><Route path="/" component={Home} /><Route path="/download" component={DownloadApp} /><Route path="/partner/store" component={PartnerPortal} /><Route path="/partner" component={PartnerPortal} /><Route path="/admin" component={AdminPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
 }
 
 export default function App() {
