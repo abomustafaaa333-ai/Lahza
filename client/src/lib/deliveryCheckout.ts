@@ -22,5 +22,5 @@ export function getDeliveryCheckoutGate(cartCount: number, totalInLegacySyp: num
 }
 
 export function remainingDeliveryAmountNewSyp(totalInLegacySyp: number) {
-  return Math.round(Math.max(0, MINIMUM_DELIVERY_ORDER_NEW_SYP - toNewSyp(totalInLegacySyp)) * 100) / 100;
+  return Math.max(0, MINIMUM_DELIVERY_ORDER_NEW_SYP - toNewSyp(totalInLegacySyp));
 }

@@ -28,7 +28,7 @@ type PartnerSession = { partnerId: number };
 
 const passwordSchema = z.string().min(4, "يجب أن تتكون كلمة المرور من 4 أحرف أو أرقام على الأقل").max(100);
 const coordinateSchema = z.number().finite("إحداثيات الموقع غير صالحة");
-const newSypMoneyInput = z.number().finite("أدخل سعراً صالحاً").min(0).max(10_000_000);
+const newSypMoneyInput = z.number().finite("أدخل سعراً صالحاً").int("أدخل مبلغاً صحيحاً من دون كسور").min(0).max(10_000_000);
 
 export function calculateDeliveryFee(distanceMeters: number, pricePerKm: number) {
   const billableKm = Math.max(1, Math.ceil(Math.max(0, distanceMeters) / 1000));

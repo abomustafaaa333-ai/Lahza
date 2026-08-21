@@ -19,7 +19,7 @@ describe("حساب إجمالي السطر", () => {
 
 describe("الحد الأدنى للطلب", () => {
   it("يرفض مجموعاً أقل من 300 ليرة سورية جديدة", () => {
-    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP * SYP_CONVERSION_FACTOR - 1)).toBe(false);
+    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP * SYP_CONVERSION_FACTOR - 51)).toBe(false);
   });
 
   it("يقبل مجموعاً يساوي 300 ليرة سورية جديدة أو يتجاوزه", () => {
@@ -29,16 +29,17 @@ describe("الحد الأدنى للطلب", () => {
 });
 
 describe("الليرة السورية الجديدة", () => {
-  it("يحوّل القيم التاريخية من الليرة السابقة إلى الجديدة والعكس بدقة", () => {
+  it("يحوّل القيم التاريخية إلى ليرات جديدة صحيحة من دون كسور", () => {
     expect(toNewSyp(100_000)).toBe(1_000);
     expect(toLegacySyp(1_000)).toBe(100_000);
-    expect(toNewSyp(2)).toBe(0.02);
-    expect(toLegacySyp(0.02)).toBe(2);
+    expect(toNewSyp(5_008)).toBe(50);
+    expect(toLegacySyp(50.08)).toBe(5_000);
   });
 
-  it("يعرض السعر دائماً بوصفه ليرة سورية جديدة", () => {
+  it("يعرض السعر دائماً بوصفه ليرة سورية جديدة صحيحة بلا فاصلة", () => {
     expect(formatSyp(50_000)).toContain("ل.س جديدة");
     expect(formatNewSyp(300)).toContain("ل.س جديدة");
+    expect(formatNewSyp(50.08)).not.toContain("٫");
   });
 });
 

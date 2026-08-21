@@ -61,13 +61,13 @@ function safeMoneyValue(value: number) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-/** يحوّل قيمة مخزّنة بالليرة السابقة إلى القيمة المكافئة بالليرة السورية الجديدة. */
-export const toNewSyp = (legacyValue: number) => Math.round((safeMoneyValue(legacyValue) / SYP_CONVERSION_FACTOR) * 100) / 100;
+/** يحوّل القيمة المخزّنة إلى ليرات سورية جديدة صحيحة، بلا أجزاء عشرية. */
+export const toNewSyp = (legacyValue: number) => Math.round(safeMoneyValue(legacyValue) / SYP_CONVERSION_FACTOR);
 
-/** يحوّل قيمة يدخلها المستخدم بالليرة السورية الجديدة إلى قيمة التخزين التاريخية. */
-export const toLegacySyp = (newValue: number) => Math.round(safeMoneyValue(newValue) * SYP_CONVERSION_FACTOR);
+/** يحوّل مبلغاً صحيحاً بالليرة الجديدة إلى قيمة التخزين التاريخية. */
+export const toLegacySyp = (newValue: number) => Math.round(safeMoneyValue(newValue)) * SYP_CONVERSION_FACTOR;
 
-export const formatNewSyp = (value: number) => `${new Intl.NumberFormat("ar-SY", { maximumFractionDigits: 2 }).format(safeMoneyValue(value))} ل.س جديدة`;
+export const formatNewSyp = (value: number) => `${new Intl.NumberFormat("ar-SY", { maximumFractionDigits: 0 }).format(Math.round(safeMoneyValue(value)))} ل.س جديدة`;
 
 /** يعرض القيم التاريخية المخزنة دائماً بالليرة السورية الجديدة. */
 export const formatSyp = (legacyValue: number) => formatNewSyp(toNewSyp(legacyValue));
