@@ -28,11 +28,12 @@ const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: bo
 
 export default function Admin() {
   const [, setLocation] = useLocation();
+  const utils = trpc.useUtils();
   const [tab, setTab] = useState<Tab>("orders");
   const [menuOpen, setMenuOpen] = useState(false);
   const sessionQuery = trpc.lahza.admin.session.useQuery();
   const session = sessionQuery.data;
-  const logout = trpc.lahza.admin.logout.useMutation({ onSuccess: () => { toast.success("تم تسجيل الخروج من لوحة التحكم"); setLocation("/"); } });
+  const logout = trpc.lahza.admin.logout.useMutation({ onSuccess: () => { utils.lahza.admin.session.setData(undefined, null); toast.success("تم تسجيل الخروج من لوحة التحكم"); setLocation("/"); } });
   const isOwner = session?.role === "owner";
   const availableTabs = tabs.filter(item => !item.ownerOnly || isOwner);
 
