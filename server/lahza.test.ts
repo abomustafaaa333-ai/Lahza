@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
 describe("حساب إجمالي السطر", () => {
@@ -55,6 +55,21 @@ describe("حساب رسوم التوصيل", () => {
   it("يُبقي الطلب قابلاً للحفظ عند تعذر خدمة الخرائط ويؤجل التسعير للإدارة", () => {
     expect(pendingDeliveryCalculation()).toEqual({ deliveryDistanceMeters: 0, deliveryFee: 0, deliveryPricingPending: true });
     expect(DELIVERY_PRICING_PENDING_NOTE).toContain("يحددها فريق لحظة لاحقاً");
+  });
+
+  it("يحسب 15% لمنبج و30% لجرابلس من قيمة المنتجات فقط", () => {
+    const itemsTotal = 30_000;
+    expect(calculatePercentageDeliveryFeeNewSyp(itemsTotal, 15)).toBe(45);
+    expect(calculatePercentageDeliveryFeeNewSyp(itemsTotal, 30)).toBe(90);
+    expect(calculatePercentageDeliveryFee(itemsTotal, 15)).toBe(4_500);
+    expect(calculatePercentageDeliveryFee(itemsTotal, 30)).toBe(9_000);
+  });
+
+  it("لا يجعل رسم التوصيل طلباً أدنى مؤهلاً بمفرده", () => {
+    const productsTotal = 25_000;
+    const deliveryFee = calculatePercentageDeliveryFee(productsTotal, 30);
+    expect(meetsMinimumDeliveryOrder(productsTotal)).toBe(false);
+    expect(meetsMinimumDeliveryOrder(productsTotal + deliveryFee)).toBe(true);
   });
 });
 

@@ -85,6 +85,13 @@
       "when": 1787266463021,
       "tag": "0011_cute_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1787331667940,
+      "tag": "0012_delivery_fee_percentages",
+      "breakpoints": true
     }
   ]
 }

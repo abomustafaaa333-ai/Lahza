@@ -69,6 +69,9 @@ export const toLegacySyp = (newValue: number) => Math.round(safeMoneyValue(newVa
 
 export const formatNewSyp = (value: number) => `${new Intl.NumberFormat("ar-SY", { maximumFractionDigits: 0 }).format(Math.round(safeMoneyValue(value)))} ل.س جديدة`;
 
+/** تحسب رسوم التوصيل من مبلغ المنتجات المعروض بالليرة الجديدة، ثم تقرّبها إلى ليرة صحيحة. */
+export const calculatePercentageDeliveryFeeNewSyp = (itemsTotalInLegacySyp: number, percentage: number) => Math.round(toNewSyp(itemsTotalInLegacySyp) * Math.max(0, Math.min(100, Math.round(Number(percentage) || 0))) / 100);
+
 /** يعرض القيم التاريخية المخزنة دائماً بالليرة السورية الجديدة. */
 export const formatSyp = (legacyValue: number) => formatNewSyp(toNewSyp(legacyValue));
 

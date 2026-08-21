@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
-import { catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
@@ -29,10 +29,15 @@ type PartnerSession = { partnerId: number };
 const passwordSchema = z.string().min(4, "يجب أن تتكون كلمة المرور من 4 أحرف أو أرقام على الأقل").max(100);
 const coordinateSchema = z.number().finite("إحداثيات الموقع غير صالحة");
 const newSypMoneyInput = z.number().finite("أدخل سعراً صالحاً").int("أدخل مبلغاً صحيحاً من دون كسور").min(0).max(10_000_000);
+const deliveryPercentInput = z.number().finite("أدخل نسبة صالحة").int("أدخل نسبة صحيحة").min(0).max(100);
 
 export function calculateDeliveryFee(distanceMeters: number, pricePerKm: number) {
   const billableKm = Math.max(1, Math.ceil(Math.max(0, distanceMeters) / 1000));
   return { billableKm, deliveryFee: billableKm * Math.max(0, pricePerKm) };
+}
+
+export function calculatePercentageDeliveryFee(itemsTotalInLegacySyp: number, percentage: number) {
+  return toLegacySyp(calculatePercentageDeliveryFeeNewSyp(itemsTotalInLegacySyp, percentage));
 }
 
 export const DELIVERY_PRICING_PENDING_NOTE = "رسوم التوصيل: يحددها فريق لحظة لاحقاً لعدم توفر حساب مسافة الطريق حالياً.";
@@ -78,6 +83,25 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
   if (!availableColumns.has("tickerSecondary")) {
     await addTickerColumnIfMissing(db, "tickerSecondary", DEFAULT_TICKER_SECONDARY);
   }
+}
+
+async function addDeliveryPercentColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "manbijDeliveryPercent" | "jarabulusDeliveryPercent", defaultValue: number) {
+  try {
+    await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` INT NOT NULL DEFAULT ${defaultValue}`));
+  } catch (error) {
+    if (!isDuplicateColumnError(error)) throw error;
+  }
+}
+
+async function ensureDeliveryPercentColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `system_settings`"));
+  const availableColumns = new Set(
+    Array.isArray(columns)
+      ? columns.map(column => String((column as { Field?: unknown }).Field ?? ""))
+      : [],
+  );
+  if (!availableColumns.has("manbijDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "manbijDeliveryPercent", 15);
+  if (!availableColumns.has("jarabulusDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "jarabulusDeliveryPercent", 30);
 }
 
 async function saveTickerSettings(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, tickerSettings: ReturnType<typeof readTickerSettings>) {
@@ -196,10 +220,11 @@ function setPartnerCookie(ctx: TrpcContext, token: string) {
 async function getSettings() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+  await ensureDeliveryPercentColumns(db);
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   if (current[0]) return current[0];
   const masterPinHash = await hashSecret("5555");
-  await db.insert(systemSettings).values({ id: 1, masterPinHash, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
+  await db.insert(systemSettings).values({ id: 1, masterPinHash, manbijDeliveryPercent: 15, jarabulusDeliveryPercent: 30, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
   const created = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   return created[0]!;
 }
@@ -372,6 +397,12 @@ export const lahzaRouter = router({
     get: publicProcedure.query(async () => {
       const settings = await getSettings();
       return readTickerSettings(settings);
+    }),
+  }),
+  deliveryFees: router({
+    get: publicProcedure.query(async () => {
+      const settings = await getSettings();
+      return { manbijPercent: settings.manbijDeliveryPercent, jarabulusPercent: settings.jarabulusDeliveryPercent };
     }),
   }),
   customers: router({
@@ -664,6 +695,7 @@ export const lahzaRouter = router({
       if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(itemsTotal)) {
         throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(MINIMUM_DELIVERY_ORDER_SYP)}`);
       }
+      const settings = await getSettings();
       let deliveryDistanceMeters = 0;
       let deliveryFee = 0;
       let deliveryPricingPending = false;
@@ -676,21 +708,11 @@ export const lahzaRouter = router({
         const legacyReservations = await db.select({ id: intercityOrders.id }).from(intercityOrders).where(and(eq(intercityOrders.tripId, intercityTrip.id), inArray(intercityOrders.status, ["new", "accepted", "ready", "collected"])));
         const activeLinkedReservations = linkedReservations.filter(order => ["pending", "confirmed", "preparing", "on_the_way"].includes(order.status)).length;
         if (!canReserveIntercityTrip(intercityTrip.capacity, legacyReservations.length + activeLinkedReservations)) throw new Error("اكتملت سعة هذا الحجز، اختر حجزاً آخر");
-        deliveryFee = intercityTrip.pickupFee;
+        deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.jarabulusDeliveryPercent);
         totalAmount += deliveryFee;
       } else if (input.orderType === "delivery") {
-        try {
-          const quote = await getDrivingQuote(input.locationLat, input.locationLng);
-          deliveryDistanceMeters = quote.distanceMeters;
-          deliveryFee = quote.deliveryFee;
-          totalAmount += deliveryFee;
-        } catch (error) {
-          const pendingCalculation = pendingDeliveryCalculation();
-          deliveryDistanceMeters = pendingCalculation.deliveryDistanceMeters;
-          deliveryFee = pendingCalculation.deliveryFee;
-          deliveryPricingPending = pendingCalculation.deliveryPricingPending;
-          console.warn("[Lahza] تعذر احتساب مسافة الطريق؛ سيُحفظ الطلب برسوم توصيل تحدد لاحقاً.", error);
-        }
+        deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.manbijDeliveryPercent);
+        totalAmount += deliveryFee;
       }
 
       const created = await db.insert(orders).values({
@@ -919,17 +941,15 @@ export const lahzaRouter = router({
         await requireAdmin(ctx);
         const settings = await getSettings();
         return {
-          pricePerKm: settings.deliveryPricePerKm,
-          originLat: settings.originLatE6 / 1_000_000,
-          originLng: settings.originLngE6 / 1_000_000,
-          originLabel: "مركز مدينة منبج",
+          manbijPercent: settings.manbijDeliveryPercent,
+          jarabulusPercent: settings.jarabulusDeliveryPercent,
         };
       }),
-      update: publicProcedure.input(z.object({ pricePerKm: newSypMoneyInput, originLat: coordinateSchema.min(-90).max(90), originLng: coordinateSchema.min(-180).max(180) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.update(systemSettings).set({ deliveryPricePerKm: toLegacySyp(input.pricePerKm), originLatE6: Math.round(input.originLat * 1_000_000), originLngE6: Math.round(input.originLng * 1_000_000) }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),

@@ -138,6 +138,8 @@ export const systemSettings = mysqlTable("system_settings", {
   id: int("id").primaryKey(),
   masterPinHash: varchar("masterPinHash", { length: 255 }).notNull(),
   deliveryPricePerKm: int("deliveryPricePerKm").notNull().default(2),
+  manbijDeliveryPercent: int("manbijDeliveryPercent").notNull().default(15),
+  jarabulusDeliveryPercent: int("jarabulusDeliveryPercent").notNull().default(30),
   originLatE6: int("originLatE6").notNull().default(36528100),
   originLngE6: int("originLngE6").notNull().default(37954900),
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),

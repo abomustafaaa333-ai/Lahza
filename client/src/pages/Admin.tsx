@@ -214,18 +214,16 @@ function CatalogRow({ product, onSave, onRemove, saving }: { product: { id: numb
 
 function DeliverySettingsPanel() {
   const settingsQuery = trpc.lahza.admin.deliverySettings.get.useQuery();
-  const [pricePerKm, setPricePerKm] = useState("");
-  const [originLat, setOriginLat] = useState("");
-  const [originLng, setOriginLng] = useState("");
-  const update = trpc.lahza.admin.deliverySettings.update.useMutation({ onSuccess: () => { settingsQuery.refetch(); toast.success("تم حفظ رسوم التوصيل ونقطة الانطلاق"); }, onError: error => toast.error(error.message) });
+  const [manbijPercent, setManbijPercent] = useState("");
+  const [jarabulusPercent, setJarabulusPercent] = useState("");
+  const update = trpc.lahza.admin.deliverySettings.update.useMutation({ onSuccess: () => { settingsQuery.refetch(); toast.success("تم حفظ نسب رسوم التوصيل"); }, onError: error => toast.error(error.message) });
   useEffect(() => {
     if (!settingsQuery.data) return;
-    setPricePerKm(String(toNewSyp(settingsQuery.data.pricePerKm)));
-    setOriginLat(String(settingsQuery.data.originLat));
-    setOriginLng(String(settingsQuery.data.originLng));
+    setManbijPercent(String(settingsQuery.data.manbijPercent));
+    setJarabulusPercent(String(settingsQuery.data.jarabulusPercent));
   }, [settingsQuery.data]);
   if (settingsQuery.isLoading) return <PanelLoading text="جارٍ تحميل إعدادات التوصيل" />;
-  return <section className="admin-section"><div className="admin-section-heading"><div><p>صلاحية المالك والمشرف</p><h2>رسوم التوصيل والمسافة</h2></div><MapPinned className="h-5 w-5 text-blue-900" /></div><p className="settings-copy">يحسب التطبيق مسافة طريق فعلية من نقطة الانطلاق إلى العميل، ثم يقرّب أي جزء من الكيلومتر إلى كيلومتر فوترة كامل. جميع الرسوم بالليرة السورية الجديدة وتُدخل كأرقام صحيحة.</p><div className="grid gap-3 sm:grid-cols-3"><div><Label>سعر الكيلومتر (ل.س جديدة)</Label><Input inputMode="numeric" value={pricePerKm} onChange={event => setPricePerKm(event.target.value.replace(/\D/g, ""))} /></div><div><Label>خط العرض — مركز منبج</Label><Input dir="ltr" inputMode="decimal" value={originLat} onChange={event => setOriginLat(event.target.value)} /></div><div><Label>خط الطول — مركز منبج</Label><Input dir="ltr" inputMode="decimal" value={originLng} onChange={event => setOriginLng(event.target.value)} /></div></div><Button disabled={update.isPending || !pricePerKm || !originLat || !originLng} onClick={() => update.mutate({ pricePerKm: Number(pricePerKm), originLat: Number(originLat), originLng: Number(originLng) })} className="mt-4 rounded-xl bg-blue-900 hover:bg-blue-950"><MapPinned className="h-4 w-4" /> {update.isPending ? "جارٍ الحفظ..." : "حفظ إعدادات التوصيل"}</Button></section>;
+  return <section className="admin-section"><div className="admin-section-heading"><div><p>صلاحية المالك والمشرف</p><h2>نسب رسوم التوصيل</h2></div><MapPinned className="h-5 w-5 text-blue-900" /></div><p className="settings-copy">تحسب الرسوم من قيمة المنتجات فقط، ثم تضاف إلى الإجمالي النهائي. لا تدخل رسوم التوصيل في الحد الأدنى البالغ 300 ليرة سورية جديدة.</p><div className="grid gap-3 sm:grid-cols-2"><div><Label>نسبة رسوم طلبات منبج (%)</Label><Input inputMode="numeric" value={manbijPercent} onChange={event => setManbijPercent(event.target.value.replace(/\D/g, ""))} placeholder="15" /></div><div><Label>نسبة رسوم طلبات جرابلس (%)</Label><Input inputMode="numeric" value={jarabulusPercent} onChange={event => setJarabulusPercent(event.target.value.replace(/\D/g, ""))} placeholder="30" /></div></div><Button disabled={update.isPending || !manbijPercent || !jarabulusPercent} onClick={() => update.mutate({ manbijPercent: Number(manbijPercent), jarabulusPercent: Number(jarabulusPercent) })} className="mt-4 rounded-xl bg-blue-900 hover:bg-blue-950"><MapPinned className="h-4 w-4" /> {update.isPending ? "جارٍ الحفظ..." : "حفظ نسب التوصيل"}</Button></section>;
 }
 
 function EmployeesPanel() {
