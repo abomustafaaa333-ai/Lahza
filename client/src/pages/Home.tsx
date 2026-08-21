@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { IntercityBooking, type IntercityTripSelection } from "@/components/IntercityBooking";
 import { trpc } from "@/lib/trpc";
+import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, toNewSyp, type LahzaCategory } from "@shared/lahza";
 import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LocateFixed, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat } from "lucide-react";
@@ -37,7 +38,7 @@ const demoGalleryImages = [
   `${demoAssetPrefix}/assets/lahza-pharmacy.webp`,
 ];
 const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
-const minimumDeliveryOrderSyp = 300;
+const minimumDeliveryOrderSyp = MINIMUM_DELIVERY_ORDER_NEW_SYP;
 
 const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
   { id: 1001, name: "عدس أحمر", category: "groceries", unit: "كغ", unitPrice: 25000, available: true },
@@ -238,13 +239,10 @@ export default function Home() {
     setCart(current => current.filter(item => item.id !== id));
   };
 
-  const openCheckout = () => {
-    if (screen === "delivery" && !cart.length) {
-      toast.error("أضف صنفاً واحداً على الأقل قبل المتابعة");
-      return;
-    }
-    if (screen === "delivery" && toNewSyp(total) < minimumDeliveryOrderSyp) {
-      toast.error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumDeliveryOrderSyp)}. أضف منتجات أخرى قبل المتابعة.`);
+  const openDeliveryCheckout = () => {
+    const gate = getDeliveryCheckoutGate(cart.length, total);
+    if (!gate.allowed) {
+      toast.error(gate.message);
       return;
     }
     setCheckoutMode("delivery");
@@ -373,7 +371,7 @@ export default function Home() {
 
   return (
     <main dir="rtl" className="min-h-screen bg-white text-slate-950">
-      <Header onSecret={() => setSecretOpen(true)} onCart={() => screen === "delivery" ? openCheckout() : setScreen("delivery")} cartCount={cart.length} />
+      <Header onSecret={() => setSecretOpen(true)} onCart={openDeliveryCheckout} cartCount={cart.length} />
       <div className="reward-ticker" aria-label="رسائل لحظة"><div className="reward-ticker-track"><span>{tickerPrimary}<b aria-hidden="true">★</b>{tickerSecondary}</span><span aria-hidden="true">{tickerPrimary}<b>★</b>{tickerSecondary}</span></div></div>
       <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> عروض المتاجر</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...tickerOffers, ...tickerOffers].map((offer, index) => <span key={`${offer.id}-${index}`}><button type="button" onClick={() => offer.id > 0 && setSelectedGalleryOffer({ id: offer.id, imageUrl: offer.imageUrl ?? "", name: offer.text, partnerName: offer.partnerName, storeId: offer.storeId ?? null, storeCategory: offer.storeCategory ?? null, unitPrice: offer.productPrice ?? 0 })} className="cursor-pointer text-right transition hover:text-red-700" aria-label={`فتح عرض ${offer.text}`}>{offer.partnerName} — {offer.text}</button><b aria-hidden="true">★</b></span>)}</div></div></div>
 
@@ -443,7 +441,7 @@ export default function Home() {
               })}
             </div>
           </section>
-          <div className="bottom-cta"><div><span>السلة</span><strong>{cart.length ? `${cart.length} أصناف` : "فارغة"}</strong></div><Button disabled={!cart.length} onClick={openCheckout} className="rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700">متابعة <ChevronLeft className="mr-1 h-4 w-4" /></Button></div>
+          <div className="bottom-cta"><div><span>السلة</span><strong>{cart.length ? `${cart.length} أصناف` : "فارغة"}</strong></div><Button disabled={!cart.length} onClick={openDeliveryCheckout} className="rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700">متابعة <ChevronLeft className="mr-1 h-4 w-4" /></Button></div>
         </>
       ) : null}
 
@@ -496,8 +494,8 @@ export default function Home() {
                 <div><Label htmlFor="notes">ملاحظات إضافية <span className="text-slate-400">(اختياري)</span></Label><Textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="أي تفاصيل مفيدة للطلب أو للمندوب" /></div>
             </div>
             <div className="checkout-card"><div className="checkout-card-title"><CreditCard className="h-5 w-5 text-red-600" /><span>طريقة الدفع</span></div><div className="payment-grid"><button onClick={() => setPayment("sham_cash")} className={payment === "sham_cash" ? "payment-active" : ""}><span className="payment-icon payment-icon-blue">ش</span><span>شام كاش</span></button><button onClick={() => setPayment("cash")} className={payment === "cash" ? "payment-active" : ""}><HandCoins className="h-5 w-5" /><span>نقداً عند الاستلام</span></button></div></div>
-            {checkoutMode === "delivery" && total < minimumDeliveryOrderSyp ? <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-bold leading-6 text-amber-900">الحد الأدنى لمجموع الطلب هو {formatSyp(minimumDeliveryOrderSyp)}. أضف منتجات بقيمة {formatSyp(minimumDeliveryOrderSyp - total)} أو أكثر لتأكيد الطلب.</p> : null}
-            <button disabled={createOrder.isPending || (checkoutMode === "delivery" && total < minimumDeliveryOrderSyp)} onClick={submitCheckout} className="primary-full-button">{createOrder.isPending ? "جارٍ إرسال الطلب..." : "تأكيد وإرسال الطلب"}<ChevronLeft className="h-5 w-5" /></button>
+            {checkoutMode === "delivery" && remainingDeliveryAmountNewSyp(total) > 0 ? <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-bold leading-6 text-amber-900">الحد الأدنى لمجموع الطلب هو {formatNewSyp(minimumDeliveryOrderSyp)}. أضف منتجات بقيمة {formatNewSyp(remainingDeliveryAmountNewSyp(total))} أو أكثر لتأكيد الطلب.</p> : null}
+            <button disabled={createOrder.isPending || (checkoutMode === "delivery" && remainingDeliveryAmountNewSyp(total) > 0)} onClick={submitCheckout} className="primary-full-button">{createOrder.isPending ? "جارٍ إرسال الطلب..." : "تأكيد وإرسال الطلب"}<ChevronLeft className="h-5 w-5" /></button>
           </section>
         </>
       ) : null}
