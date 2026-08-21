@@ -37,6 +37,7 @@ const demoGalleryImages = [
   `${demoAssetPrefix}/assets/lahza-pharmacy.webp`,
 ];
 const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
+const minimumDeliveryOrderSyp = 300;
 
 const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
   { id: 1001, name: "عدس أحمر", category: "groceries", unit: "كغ", unitPrice: 25000, available: true },
@@ -277,6 +278,11 @@ export default function Home() {
   };
 
   const submitCheckout = () => {
+    const isTaxi = checkoutMode === "taxi";
+    if (!isTaxi && total < minimumDeliveryOrderSyp) {
+      toast.error(`الحد الأدنى لمجموع الطلب هو ${formatSyp(minimumDeliveryOrderSyp)}`);
+      return;
+    }
     if (!checkoutName.trim() || !customerLocation.trim() || !locationVerified || !customerLocationUrl || customerLat === null || customerLng === null) {
       toast.error("أدخل الاسم واضغط تحديد موقعي أولاً قبل إرسال الطلب");
       return;
@@ -285,7 +291,6 @@ export default function Home() {
       toast.error("أدخل رقم هاتف سوري يبدأ بالرقم 9");
       return;
     }
-    const isTaxi = checkoutMode === "taxi";
     if (isTaxi && (!pickup.trim() || !destination.trim())) {
       toast.error("أكمل موقع الانطلاق والوجهة");
       return;
@@ -487,7 +492,8 @@ export default function Home() {
                 <div><Label htmlFor="notes">ملاحظات إضافية <span className="text-slate-400">(اختياري)</span></Label><Textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="أي تفاصيل مفيدة للطلب أو للمندوب" /></div>
             </div>
             <div className="checkout-card"><div className="checkout-card-title"><CreditCard className="h-5 w-5 text-red-600" /><span>طريقة الدفع</span></div><div className="payment-grid"><button onClick={() => setPayment("sham_cash")} className={payment === "sham_cash" ? "payment-active" : ""}><span className="payment-icon payment-icon-blue">ش</span><span>شام كاش</span></button><button onClick={() => setPayment("cash")} className={payment === "cash" ? "payment-active" : ""}><HandCoins className="h-5 w-5" /><span>نقداً عند الاستلام</span></button></div></div>
-            <button disabled={createOrder.isPending} onClick={submitCheckout} className="primary-full-button">{createOrder.isPending ? "جارٍ إرسال الطلب..." : "تأكيد وإرسال الطلب"}<ChevronLeft className="h-5 w-5" /></button>
+            {checkoutMode === "delivery" && total < minimumDeliveryOrderSyp ? <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-bold leading-6 text-amber-900">الحد الأدنى لمجموع الطلب هو {formatSyp(minimumDeliveryOrderSyp)}. أضف منتجات بقيمة {formatSyp(minimumDeliveryOrderSyp - total)} أو أكثر لتأكيد الطلب.</p> : null}
+            <button disabled={createOrder.isPending || (checkoutMode === "delivery" && total < minimumDeliveryOrderSyp)} onClick={submitCheckout} className="primary-full-button">{createOrder.isPending ? "جارٍ إرسال الطلب..." : "تأكيد وإرسال الطلب"}<ChevronLeft className="h-5 w-5" /></button>
           </section>
         </>
       ) : null}

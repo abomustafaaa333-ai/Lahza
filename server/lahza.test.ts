@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, normalizeTickerText } from "../shared/lahza";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
 describe("حساب إجمالي السطر", () => {
@@ -14,6 +14,17 @@ describe("حساب إجمالي السطر", () => {
 
   it("يمنع ظهور تكلفة للصيدلية عند سعر صفري", () => {
     expect(calculateLineTotal(2, 0, "طلب")).toBe(0);
+  });
+});
+
+describe("الحد الأدنى للطلب", () => {
+  it("يرفض مجموعاً أقل من 300 ليرة", () => {
+    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP - 1)).toBe(false);
+  });
+
+  it("يقبل مجموعاً يساوي 300 ليرة أو يتجاوزه", () => {
+    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP)).toBe(true);
+    expect(meetsMinimumDeliveryOrder(MINIMUM_DELIVERY_ORDER_SYP + 1)).toBe(true);
   });
 });
 

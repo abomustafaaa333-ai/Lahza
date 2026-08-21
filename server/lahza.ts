@@ -332,6 +332,12 @@ export function calculateLineTotal(quantity: number, unitPrice: number, unit: st
   return Math.round(quantity * unitPrice);
 }
 
+export const MINIMUM_DELIVERY_ORDER_SYP = 300;
+
+export function meetsMinimumDeliveryOrder(itemsTotal: number) {
+  return itemsTotal >= MINIMUM_DELIVERY_ORDER_SYP;
+}
+
 async function findStoreForCatalog(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, storeId: number | undefined, category: LahzaCategory) {
   if (!storeId) return null;
   const found = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
@@ -653,6 +659,10 @@ export const lahzaRouter = router({
         totalAmount += lineTotal;
         return { ...line, unitPrice, lineTotal, priceKnown: !isPharmacy && Boolean(product && !product.deleted) };
       });
+      const itemsTotal = totalAmount;
+      if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(itemsTotal)) {
+        throw new Error(`الحد الأدنى لمجموع الطلب هو ${MINIMUM_DELIVERY_ORDER_SYP.toLocaleString("ar-SY")} ليرة سورية`);
+      }
       let deliveryDistanceMeters = 0;
       let deliveryFee = 0;
       let deliveryPricingPending = false;
