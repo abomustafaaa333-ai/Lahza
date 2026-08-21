@@ -48,7 +48,7 @@ export default function Admin() {
     </aside>
     {menuOpen ? <button className="admin-backdrop" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" /> : null}
     <section className="admin-content">
-      <header className="admin-topbar"><button className="admin-menu-button" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button><div><p>لوحة التحكم</p><h1>{availableTabs.find(item => item.id === tab)?.label}</h1></div><button className="admin-home-link" onClick={() => setLocation("/")}><span>واجهة العميل</span><ArrowRight className="h-4 w-4" /></button></header>
+      <header className="admin-topbar"><button className="admin-menu-button" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button><div><p>لوحة التحكم</p><h1>{availableTabs.find(item => item.id === tab)?.label}</h1></div><button className="admin-home-link" onClick={() => setLocation("/")}><span>الصفحة الرئيسية</span><ArrowRight className="h-4 w-4" /></button></header>
       <div className="admin-page">{tab === "orders" ? <OrdersPanel /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" ? <ExpiredOffersPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
     </section>
   </div>;
