@@ -4,16 +4,19 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { buildEmployeeOrderWhatsAppUrl, buildWhatsAppLocationUrl, mapUrlFromNotes, shareCustomerContact, shareOrderImage } from "@/lib/adminShare";
 import { categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, orderStatusLabels, toNewSyp, type LahzaCategory } from "@shared/lahza";
-import { ArrowRight, BadgeDollarSign, BellRing, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X } from "lucide-react";
+import { Archive, ArrowRight, BadgeDollarSign, BellRing, CarFront, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Pencil, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
 const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
 
-type Tab = "orders" | "catalog" | "expiredOffers" | "stores" | "delivery" | "customers" | "employees" | "team" | "partners" | "intercity" | "settings";
+type Tab = "orders" | "intercityOrders" | "taxiOrders" | "archive" | "catalog" | "expiredOffers" | "stores" | "delivery" | "customers" | "employees" | "team" | "partners" | "intercity" | "settings";
 const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: boolean }[] = [
-  { id: "orders", label: "الطلبات", icon: ClipboardList },
+  { id: "orders", label: "طلبات التوصيل", icon: ClipboardList },
+  { id: "intercityOrders", label: "طلبات جرابلس", icon: Route },
+  { id: "taxiOrders", label: "طلبات سيارات الأجرة", icon: CarFront },
+  { id: "archive", label: "الأرشيف", icon: Archive },
   { id: "catalog", label: "الأسعار", icon: BadgeDollarSign },
   { id: "expiredOffers", label: "عروض منتهية", icon: BellRing },
   { id: "stores", label: "المتاجر", icon: Store, ownerOnly: true },
@@ -50,7 +53,7 @@ export default function Admin() {
     {menuOpen ? <button className="admin-backdrop" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" /> : null}
     <section className="admin-content">
       <header className="admin-topbar"><button className="admin-menu-button" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button><div><p>لوحة التحكم</p><h1>{availableTabs.find(item => item.id === tab)?.label}</h1></div><div className="mr-auto flex items-center gap-2"><button className="admin-home-link mr-0" onClick={() => setLocation("/")}><span>الصفحة الرئيسية</span><ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => logout.mutate()} disabled={logout.isPending} className="inline-flex items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-2 text-[0.63rem] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed"><LogOut className="h-4 w-4" /><span>{logout.isPending ? "جارٍ الخروج..." : "تسجيل الخروج"}</span></button></div></header>
-      <div className="admin-page">{tab === "orders" ? <OrdersPanel /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" ? <ExpiredOffersPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
+      <div className="admin-page">{tab === "orders" ? <OrdersPanel scope="delivery" /> : null}{tab === "intercityOrders" ? <OrdersPanel scope="intercity" /> : null}{tab === "taxiOrders" ? <OrdersPanel scope="taxi" /> : null}{tab === "archive" ? <OrdersPanel scope="archive" /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" ? <ExpiredOffersPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
     </section>
   </div>;
 }
@@ -67,43 +70,85 @@ function ExpiredOffersPanel() {
   return <div className="space-y-5"><section className="admin-section"><div className="admin-section-heading"><div><p>تنبيه إداري</p><h2>العروض المنتهية</h2></div><BellRing className="h-5 w-5 text-red-600" /></div><p className="settings-copy">تُخفى العروض المنتهية من العملاء تلقائياً، بينما تبقى صورها محفوظة حتى يحذفها المالك أو المشرف من هنا يدوياً.</p>{offers.length ? <div className="mt-5 space-y-3">{offers.map(offer => <article key={offer.id} className="rounded-2xl border border-red-100 bg-red-50/40 p-4"><div className="flex gap-3">{offer.imageUrl ? <img src={offer.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover" /> : <div className="grid h-16 w-16 place-items-center rounded-xl bg-white text-red-400"><BellRing className="h-5 w-5" /></div>}<div className="min-w-0 flex-1"><strong className="block text-sm text-blue-950">{offer.text}</strong><span className="mt-1 block text-xs text-slate-500">{offer.storeName} · {offer.partnerName}</span><span className="mt-1 block text-xs font-bold text-red-600">انتهى في {offer.expiresAt ? new Date(offer.expiresAt).toLocaleDateString("ar-SY", { year: "numeric", month: "long", day: "numeric" }) : "تاريخ غير محدد"}</span></div></div><Button disabled={remove.isPending} onClick={() => { if (confirm(`حذف العرض «${offer.text}» وصورته نهائياً من التخزين السحابي؟`)) remove.mutate({ id: offer.id }); }} className="mt-4 rounded-xl bg-red-600 hover:bg-red-700"><Trash2 className="h-4 w-4" /> حذف العرض والصورة</Button></article>)}</div> : <Empty icon={BellRing} title="لا توجد عروض منتهية" text="ستظهر هنا العروض فور انتهاء مدتها كي تحذفها الإدارة يدوياً." />}</section></div>;
 }
 
-function OrdersPanel() {
+type OrderScope = "delivery" | "intercity" | "taxi" | "archive";
+
+const orderScopeCopy: Record<OrderScope, { title: string; eyebrow: string; empty: string }> = {
+  delivery: { title: "طلبات التوصيل الحديثة", eyebrow: "متابعة مباشرة", empty: "لا توجد طلبات توصيل حديثة" },
+  intercity: { title: "طلبات جرابلس الحديثة", eyebrow: "طلبات مرتبطة بحجز جرابلس", empty: "لا توجد طلبات جرابلس حديثة" },
+  taxi: { title: "طلبات سيارات الأجرة الحديثة", eyebrow: "تاكسي وفان", empty: "لا توجد طلبات سيارات أجرة حديثة" },
+  archive: { title: "أرشيف الطلبات", eyebrow: "طلبات مضى على إنشائها 24 ساعة أو أكثر", empty: "لا توجد طلبات مؤرشفة حالياً" },
+};
+
+function OrdersPanel({ scope }: { scope: OrderScope }) {
   const utils = trpc.useUtils();
   const ordersQuery = trpc.lahza.orders.list.useQuery();
   const employeesQuery = trpc.lahza.admin.employees.list.useQuery();
   const [recipientByOrder, setRecipientByOrder] = useState<Record<number, string>>({});
+  const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const updateStatus = trpc.lahza.orders.updateStatus.useMutation({ onSuccess: () => { utils.lahza.orders.list.invalidate(); toast.success("تم تحديث حالة الطلب"); }, onError: error => toast.error(error.message) });
+  const updateOrder = trpc.lahza.orders.update.useMutation({ onSuccess: () => { utils.lahza.orders.list.invalidate(); setEditingOrderId(null); toast.success("تم حفظ تعديل الطلب"); }, onError: error => toast.error(error.message) });
   if (ordersQuery.isLoading) return <PanelLoading text="جارٍ تحميل الطلبات" />;
   const orders = ordersQuery.data ?? [];
   const employees = (employeesQuery.data ?? []).filter(employee => employee.active);
-  const active = orders.filter(order => !["completed", "cancelled"].includes(order.status));
+  const visibleOrders = orders.filter(order => {
+    if (scope === "archive") return order.archived;
+    if (order.archived) return false;
+    if (scope === "taxi") return order.orderType === "taxi";
+    if (scope === "intercity") return order.orderType === "delivery" && Boolean(order.intercityTripId);
+    return order.orderType === "delivery" && !order.intercityTripId;
+  });
+  const active = visibleOrders.filter(order => !["completed", "cancelled", "rejected"].includes(order.status));
+  const completed = visibleOrders.filter(order => order.status === "completed");
+  const copy = orderScopeCopy[scope];
   const announceShare = (result: "native" | "web" | "download", fallback: string) => toast.success(result === "download" ? fallback : "اختر واتساب من نافذة المشاركة");
+  const requestStatusChange = (id: number, status: "cancelled" | "rejected") => {
+    const label = status === "rejected" ? "رفض" : "إلغاء";
+    const reason = window.prompt(`سبب ${label} الطلب (اختياري):`) ?? undefined;
+    if (reason === undefined) return;
+    updateStatus.mutate({ id, status, reason: reason.trim() || undefined });
+  };
 
   return <div className="space-y-5">
-    <section className="admin-overview"><div><span>إجمالي الطلبات</span><strong>{orders.length}</strong></div><div><span>طلبات حية</span><strong>{active.length}</strong></div><div><span>مكتملة</span><strong>{orders.filter(order => order.status === "completed").length}</strong></div></section>
+    <section className="admin-overview"><div><span>ضمن هذا القسم</span><strong>{visibleOrders.length}</strong></div><div><span>طلبات حية</span><strong>{active.length}</strong></div><div><span>مكتملة</span><strong>{completed.length}</strong></div></section>
     <section className="admin-section">
-      <div className="admin-section-heading"><div><p>متابعة مباشرة</p><h2>الطلبات الواردة</h2></div><span className="live-dot">محدّث</span></div>
-      {orders.length ? <div className="orders-list">{orders.map(order => {
-        const mapUrl = mapUrlFromNotes(order.notes);
-        const locationShareUrl = mapUrl ? buildWhatsAppLocationUrl(order.customerName, mapUrl) : null;
+      <div className="admin-section-heading"><div><p>{copy.eyebrow}</p><h2>{copy.title}</h2></div>{scope !== "archive" ? <span className="live-dot">محدّث</span> : <span className="admin-note">يُحذف تلقائياً بعد 7 أيام</span>}</div>
+      {visibleOrders.length ? <div className="orders-list">{visibleOrders.map(order => {
+        const gpsUrl = order.locationUrl || mapUrlFromNotes(order.notes);
+        const locationShareUrl = gpsUrl ? buildWhatsAppLocationUrl(order.customerName, gpsUrl) : null;
         const selectedEmployee = employees.find(employee => String(employee.id) === recipientByOrder[order.id]);
-        const employeeShareUrl = selectedEmployee ? buildEmployeeOrderWhatsAppUrl(selectedEmployee.phone, order, mapUrl) : null;
+        const employeeShareUrl = selectedEmployee ? buildEmployeeOrderWhatsAppUrl(selectedEmployee.phone, order, gpsUrl) : null;
+        const isClosed = ["completed", "cancelled", "rejected"].includes(order.status);
         return <article key={order.id} className="order-card">
           <div className="order-card-head"><div><span className="order-number">#{order.id}</span><span className={`status-pill status-${order.status}`}>{orderStatusLabels[order.status]}</span></div><time>{new Date(order.createdAt).toLocaleString("ar-SY", { dateStyle: "medium", timeStyle: "short" })}</time></div>
           <div className="order-customer"><div className="customer-avatar">{order.customerName.slice(0, 1)}</div><div><strong>{order.customerName}</strong><a dir="ltr" href={`tel:${order.customerPhone}`}><Phone className="h-3 w-3" /> {order.customerPhone}</a><div className="order-contact-actions">
             <button type="button" className="contact-share" onClick={async () => { try { announceShare(await shareCustomerContact(order.customerName, order.customerPhone), "تم تنزيل بطاقة جهة الاتصال"); } catch { toast.error("تعذرت مشاركة جهة الاتصال"); } }}><Share2 className="h-3 w-3" /> جهة اتصال</button>
-            {locationShareUrl ? <a className="location-share" href={locationShareUrl}><MapPinned className="h-3 w-3" /> مشاركة الموقع</a> : <button type="button" className="location-share" disabled title="لم يتوفر رابط GPS صالح لهذا الطلب"><MapPinned className="h-3 w-3" /> مشاركة الموقع</button>}
+            {locationShareUrl ? <a className="location-share" href={locationShareUrl}><MapPinned className="h-3 w-3" /> مشاركة الموقع</a> : <button type="button" className="location-share" disabled title="الموقع مكتوب يدوياً"><MapPinned className="h-3 w-3" /> موقع يدوي</button>}
             <button type="button" className="image-share" onClick={async () => { try { announceShare(await shareOrderImage(order), "تم تنزيل صورة الطلب"); } catch { toast.error("تعذرت مشاركة صورة الطلب"); } }}><Share2 className="h-3 w-3" /> صورة الطلب</button>
-          </div></div><span className="order-kind">{order.orderType === "taxi" ? "سيارة أجرة" : "توصيل"}</span></div>
+          </div></div><span className="order-kind">{order.orderType === "taxi" ? "سيارة أجرة" : order.intercityTripId ? "جرابلس" : "توصيل"}</span></div>
           {order.orderType === "taxi" ? <div className="order-route"><span>{order.taxiType === "van" ? "فان" : "تاكسي"}</span><b>{order.pickupLocation}</b><ArrowRight className="h-3 w-3" /><b>{order.destination}</b></div> : <div className="order-items">{order.lines.map(line => <span key={line.id}>{line.itemName} <small>× {line.quantity} {line.unit}</small></span>)}</div>}
-          {order.orderType === "delivery" && order.deliveryDistanceMeters > 0 ? <div className="mt-3 flex items-center justify-between rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-950"><span>مسافة الطريق {(order.deliveryDistanceMeters / 1000).toFixed(1)} كم</span><span>رسوم التوصيل {formatSyp(order.deliveryFee)}</span></div> : null}
+          {order.locationMode === "manual" && order.locationText ? <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs font-bold text-amber-900"><MapPinned className="ml-1 inline h-3.5 w-3.5" /> موقع مكتوب يدوياً: {order.locationText}</p> : null}
+          {order.statusReason ? <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-bold text-red-700">سبب الحالة: {order.statusReason}</p> : null}
           {order.notes ? <p className="order-notes">{order.notes}</p> : null}
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2"><select value={recipientByOrder[order.id] ?? ""} onChange={event => setRecipientByOrder(current => ({ ...current, [order.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-700"><option value="">اختر موظف لحظة لإرسال التفاصيل</option>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name} · {employee.phone}</option>)}</select>{employeeShareUrl ? <a href={employeeShareUrl} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">فتح واتساب للموظف</a> : <button type="button" disabled className="rounded-lg bg-slate-200 px-3 py-2 text-xs font-bold text-slate-400">إرسال للموظف</button>}</div>
-          <div className="order-card-footer"><div><span>{order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}</span>{order.orderType === "delivery" ? <strong>{formatSyp(order.totalAmount)}</strong> : <strong>يحدد السعر لاحقاً</strong>}</div><select value={order.status} onChange={e => updateStatus.mutate({ id: order.id, status: e.target.value as keyof typeof orderStatusLabels })} aria-label="تغيير الحالة">{Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+          {!isClosed && scope !== "archive" ? <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setEditingOrderId(order.id)}><Pencil className="h-3.5 w-3.5" /> تعديل الطلب</Button><Button size="sm" variant="outline" onClick={() => requestStatusChange(order.id, "rejected")} className="border-orange-200 text-orange-700 hover:bg-orange-50"><XCircle className="h-3.5 w-3.5" /> رفض</Button><Button size="sm" variant="outline" onClick={() => requestStatusChange(order.id, "cancelled")} className="border-red-200 text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /> إلغاء</Button></div> : null}
+          {editingOrderId === order.id ? <OrderEditCard order={order} saving={updateOrder.isPending} onClose={() => setEditingOrderId(null)} onSave={values => updateOrder.mutate(values)} /> : null}
+          {scope !== "archive" ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2"><select value={recipientByOrder[order.id] ?? ""} onChange={event => setRecipientByOrder(current => ({ ...current, [order.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-700"><option value="">اختر موظف لحظة لإرسال التفاصيل</option>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name} · {employee.phone}</option>)}</select>{employeeShareUrl ? <a href={employeeShareUrl} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">فتح واتساب للموظف</a> : <button type="button" disabled className="rounded-lg bg-slate-200 px-3 py-2 text-xs font-bold text-slate-400">إرسال للموظف</button>}</div> : null}
+          <div className="order-card-footer"><div><span>{order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}</span>{order.orderType === "delivery" ? <strong>{formatSyp(order.totalAmount)}</strong> : <strong>يحدد السعر لاحقاً</strong>}</div>{scope !== "archive" ? <select value={order.status} onChange={e => updateStatus.mutate({ id: order.id, status: e.target.value as keyof typeof orderStatusLabels })} aria-label="تغيير الحالة">{Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : <span className="text-xs font-bold text-slate-400">في الأرشيف</span>}</div>
         </article>;
-      })}</div> : <Empty icon={ClipboardList} title="لا توجد طلبات بعد" text="ستظهر الطلبات الجديدة هنا فور إرسالها من التطبيق." />}
+      })}</div> : <Empty icon={scope === "taxi" ? CarFront : scope === "archive" ? Archive : ClipboardList} title={copy.empty} text={scope === "archive" ? "تُنقل الطلبات هنا تلقائياً بعد مرور 24 ساعة، ثم تحذف نهائياً بعد 7 أيام." : "ستظهر الطلبات الجديدة هنا فور إرسالها من التطبيق."} />}
     </section>
   </div>;
+}
+
+function OrderEditCard({ order, saving, onClose, onSave }: { order: { id: number; customerName: string; customerPhone: string; paymentMethod: "cash" | "sham_cash"; locationMode: "gps" | "manual"; locationText: string | null; pickupLocation: string | null; destination: string | null; notes: string | null }; saving: boolean; onClose: () => void; onSave: (values: { id: number; customerName: string; customerPhone: string; paymentMethod: "cash" | "sham_cash"; locationMode: "gps" | "manual"; locationText?: string; pickupLocation?: string; destination?: string; notes?: string }) => void }) {
+  const [customerName, setCustomerName] = useState(order.customerName);
+  const [customerPhone, setCustomerPhone] = useState(order.customerPhone.replace("+963", ""));
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "sham_cash">(order.paymentMethod);
+  const [locationMode, setLocationMode] = useState<"gps" | "manual">(order.locationMode);
+  const [locationText, setLocationText] = useState(order.locationText ?? "");
+  const [pickupLocation, setPickupLocation] = useState(order.pickupLocation ?? "");
+  const [destination, setDestination] = useState(order.destination ?? "");
+  const [notes, setNotes] = useState(order.notes ?? "");
+  return <div className="mt-4 space-y-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-4"><div className="flex items-center justify-between"><strong className="text-sm text-blue-950">تعديل بيانات الطلب</strong><button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-white"><X className="h-4 w-4" /></button></div><div className="grid gap-3 md:grid-cols-2"><div><Label>اسم العميل</Label><Input value={customerName} onChange={event => setCustomerName(event.target.value)} /></div><div><Label>رقم الهاتف</Label><Input dir="ltr" value={customerPhone} onChange={event => setCustomerPhone(event.target.value.replace(/\D/g, "").slice(0, 9))} placeholder="9xxxxxxxx" /></div><div><Label>الدفع</Label><select value={paymentMethod} onChange={event => setPaymentMethod(event.target.value as "cash" | "sham_cash")} className="form-select"><option value="cash">نقداً عند الاستلام</option><option value="sham_cash">شام كاش</option></select></div><div><Label>طريقة الموقع</Label><select value={locationMode} onChange={event => setLocationMode(event.target.value as "gps" | "manual")} className="form-select"><option value="gps">الموقع المحدد سابقاً</option><option value="manual">موقع مكتوب يدوياً</option></select></div>{locationMode === "manual" ? <div className="md:col-span-2"><Label>الموقع اليدوي</Label><Input value={locationText} onChange={event => setLocationText(event.target.value)} placeholder="مثال: منبج، قرب دوار الساعة، بجانب الصيدلية" /></div> : null}{order.pickupLocation !== null || order.destination !== null ? <><div><Label>الانطلاق</Label><Input value={pickupLocation} onChange={event => setPickupLocation(event.target.value)} /></div><div><Label>الوجهة</Label><Input value={destination} onChange={event => setDestination(event.target.value)} /></div></> : null}<div className="md:col-span-2"><Label>ملاحظات</Label><Input value={notes} onChange={event => setNotes(event.target.value)} placeholder="أي توضيح خاص بالطلب" /></div></div><div className="flex gap-2"><Button disabled={saving || customerName.trim().length < 2 || customerPhone.length !== 9 || (locationMode === "manual" && locationText.trim().length < 3)} onClick={() => onSave({ id: order.id, customerName: customerName.trim(), customerPhone: `+963${customerPhone}`, paymentMethod, locationMode, locationText: locationMode === "manual" ? locationText.trim() : undefined, pickupLocation: pickupLocation.trim() || undefined, destination: destination.trim() || undefined, notes: notes.trim() || undefined })} className="rounded-xl bg-blue-900 hover:bg-blue-950">{saving ? "جارٍ الحفظ..." : "حفظ التعديل"}</Button><Button variant="outline" onClick={onClose} className="rounded-xl">إلغاء</Button></div></div>;
 }
 
 function CustomersPanel() {

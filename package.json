@@ -9,6 +9,7 @@
     "build:netlify": "vite build --config client/vite.netlify.config.ts",
     "start": "NODE_ENV=production node dist/index.js",
     "cleanup:expired-offers": "tsx server/expired-offers-job.ts",
+    "cleanup:orders": "tsx server/expired-orders-job.ts",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",

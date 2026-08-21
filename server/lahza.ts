@@ -11,6 +11,7 @@ import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
 import { cleanExpiredOffers } from "./expiredOffers";
+import { cleanExpiredOrders, isOrderArchived } from "./orderLifecycle";
 import { deleteOfferImage, uploadOfferImage } from "./offerMedia";
 import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
@@ -20,7 +21,7 @@ const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
 const categories = ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers", "sweets", "clothing", "mobile_accessories", "beauty_boutique"] as const;
 const adminRoles = ["owner", "supervisor"] as const;
-const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled"] as const;
+const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"] as const;
 const MANBIJ_CENTER = { lat: 36.5281, lng: 37.9549 };
 
 type AdminRole = (typeof adminRoles)[number];
@@ -379,9 +380,11 @@ export const orderInputSchema = z.object({
   intercityTripId: z.number().int().positive().optional(),
   customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
   customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
-  locationUrl: z.string().url("حدد موقعك عبر زر تحديد موقعي قبل إرسال الطلب").max(500),
-  locationLat: coordinateSchema.min(-90).max(90),
-  locationLng: coordinateSchema.min(-180).max(180),
+  locationMode: z.enum(["gps", "manual"]).default("gps"),
+  locationText: z.string().trim().min(3, "اكتب وصفاً واضحاً لموقعك").max(280).optional(),
+  locationUrl: z.string().url("رابط الموقع غير صالح").max(500).optional(),
+  locationLat: coordinateSchema.min(-90).max(90).optional(),
+  locationLng: coordinateSchema.min(-180).max(180).optional(),
   paymentMethod: z.enum(["sham_cash", "cash"]),
   lines: z.array(lineInput).max(30),
   taxiType: z.enum(["standard", "van"]).optional(),
@@ -391,6 +394,22 @@ export const orderInputSchema = z.object({
 }).superRefine((input, context) => {
   if (input.orderType === "delivery" && input.lines.length === 0) context.addIssue({ code: "custom", message: "أضف صنفاً واحداً على الأقل" });
   if (input.orderType === "taxi" && (!input.taxiType || !input.pickupLocation || !input.destination)) context.addIssue({ code: "custom", message: "أكمل بيانات التاكسي" });
+  if (input.locationMode === "gps" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined)) context.addIssue({ code: "custom", message: "حدد موقعك عبر زر تحديد موقعي أو اختر كتابة الموقع يدوياً" });
+  if (input.locationMode === "manual" && !input.locationText) context.addIssue({ code: "custom", message: "اكتب وصفاً واضحاً لموقعك اليدوي" });
+});
+
+const adminOrderUpdateInput = z.object({
+  id: z.number().int().positive(),
+  customerName: z.string().trim().min(2).max(80),
+  customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
+  paymentMethod: z.enum(["sham_cash", "cash"]),
+  locationMode: z.enum(["gps", "manual"]),
+  locationText: z.string().trim().max(280).optional(),
+  pickupLocation: z.string().trim().max(220).optional(),
+  destination: z.string().trim().max(220).optional(),
+  notes: z.string().trim().max(500).optional(),
+}).superRefine((input, context) => {
+  if (input.locationMode === "manual" && !input.locationText) context.addIssue({ code: "custom", message: "اكتب وصفاً واضحاً للموقع اليدوي" });
 });
 
 export const lahzaRouter = router({
@@ -753,6 +772,11 @@ export const lahzaRouter = router({
         taxiType: input.taxiType ?? null,
         pickupLocation: input.pickupLocation ?? null,
         destination: input.destination ?? null,
+        locationMode: input.locationMode,
+        locationText: input.locationText ?? null,
+        locationUrl: input.locationUrl ?? null,
+        locationLat: input.locationLat === undefined ? null : Math.round(input.locationLat * 1_000_000),
+        locationLng: input.locationLng === undefined ? null : Math.round(input.locationLng * 1_000_000),
         notes: [input.notes, intercityTrip ? `حجز جرابلس: ${intercityTrip.title} · ${intercityTrip.bookingCloseLabel} · ${intercityTrip.arrivalLabel}` : "", deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
       });
       const orderId = Number(created[0].insertId);
@@ -776,16 +800,33 @@ export const lahzaRouter = router({
       await requireAdmin(ctx);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await cleanExpiredOrders();
       const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
       const ids = allOrders.map(order => order.id);
       const lines = ids.length ? await db.select().from(orderLines).where(inArray(orderLines.orderId, ids)) : [];
-      return allOrders.map(order => ({ ...order, lines: lines.filter(line => line.orderId === order.id) }));
+      return allOrders.map(order => ({ ...order, archived: isOrderArchived(order.createdAt), lines: lines.filter(line => line.orderId === order.id) }));
     }),
-    updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(orderStatuses) })).mutation(async ({ ctx, input }) => {
+    updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(orderStatuses), reason: z.string().trim().min(2).max(300).optional() })).mutation(async ({ ctx, input }) => {
       await requireAdmin(ctx);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await db.update(orders).set({ status: input.status }).where(eq(orders.id, input.id));
+      await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date() }).where(eq(orders.id, input.id));
+      return { success: true };
+    }),
+    update: publicProcedure.input(adminOrderUpdateInput).mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx);
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await db.update(orders).set({
+        customerName: input.customerName,
+        customerPhone: input.customerPhone,
+        paymentMethod: input.paymentMethod,
+        locationMode: input.locationMode,
+        locationText: input.locationText || null,
+        pickupLocation: input.pickupLocation || null,
+        destination: input.destination || null,
+        notes: input.notes || null,
+      }).where(eq(orders.id, input.id));
       return { success: true };
     }),
   }),

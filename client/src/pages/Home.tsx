@@ -10,7 +10,7 @@ import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partn
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, toNewSyp, type LahzaCategory } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
-import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Pencil, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -168,6 +168,7 @@ export default function Home() {
   const [customerLat, setCustomerLat] = useState<number | null>(null);
   const [customerLng, setCustomerLng] = useState<number | null>(null);
   const [locationVerified, setLocationVerified] = useState(false);
+  const [useManualLocation, setUseManualLocation] = useState(false);
   const [locating, setLocating] = useState(false);
   const [notes, setNotes] = useState("");
   const [payment, setPayment] = useState<"sham_cash" | "cash">("cash");
@@ -327,6 +328,7 @@ export default function Home() {
       setCustomerLat(latitude);
       setCustomerLng(longitude);
       setLocationVerified(true);
+      setUseManualLocation(false);
       setLocating(false);
       toast.success("تم تحديد موقعك بنجاح");
     }, () => {
@@ -341,8 +343,10 @@ export default function Home() {
       toast.error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumDeliveryOrderSyp)}`);
       return;
     }
-    if (!checkoutName.trim() || !customerLocation.trim() || !locationVerified || !customerLocationUrl || customerLat === null || customerLng === null) {
-      toast.error("أدخل الاسم واضغط تحديد موقعي أولاً قبل إرسال الطلب");
+    const hasManualLocation = useManualLocation && customerLocation.trim().length >= 3;
+    const hasGpsLocation = locationVerified && Boolean(customerLocationUrl) && customerLat !== null && customerLng !== null;
+    if (!checkoutName.trim() || (!hasManualLocation && !hasGpsLocation)) {
+      toast.error(useManualLocation ? "اكتب وصفاً واضحاً لموقعك قبل إرسال الطلب" : "اضغط تحديد موقعي أولاً أو اختر كتابة موقعك يدوياً");
       return;
     }
     if (!/^9\d{8}$/.test(checkoutPhone)) {
@@ -367,12 +371,14 @@ export default function Home() {
       orderType: isTaxi ? "taxi" : "delivery",
       customerName: checkoutName.trim(),
       customerPhone: `+963${checkoutPhone}`,
-      locationUrl: customerLocationUrl,
-      locationLat: customerLat,
-      locationLng: customerLng,
+      locationMode: hasManualLocation ? "manual" : "gps",
+      locationText: hasManualLocation ? customerLocation.trim() : undefined,
+      locationUrl: hasManualLocation ? undefined : customerLocationUrl,
+      locationLat: hasManualLocation ? undefined : customerLat ?? undefined,
+      locationLng: hasManualLocation ? undefined : customerLng ?? undefined,
       paymentMethod: payment,
       intercityTripId: selectedIntercityTrip?.id,
-      notes: [notes.trim(), `الموقع: ${customerLocation.trim()}`, customerLocationUrl ? `رابط الخريطة: ${customerLocationUrl}` : ""].filter(Boolean).join("\n") || undefined,
+      notes: [notes.trim(), `الموقع: ${customerLocation.trim()}`, !hasManualLocation && customerLocationUrl ? `رابط الخريطة: ${customerLocationUrl}` : ""].filter(Boolean).join("\n") || undefined,
       taxiType: isTaxi ? taxiType : undefined,
       pickupLocation: isTaxi ? pickup : undefined,
       destination: isTaxi ? destination : undefined,
@@ -536,7 +542,7 @@ export default function Home() {
 
       {screen === "checkout" ? (
         <>
-          <PageHeading eyebrow="تأكيد الطلب" title={checkoutMode === "delivery" ? "راجع طلبك" : "تأكيد رحلتك"} detail="أدخل بيانات التواصل وحدد موقعك، ثم أرسل طلبك." onBack={() => setScreen(checkoutMode === "delivery" ? "delivery" : "taxi")} />
+          <PageHeading eyebrow="تأكيد الطلب" title={checkoutMode === "delivery" ? "راجع طلبك" : "تأكيد رحلتك"} detail="أدخل بيانات التواصل وحدد موقعك أو اكتبه يدوياً، ثم أرسل طلبك." onBack={() => setScreen(checkoutMode === "delivery" ? "delivery" : "taxi")} />
           <section className="app-shell space-y-5 pb-10">
             <div className="checkout-card">
               <div className="checkout-card-title"><ClipboardList className="h-5 w-5 text-red-600" /><span>{checkoutMode === "delivery" ? "ملخص الطلب" : "تفاصيل الرحلة"}</span></div>
@@ -546,7 +552,7 @@ export default function Home() {
             <div className="checkout-card space-y-4">
               <div className="checkout-card-title"><UserRound className="h-5 w-5 text-red-600" /><span>بيانات التواصل وموقع الطلب</span></div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><Label htmlFor="customerName">الاسم</Label><Input id="customerName" value={checkoutName} onChange={e => setCheckoutName(e.target.value)} placeholder="اكتب الاسم" /></div><div><Label htmlFor="customerPhone">رقم الهاتف السوري</Label><div className="phone-entry" dir="ltr"><span>+963</span><Input id="customerPhone" inputMode="numeric" value={checkoutPhone} onChange={e => setCheckoutPhone(e.target.value.replace(/\D/g, "").slice(0, 9))} placeholder="9XXXXXXXX" /></div><small className="phone-help">اكتب الرقم ابتداءً من 9، من دون الصفر الأول.</small></div></div>
-                <div><Label htmlFor="customerLocation">موقعك</Label><Input id="customerLocation" value={customerLocation} readOnly placeholder="استخدم زر تحديد موقعي" /><div className="location-actions"><button onClick={locateCustomer} disabled={locating}><LocateFixed className="h-4 w-4" />{locating ? "جارٍ التحديد..." : "تحديد موقعي"}</button></div>{locationVerified ? <p className="verified-location">تم التحقق من الموقع عبر GPS</p> : <p className="location-required-note">اضغط تحديد موقعي لتأكيد طلبك.</p>}</div>
+                <div><Label htmlFor="customerLocation">موقعك</Label>{useManualLocation ? <Textarea id="customerLocation" value={customerLocation} onChange={event => setCustomerLocation(event.target.value)} placeholder="مثال: منبج، قرب دوار الساعة، بجانب الصيدلية" /> : <Input id="customerLocation" value={customerLocation} readOnly placeholder="استخدم زر تحديد موقعي" />}<div className="location-actions"><button onClick={locateCustomer} disabled={locating}><LocateFixed className="h-4 w-4" />{locating ? "جارٍ التحديد..." : "تحديد موقعي"}</button><button type="button" onClick={() => { const next = !useManualLocation; setUseManualLocation(next); setCustomerLocation(""); setCustomerLocationUrl(""); setCustomerLat(null); setCustomerLng(null); setLocationVerified(false); }} className="border border-blue-200 bg-blue-50 text-blue-900"><Pencil className="h-4 w-4" />{useManualLocation ? "استخدم GPS بدلاً من ذلك" : "سأكتب موقعي يدوياً"}</button></div>{useManualLocation ? <p className="verified-location">اكتب اسم الحي أو أقرب معلم ومعلومات تسهّل الوصول إليك.</p> : locationVerified ? <p className="verified-location">تم التحقق من الموقع عبر GPS</p> : <p className="location-required-note">اضغط تحديد موقعي أو اختر كتابة الموقع يدوياً لتأكيد طلبك.</p>}</div>
                 <div><Label htmlFor="notes">ملاحظات إضافية <span className="text-slate-400">(اختياري)</span></Label><Textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="أي تفاصيل مفيدة للطلب أو للمندوب" /></div>
             </div>
             <div className="checkout-card"><div className="checkout-card-title"><CreditCard className="h-5 w-5 text-red-600" /><span>طريقة الدفع</span></div><div className="payment-grid"><button onClick={() => setPayment("sham_cash")} className={payment === "sham_cash" ? "payment-active" : ""}><span className="payment-icon payment-icon-blue">ش</span><span>شام كاش</span></button><button onClick={() => setPayment("cash")} className={payment === "cash" ? "payment-active" : ""}><HandCoins className="h-5 w-5" /><span>نقداً عند الاستلام</span></button></div></div>

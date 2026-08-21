@@ -82,4 +82,5 @@ export const orderStatusLabels = {
   on_the_way: "بالطريق",
   completed: "مكتمل",
   cancelled: "ملغي",
+  rejected: "مرفوض",
 } as const;

@@ -207,6 +207,21 @@ describe("بيانات الطلب الإلزامية", () => {
     expect(parsed.customerPhone).toBe("+963912345678");
   });
 
+  it("يقبل الطلب عند كتابة موقع يدوي واضح من دون إحداثيات GPS", () => {
+    const parsed = orderInputSchema.parse({
+      orderType: "delivery",
+      customerName: "أحمد",
+      customerPhone: "+963912345678",
+      paymentMethod: "cash",
+      locationMode: "manual",
+      locationText: "منبج، قرب دوار الساعة، بجانب الصيدلية",
+      lines: [{ category: "pharmacy", itemName: "فيتامين C", quantity: 1, unit: "طلب" }],
+    });
+
+    expect(parsed.locationMode).toBe("manual");
+    expect(parsed.locationText).toContain("دوار الساعة");
+  });
+
   it("يقبل ربط سلة الطلب العادية بحجز جرابلس مختار", () => {
     const parsed = orderInputSchema.parse({
       orderType: "delivery",
