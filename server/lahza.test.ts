@@ -12,11 +12,11 @@ describe("اختصار الصفحة الرئيسية للإدارة", () => {
     expect(getAdminHomeShortcut(null)).toBeNull();
   });
 
-  it("يعرض متجري للشريك بدلاً من أي اختصار إداري متبقٍ", () => {
-    expect(getHomeShortcut({ adminRole: "owner", partnerActive: true })).toMatchObject({ label: "متجري", path: "/partner/store" });
-    expect(getHomeShortcut({ adminRole: "supervisor", partnerActive: true })).toMatchObject({ label: "متجري", path: "/partner/store" });
-    expect(getHomeShortcut({ adminRole: "owner", partnerActive: false })).toMatchObject({ label: "لوحة التحكم", path: "/admin" });
-  });
+	it("يعطي جلسة الإدارة أولوية ويعرض متجري للشريك فقط", () => {
+	  expect(getHomeShortcut({ adminRole: "owner", partnerActive: true })).toMatchObject({ label: "لوحة التحكم", path: "/admin" });
+	  expect(getHomeShortcut({ adminRole: "supervisor", partnerActive: true })).toMatchObject({ label: "لوحة الإشراف", path: "/admin" });
+	  expect(getHomeShortcut({ adminRole: null, partnerActive: true })).toMatchObject({ label: "متجري", path: "/partner/store" });
+	});
 });
 
 describe("حالة المتجر للعميل", () => {

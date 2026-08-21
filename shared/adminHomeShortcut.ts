@@ -19,9 +19,14 @@ export function getAdminHomeShortcut(role: AdminHomeRole | null | undefined): Ad
 }
 
 export function getHomeShortcut(input: { adminRole: AdminHomeRole | null | undefined; partnerActive: boolean }): AdminHomeShortcut | null {
+  const adminShortcut = getAdminHomeShortcut(input.adminRole);
+  if (adminShortcut) {
+    return adminShortcut;
+  }
+
   if (input.partnerActive) {
     return { label: "متجري", description: "إدارة منتجاتك وعروضك", path: "/partner/store" };
   }
 
-  return getAdminHomeShortcut(input.adminRole);
+  return null;
 }
