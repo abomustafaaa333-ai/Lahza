@@ -193,8 +193,9 @@ export default function Home() {
   const tickerPrimary = normalizeTickerText(interfaceSettingsQuery.data?.tickerPrimary, DEFAULT_TICKER_PRIMARY);
   const tickerSecondary = normalizeTickerText(interfaceSettingsQuery.data?.tickerSecondary, DEFAULT_TICKER_SECONDARY);
   const adminLogin = trpc.lahza.admin.login.useMutation({
-    onSuccess: () => {
-      utils.lahza.admin.session.invalidate();
+    onSuccess: result => {
+      utils.lahza.admin.session.setData(undefined, { role: result.role });
+      void utils.lahza.admin.session.invalidate();
       setSecretOpen(false);
       toast.success("تم فتح لوحة الحساب بنجاح");
       setLocation("/admin");

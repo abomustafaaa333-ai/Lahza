@@ -31,13 +31,13 @@ export default function Admin() {
   const utils = trpc.useUtils();
   const [tab, setTab] = useState<Tab>("orders");
   const [menuOpen, setMenuOpen] = useState(false);
-  const sessionQuery = trpc.lahza.admin.session.useQuery();
+  const sessionQuery = trpc.lahza.admin.session.useQuery(undefined, { refetchOnMount: "always" });
   const session = sessionQuery.data;
   const logout = trpc.lahza.admin.logout.useMutation({ onSuccess: () => { utils.lahza.admin.session.setData(undefined, null); toast.success("تم تسجيل الخروج من لوحة التحكم"); setLocation("/"); } });
   const isOwner = session?.role === "owner";
   const availableTabs = tabs.filter(item => !item.ownerOnly || isOwner);
 
-  if (sessionQuery.isLoading) return <div dir="rtl" className="admin-loading"><Loader2 className="h-7 w-7 animate-spin text-red-600" /><span>جارٍ التحقق من الصلاحيات...</span></div>;
+  if (sessionQuery.isLoading || (sessionQuery.isFetching && !session)) return <div dir="rtl" className="admin-loading"><Loader2 className="h-7 w-7 animate-spin text-red-600" /><span>جارٍ التحقق من الصلاحيات...</span></div>;
   if (!session) return <div dir="rtl" className="admin-loading"><ShieldCheck className="h-9 w-9 text-blue-900" /><h1>لوحة الإدارة محمية</h1><p>افتحها عبر النقر المزدوج على شعار «لحظة» في الصفحة الرئيسية.</p><Button onClick={() => setLocation("/")} className="mt-3 rounded-xl bg-red-600 hover:bg-red-700"><ArrowRight className="h-4 w-4" /> العودة للرئيسية</Button></div>;
 
   return <div dir="rtl" className="admin-app">
