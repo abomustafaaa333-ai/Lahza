@@ -655,7 +655,7 @@ export const lahzaRouter = router({
       create: publicProcedure.input(partnerOfferInput).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         await cleanExpiredOffers();
-        const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
+        const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
         if (!product[0]) throw new Error("اختر صنفاً متاحاً من منتجات متجرك لهذا العرض");
         await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, catalogItemId: product[0].id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active });
         return { success: true };
@@ -663,7 +663,7 @@ export const lahzaRouter = router({
       update: publicProcedure.input(partnerOfferInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         await cleanExpiredOffers();
-        const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.partnerId, partner.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
+        const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
         if (!product[0]) throw new Error("اختر صنفاً متاحاً من منتجات متجرك لهذا العرض");
         await db.update(partnerOffers).set({ catalogItemId: product[0].id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
         return { success: true };
