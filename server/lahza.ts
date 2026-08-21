@@ -505,6 +505,17 @@ export const lahzaRouter = router({
       const products = await db.select().from(catalogItems).where(and(eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name);
       return { store: { ...store, storeOpen }, products };
     }),
+    availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const found = await db.select({ partnerId: stores.partnerId, active: stores.active }).from(stores).where(eq(stores.id, input.storeId)).limit(1);
+      const store = found[0];
+      if (!store?.active) throw new Error("هذا المتجر غير متاح حالياً");
+      if (!store.partnerId) return { storeOpen: true };
+      const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
+      if (!partner[0]?.active) throw new Error("هذا المتجر غير متاح حالياً");
+      return { storeOpen: partner[0].storeOpen };
+    }),
   }),
   intercity: router({
     trips: publicProcedure.query(async () => {

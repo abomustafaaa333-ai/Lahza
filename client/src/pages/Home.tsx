@@ -236,6 +236,7 @@ export default function Home() {
     },
     onError: error => toast.error(error.message),
   });
+  const checkStoreAvailability = trpc.lahza.storefront.availability.useMutation({ onError: error => toast.error(error.message) });
   const touchPresence = trpc.lahza.customers.touch.useMutation();
 
   useEffect(() => {
@@ -270,6 +271,23 @@ export default function Home() {
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
     toast.success("أُضيف إلى السلة");
     setScreen(returnTo);
+  };
+
+  const addFromStore = async (storeId: number | null | undefined, add: () => void) => {
+    if (isStaticDemo || !storeId || storeId < 0) {
+      add();
+      return;
+    }
+    try {
+      const availability = await checkStoreAvailability.mutateAsync({ storeId });
+      if (isStoreClosedForCustomer(availability.storeOpen)) {
+        toast.error("المتجر مغلق حالياً");
+        return;
+      }
+      add();
+    } catch {
+      // رسالة الخطأ تظهر عبر طفرة التحقق، ولا تُضاف أي مادة عند فشل التحقق.
+    }
   };
 
   const removeLine = (id: string) => {
@@ -484,7 +502,7 @@ export default function Home() {
 
       {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("delivery"); setActiveCategory(null); }} onChoose={store => { setSelectedStore(store); setScreen("store"); }} /> : null}
       {screen === "store" && selectedStore ? <StoreProductsScreen store={selectedStore} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("stores"); setSelectedProduct(null); }} onChooseProduct={product => { setSelectedProduct(product); setScreen("productQuantity"); }} onOpenOffers={() => setScreen("storeOffers")} /> : null}
-      {screen === "productQuantity" && selectedStore && selectedProduct ? <ProductQuantityScreen store={selectedStore} product={selectedProduct} onBack={() => setScreen("store")} onAdd={quantity => { if (isStoreClosedForCustomer(selectedStore.storeOpen)) { toast.error("المتجر مغلق حالياً"); return; } addLine({ category: selectedStore.category, itemName: selectedProduct.name, quantity, unit: selectedProduct.unit, unitPrice: selectedProduct.unitPrice, catalogItemId: selectedProduct.id < 0 ? undefined : selectedProduct.id, priceKnown: selectedStore.category !== "pharmacy" && selectedProduct.unitPrice > 0 }, "store"); }} /> : null}
+      {screen === "productQuantity" && selectedStore && selectedProduct ? <ProductQuantityScreen store={selectedStore} product={selectedProduct} onBack={() => setScreen("store")} onAdd={quantity => { void addFromStore(selectedStore.id, () => addLine({ category: selectedStore.category, itemName: selectedProduct.name, quantity, unit: selectedProduct.unit, unitPrice: selectedProduct.unitPrice, catalogItemId: selectedProduct.id < 0 ? undefined : selectedProduct.id, priceKnown: selectedStore.category !== "pharmacy" && selectedProduct.unitPrice > 0 }, "store")); }} /> : null}
       {screen === "storeOffers" && selectedStore ? <StoreOffersScreen store={selectedStore} offers={(partnerOffers as CustomerOffer[]).filter(offer => offer.storeId === selectedStore.id)} loading={partnerOffersQuery.isLoading && !isStaticDemo} onBack={() => setScreen("store")} onChoose={chooseOffer} /> : null}
 
       {screen === "taxi" ? (
@@ -513,7 +531,7 @@ export default function Home() {
         <OfferDestinationScreen offers={partnerOffers as CustomerOffer[]} onBack={goHome} loading={partnerOffersQuery.isLoading && !isStaticDemo} focusedOfferId={focusedOfferId} onChoose={chooseOffer} />
       ) : null}
 
-      {screen === "offerQuantity" && selectedOffer ? <OfferQuantityScreen offer={selectedOffer} onBack={() => setScreen(selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers")} onAdd={quantity => { if (isStoreClosedForCustomer(selectedOffer.storeOpen)) { toast.error("المتجر مغلق حالياً"); return; } const category = selectedOffer.storeCategory && selectedOffer.storeCategory in categoryMeta ? selectedOffer.storeCategory as LahzaCategory : "offers"; addLine({ category, catalogItemId: selectedOffer.catalogItemId ?? undefined, itemName: selectedOffer.productName ?? selectedOffer.text, quantity, unit: selectedOffer.productUnit ?? "وحدة", unitPrice: selectedOffer.productPrice ?? 0, priceKnown: Boolean(selectedOffer.productPrice && selectedOffer.productPrice > 0) }, selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers"); }} /> : null}
+      {screen === "offerQuantity" && selectedOffer ? <OfferQuantityScreen offer={selectedOffer} onBack={() => setScreen(selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers")} onAdd={quantity => { void addFromStore(selectedOffer.storeId, () => { const category = selectedOffer.storeCategory && selectedOffer.storeCategory in categoryMeta ? selectedOffer.storeCategory as LahzaCategory : "offers"; addLine({ category, catalogItemId: selectedOffer.catalogItemId ?? undefined, itemName: selectedOffer.productName ?? selectedOffer.text, quantity, unit: selectedOffer.productUnit ?? "وحدة", unitPrice: selectedOffer.productPrice ?? 0, priceKnown: Boolean(selectedOffer.productPrice && selectedOffer.productPrice > 0) }, selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers"); }); }} /> : null}
 
       {screen === "checkout" ? (
         <>
