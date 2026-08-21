@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
+import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
@@ -15,6 +16,14 @@ describe("اختصار الصفحة الرئيسية للإدارة", () => {
     expect(getHomeShortcut({ adminRole: "owner", partnerActive: true })).toMatchObject({ label: "متجري", path: "/partner/store" });
     expect(getHomeShortcut({ adminRole: "supervisor", partnerActive: true })).toMatchObject({ label: "متجري", path: "/partner/store" });
     expect(getHomeShortcut({ adminRole: "owner", partnerActive: false })).toMatchObject({ label: "لوحة التحكم", path: "/admin" });
+  });
+});
+
+describe("حالة المتجر للعميل", () => {
+  it("تسمح بالتصفح مع منع الإضافة إلى السلة فقط عند إغلاق المتجر", () => {
+    expect(isStoreClosedForCustomer(false)).toBe(true);
+    expect(isStoreClosedForCustomer(true)).toBe(false);
+    expect(isStoreClosedForCustomer(undefined)).toBe(false);
   });
 });
 

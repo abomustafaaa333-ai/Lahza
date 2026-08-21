@@ -8,6 +8,7 @@ export type PartnerGallerySource = {
   partnerName?: string | null;
   storeName?: string | null;
   unitPrice?: number | null;
+  storeOpen?: boolean | null;
 };
 
 export type PartnerGallerySlide = {
@@ -18,6 +19,7 @@ export type PartnerGallerySlide = {
   imageUrl: string;
   partnerName: string;
   unitPrice: number;
+  storeOpen?: boolean | null;
 };
 
 export function buildPartnerGallerySlides(items: PartnerGallerySource[]): PartnerGallerySlide[] {
@@ -26,6 +28,6 @@ export function buildPartnerGallerySlides(items: PartnerGallerySource[]): Partne
     const imageUrl = item.imageUrl?.trim();
     if (!imageUrl || !/^https:\/\//i.test(imageUrl) || seenUrls.has(imageUrl)) return [];
     seenUrls.add(imageUrl);
-    return [{ id: item.id, storeId: item.storeId, storeCategory: item.storeCategory, name: item.name?.trim() || item.text?.trim() || "عرض متجر لحظة", imageUrl, partnerName: item.storeName?.trim() || item.partnerName?.trim() || "متجر لحظة", unitPrice: Math.max(0, Number(item.unitPrice ?? 0)) }];
+    return [{ id: item.id, storeId: item.storeId, storeCategory: item.storeCategory, name: item.name?.trim() || item.text?.trim() || "عرض متجر لحظة", imageUrl, partnerName: item.storeName?.trim() || item.partnerName?.trim() || "متجر لحظة", unitPrice: Math.max(0, Number(item.unitPrice ?? 0)), storeOpen: item.storeOpen }];
   });
 }

@@ -6,6 +6,7 @@ import { parse } from "cookie";
 import { z } from "zod";
 import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
+import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
@@ -483,10 +484,10 @@ export const lahzaRouter = router({
       const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true))).orderBy(stores.sortOrder, stores.name);
       const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen }).from(partners);
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
-      return categoryStores.filter(store => {
-        if (!store.partnerId) return true;
+      return categoryStores.flatMap(store => {
+        if (!store.partnerId) return [{ ...store, storeOpen: true }];
         const partner = partnerById.get(store.partnerId);
-        return Boolean(partner?.active && partner.storeOpen);
+        return partner?.active ? [{ ...store, storeOpen: partner.storeOpen }] : [];
       });
     }),
     products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ input }) => {
@@ -495,12 +496,14 @@ export const lahzaRouter = router({
       const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true))).limit(1);
       const store = found[0];
       if (!store) throw new Error("هذا المتجر غير متاح حالياً");
+      let storeOpen = true;
       if (store.partnerId) {
         const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
-        if (!partner[0]?.active || !partner[0].storeOpen) throw new Error("هذا المتجر مغلق حالياً");
+        if (!partner[0]?.active) throw new Error("هذا المتجر غير متاح حالياً");
+        storeOpen = partner[0].storeOpen;
       }
       const products = await db.select().from(catalogItems).where(and(eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name);
-      return { store, products };
+      return { store: { ...store, storeOpen }, products };
     }),
   }),
   intercity: router({
@@ -523,7 +526,7 @@ export const lahzaRouter = router({
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       return items.flatMap(item => {
         const partner = item.partnerId ? partnerById.get(item.partnerId) : null;
-        return partner?.storeOpen ? [{ ...item, partnerName: partner.name }] : [];
+        return partner ? [{ ...item, partnerName: partner.name, storeOpen: partner.storeOpen }] : [];
       });
     }),
     offers: publicProcedure.query(async () => {
@@ -543,7 +546,7 @@ export const lahzaRouter = router({
         const partner = partnerById.get(offer.partnerId);
         const store = offer.storeId ? storeById.get(offer.storeId) : null;
         const product = offer.catalogItemId ? productById.get(offer.catalogItemId) : null;
-        return partner?.storeOpen && store?.partnerId === partner.id && product?.storeId === store.id && product.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product.name, productUnit: product.unit, productPrice: product.unitPrice }] : [];
+        return partner && store?.partnerId === partner.id && product?.storeId === store.id && product.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product.name, productUnit: product.unit, productPrice: product.unitPrice, storeOpen: partner.storeOpen }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
@@ -682,6 +685,14 @@ export const lahzaRouter = router({
       const ids = input.lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
       const products = ids.length ? await db.select().from(catalogItems).where(inArray(catalogItems.id, ids)) : [];
       const productMap = new Map(products.map(product => [product.id, product]));
+      const partnerIds = Array.from(new Set(products.flatMap(product => product.partnerId ? [product.partnerId] : [])));
+      if (partnerIds.length) {
+        const productPartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen }).from(partners).where(inArray(partners.id, partnerIds));
+        const partnerById = new Map(productPartners.map(partner => [partner.id, partner]));
+        if (products.some(product => product.partnerId && (!partnerById.get(product.partnerId)?.active || isStoreClosedForCustomer(partnerById.get(product.partnerId)?.storeOpen)))) {
+          throw new Error("المتجر مغلق حالياً");
+        }
+      }
       let totalAmount = 0;
       const resolvedLines = input.lines.map(line => {
         const product = line.catalogItemId ? productMap.get(line.catalogItemId) : undefined;
