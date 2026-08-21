@@ -223,7 +223,7 @@ export default function Home() {
   }, []);
 
   const total = useMemo(() => cart.reduce((sum, item) => sum + lineTotal(item), 0), [cart]);
-  const deliveryPercent = selectedIntercityTrip ? (deliveryFeesQuery.data?.jarabulusPercent ?? 30) : (deliveryFeesQuery.data?.manbijPercent ?? 15);
+  const deliveryPercent = selectedIntercityTrip ? (deliveryFeesQuery.data?.jarabulusPercent ?? 30) : (deliveryFeesQuery.data?.manbijPercent ?? 20);
   const deliveryFeeNewSyp = checkoutMode === "delivery" ? calculatePercentageDeliveryFeeNewSyp(total, deliveryPercent) : 0;
   const grandTotalNewSyp = toNewSyp(total) + deliveryFeeNewSyp;
   const hasPharmacy = cart.some(item => item.category === "pharmacy");

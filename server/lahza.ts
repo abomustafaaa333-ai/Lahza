@@ -100,7 +100,7 @@ async function ensureDeliveryPercentColumns(db: NonNullable<Awaited<ReturnType<t
       ? columns.map(column => String((column as { Field?: unknown }).Field ?? ""))
       : [],
   );
-  if (!availableColumns.has("manbijDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "manbijDeliveryPercent", 15);
+  if (!availableColumns.has("manbijDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "manbijDeliveryPercent", 20);
   if (!availableColumns.has("jarabulusDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "jarabulusDeliveryPercent", 30);
 }
 
@@ -224,7 +224,7 @@ async function getSettings() {
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   if (current[0]) return current[0];
   const masterPinHash = await hashSecret("5555");
-  await db.insert(systemSettings).values({ id: 1, masterPinHash, manbijDeliveryPercent: 15, jarabulusDeliveryPercent: 30, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
+  await db.insert(systemSettings).values({ id: 1, masterPinHash, manbijDeliveryPercent: 20, jarabulusDeliveryPercent: 30, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
   const created = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   return created[0]!;
 }

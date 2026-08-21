@@ -92,6 +92,13 @@
       "when": 1787331667940,
       "tag": "0012_delivery_fee_percentages",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1787332671693,
+      "tag": "0013_manbij_delivery_twenty_percent",
+      "breakpoints": true
     }
   ]
 }

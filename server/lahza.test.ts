@@ -57,11 +57,11 @@ describe("حساب رسوم التوصيل", () => {
     expect(DELIVERY_PRICING_PENDING_NOTE).toContain("يحددها فريق لحظة لاحقاً");
   });
 
-  it("يحسب 15% لمنبج و30% لجرابلس من قيمة المنتجات فقط", () => {
+  it("يحسب 20% لمنبج و30% لجرابلس من قيمة المنتجات فقط", () => {
     const itemsTotal = 30_000;
-    expect(calculatePercentageDeliveryFeeNewSyp(itemsTotal, 15)).toBe(45);
+    expect(calculatePercentageDeliveryFeeNewSyp(itemsTotal, 20)).toBe(60);
     expect(calculatePercentageDeliveryFeeNewSyp(itemsTotal, 30)).toBe(90);
-    expect(calculatePercentageDeliveryFee(itemsTotal, 15)).toBe(4_500);
+    expect(calculatePercentageDeliveryFee(itemsTotal, 20)).toBe(6_000);
     expect(calculatePercentageDeliveryFee(itemsTotal, 30)).toBe(9_000);
   });
 
