@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, customerReferrals, discountCodes, storeTrafficEvents, stores, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
@@ -411,6 +411,21 @@ const missingProductRequestInput = z.object({
   productName: z.string().trim().min(2, "اكتب اسم المنتج المطلوب").max(180),
   notes: z.string().trim().max(500).optional(),
 });
+export function calculatePointsReward(itemsTotal: number, percent: number) {
+  if (itemsTotal <= 0 || percent <= 0) return 0;
+  return Math.min(itemsTotal, Math.floor(itemsTotal * percent / 100));
+}
+
+async function awardCustomerPoint(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, customerPhone: string, reason: "order_completed" | "referral_completed", orderId?: number, referralId?: number) {
+  if (!customerPhone) return;
+  try {
+    await db.insert(pointTransactions).values({ customerPhone, points: 1, reason, orderId: orderId ?? null, referralId: referralId ?? null });
+  } catch {
+    return;
+  }
+  await db.insert(customerPoints).values({ customerPhone, balance: 1, lifetimeEarned: 1 }).onDuplicateKeyUpdate({ set: { balance: sql`${customerPoints.balance} + 1`, lifetimeEarned: sql`${customerPoints.lifetimeEarned} + 1` } });
+}
+
 export function calculateLineTotal(quantity: number, unitPrice: number, unit: string) {
   if (unit === "جرام") return Math.round((quantity / 1000) * unitPrice);
   return Math.round(quantity * unitPrice);
@@ -463,6 +478,7 @@ export const orderInputSchema = z.object({
   paymentMethod: z.enum(["sham_cash", "cash"]),
   discountCode: z.string().trim().min(2).max(40).optional(),
   referralCode: z.string().trim().min(2).max(40).optional(),
+  usePointsReward: z.boolean().optional(),
   lines: z.array(lineInput).max(30),
   taxiType: z.enum(["standard", "van"]).optional(),
   pickupLocation: z.string().trim().max(220).optional(),
@@ -509,6 +525,16 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await db.insert(customerPresence).values({ deviceId: input.deviceId, lastSeen: new Date() }).onDuplicateKeyUpdate({ set: { lastSeen: new Date() } });
       return { success: true };
+    }),
+    points: router({
+      balance: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/) })).query(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const balance = (await db.select().from(customerPoints).where(eq(customerPoints.customerPhone, input.phone)).limit(1))[0];
+        const transactions = await db.select().from(pointTransactions).where(eq(pointTransactions.customerPhone, input.phone)).orderBy(desc(pointTransactions.createdAt)).limit(30);
+        const settings = await getSettings();
+        return { balance: balance?.balance ?? 0, lifetimeEarned: balance?.lifetimeEarned ?? 0, rewardPercent: settings.pointsRewardPercent, transactions };
+      }),
     }),
     referral: router({
       getOrCreate: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/) })).mutation(async ({ input }) => {
@@ -964,11 +990,24 @@ export const lahzaRouter = router({
         discountAmount = Math.min(itemsTotal, Math.max(0, discountAmount));
       }
       const discountedItemsTotal = itemsTotal - discountAmount;
+      const settings = await getSettings();
+      let pointsUsed = 0;
+      let pointsRewardPercent = 0;
+      let pointsRewardAmount = 0;
+      if (input.usePointsReward) {
+        if (input.orderType !== "delivery") throw new Error("مكافأة النقاط متاحة لطلبات التوصيل فقط");
+        if (settings.pointsRewardPercent < 1) throw new Error("لم يحدد المالك نسبة مكافأة النقاط بعد");
+        const pointBalance = (await db.select({ balance: customerPoints.balance }).from(customerPoints).where(eq(customerPoints.customerPhone, input.customerPhone)).limit(1))[0];
+        if (!pointBalance || pointBalance.balance < 10) throw new Error("تحتاج إلى 10 نقاط على الأقل لاستخدام المكافأة");
+        pointsUsed = 10;
+        pointsRewardPercent = settings.pointsRewardPercent;
+        pointsRewardAmount = calculatePointsReward(discountedItemsTotal, pointsRewardPercent);
+      }
+      const finalItemsTotal = discountedItemsTotal - pointsRewardAmount;
       const initialStatus = initialCustomerOrderStatus(input.orderType, resolvedLines);
-      if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(discountedItemsTotal)) {
+      if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(finalItemsTotal)) {
         throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(MINIMUM_DELIVERY_ORDER_SYP)}`);
       }
-      const settings = await getSettings();
       let deliveryDistanceMeters = 0;
       let deliveryFee = 0;
       let deliveryPricingPending = false;
@@ -982,10 +1021,10 @@ export const lahzaRouter = router({
         const activeLinkedReservations = linkedReservations.filter(order => ["pending", "confirmed", "preparing", "on_the_way"].includes(order.status)).length;
         if (!canReserveIntercityTrip(intercityTrip.capacity, legacyReservations.length + activeLinkedReservations)) throw new Error("اكتملت سعة هذا الحجز، اختر حجزاً آخر");
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.jarabulusDeliveryPercent);
-        totalAmount = discountedItemsTotal + deliveryFee;
+        totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "delivery") {
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.manbijDeliveryPercent);
-        totalAmount = discountedItemsTotal + deliveryFee;
+        totalAmount = finalItemsTotal + deliveryFee;
       }
 
       const created = await db.insert(orders).values({
@@ -998,7 +1037,9 @@ export const lahzaRouter = router({
         totalAmount,
         discountCode: appliedDiscountCode,
         referralCode: appliedReferralCode,
-        discountAmount,
+        discountAmount: discountAmount + pointsRewardAmount,
+        pointsUsed,
+        pointsRewardPercent,
         deliveryDistanceMeters,
         deliveryFee,
         taxiType: input.taxiType ?? null,
@@ -1012,6 +1053,11 @@ export const lahzaRouter = router({
         notes: [input.notes, intercityTrip ? `حجز جرابلس: ${intercityTrip.title} · ${intercityTrip.bookingCloseLabel} · ${intercityTrip.arrivalLabel}` : "", deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
       });
       const orderId = Number(created[0].insertId);
+      if (pointsUsed) {
+        const spent = await db.update(customerPoints).set({ balance: sql`${customerPoints.balance} - 10` }).where(and(eq(customerPoints.customerPhone, input.customerPhone), gte(customerPoints.balance, 10)));
+        if (!spent[0]?.affectedRows) throw new Error("تعذر استخدام النقاط، أعد المحاولة");
+        await db.insert(pointTransactions).values({ customerPhone: input.customerPhone, points: -10, reason: "reward_redeemed", rewardPercent: pointsRewardPercent, orderId });
+      }
       if (appliedDiscountCode) await db.update(discountCodes).set({ usedCount: sql`${discountCodes.usedCount} + 1` }).where(eq(discountCodes.code, appliedDiscountCode));
       if (appliedReferralCode) await db.update(customerReferrals).set({ referredPhone: input.customerPhone, referredOrderId: orderId, completedAt: initialStatus === "preparing" ? new Date() : null }).where(eq(customerReferrals.code, appliedReferralCode));
       if (resolvedLines.length) {
@@ -1045,6 +1091,14 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date() }).where(eq(orders.id, input.id));
+      if (input.status === "completed") {
+        const order = (await db.select({ customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.id)).limit(1))[0];
+        if (order) {
+          await awardCustomerPoint(db, order.customerPhone, "order_completed", input.id);
+          const referral = (await db.select().from(customerReferrals).where(and(eq(customerReferrals.referredOrderId, input.id), isNull(customerReferrals.completedAt))).limit(1))[0];
+          if (referral) { await db.update(customerReferrals).set({ completedAt: new Date() }).where(eq(customerReferrals.id, referral.id)); await awardCustomerPoint(db, referral.ownerPhone, "referral_completed", undefined, referral.id); }
+        }
+      }
       return { success: true };
     }),
     update: publicProcedure.input(adminOrderUpdateInput).mutation(async ({ ctx, input }) => {
@@ -1323,13 +1377,14 @@ export const lahzaRouter = router({
         return {
           manbijPercent: settings.manbijDeliveryPercent,
           jarabulusPercent: settings.jarabulusDeliveryPercent,
+          pointsRewardPercent: settings.pointsRewardPercent,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, pointsRewardPercent: deliveryPercentInput })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, pointsRewardPercent: input.pointsRewardPercent }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),

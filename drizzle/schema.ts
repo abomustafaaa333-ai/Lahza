@@ -1,4 +1,4 @@
-import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -136,6 +136,8 @@ export const orders = mysqlTable("orders", {
   discountCode: varchar("discountCode", { length: 40 }),
   referralCode: varchar("referralCode", { length: 40 }),
   discountAmount: int("discountAmount").notNull().default(0),
+  pointsUsed: int("pointsUsed").notNull().default(0),
+  pointsRewardPercent: int("pointsRewardPercent").notNull().default(0),
   deliveryDistanceMeters: int("deliveryDistanceMeters").notNull().default(0),
   deliveryFee: int("deliveryFee").notNull().default(0),
   status: mysqlEnum("status", ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"]).notNull().default("pending"),
@@ -174,6 +176,7 @@ export const systemSettings = mysqlTable("system_settings", {
   deliveryPricePerKm: int("deliveryPricePerKm").notNull().default(2),
   manbijDeliveryPercent: int("manbijDeliveryPercent").notNull().default(20),
   jarabulusDeliveryPercent: int("jarabulusDeliveryPercent").notNull().default(30),
+  pointsRewardPercent: int("pointsRewardPercent").notNull().default(0),
   originLatE6: int("originLatE6").notNull().default(36528100),
   originLngE6: int("originLngE6").notNull().default(37954900),
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),
@@ -230,6 +233,23 @@ export const customerReferrals = mysqlTable("customer_referrals", {
   completedAt: timestamp("completedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+export const customerPoints = mysqlTable("customer_points", {
+  id: int("id").autoincrement().primaryKey(),
+  customerPhone: varchar("customerPhone", { length: 24 }).notNull().unique(),
+  balance: int("balance").notNull().default(0),
+  lifetimeEarned: int("lifetimeEarned").notNull().default(0),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export const pointTransactions = mysqlTable("point_transactions", {
+  id: int("id").autoincrement().primaryKey(),
+  customerPhone: varchar("customerPhone", { length: 24 }).notNull(),
+  points: int("points").notNull().default(1),
+  reason: mysqlEnum("reason", ["order_completed", "referral_completed", "reward_redeemed"]).notNull(),
+  rewardPercent: int("rewardPercent"),
+  orderId: int("orderId"),
+  referralId: int("referralId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({ orderPointUnique: uniqueIndex("point_transactions_order_unique").on(table.orderId), referralPointUnique: uniqueIndex("point_transactions_referral_unique").on(table.referralId) }));
 export const customerPresence = mysqlTable("customer_presence", {
   deviceId: varchar("deviceId", { length: 80 }).primaryKey(),
   lastSeen: timestamp("lastSeen").defaultNow().onUpdateNow().notNull(),
