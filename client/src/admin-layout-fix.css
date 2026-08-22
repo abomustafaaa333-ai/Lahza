@@ -1,0 +1,9 @@
+.admin-topbar {
+  margin-top: 2.4rem;
+}
+
+@media (min-width: 800px) {
+  .admin-topbar {
+    margin-top: 2.5rem;
+  }
+}
