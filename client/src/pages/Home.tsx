@@ -207,6 +207,7 @@ export default function Home() {
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false, refetchOnMount: "always", refetchOnWindowFocus: true });
   const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const trackStoreVisit = trpc.lahza.traffic.track.useMutation();
   const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const normalizedSearchText = searchText.trim();
   const productSearchInput = useMemo(() => ({ query: normalizedSearchText }), [normalizedSearchText]);
@@ -243,6 +244,7 @@ export default function Home() {
     const sharedStore = sharedStoreQuery.data?.store;
     if (!sharedStore || selectedStore?.id === sharedStore.id) return;
     setActiveCategory(sharedStore.category as LahzaCategory);
+    if (!isStaticDemo) trackStoreVisit.mutate({ storeId: sharedStore.id, source: "qr" });
     setSelectedStore({ id: sharedStore.id, name: sharedStore.name, category: sharedStore.category as LahzaCategory, storeOpen: sharedStore.storeOpen });
     setScreen("store");
   }, [sharedStoreQuery.data, selectedStore?.id]);
@@ -576,7 +578,7 @@ export default function Home() {
         </>
       ) : null}
 
-      {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} categoryTitle={activeCustomCategory?.title} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} restaurantFilter={restaurantFilter} onRestaurantFilterChange={setRestaurantFilter} onBack={() => { setScreen("delivery"); setActiveCategory(null); setActiveCustomCategory(null); }} onChoose={store => { setSelectedStore(store); setScreen("store"); }} /> : null}
+      {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} categoryTitle={activeCustomCategory?.title} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} restaurantFilter={restaurantFilter} onRestaurantFilterChange={setRestaurantFilter} onBack={() => { setScreen("delivery"); setActiveCategory(null); setActiveCustomCategory(null); }} onChoose={store => { if (!isStaticDemo) trackStoreVisit.mutate({ storeId: store.id, source: "direct" }); setSelectedStore(store); setScreen("store"); }} /> : null}
 
       <Dialog open={missingProductOpen} onOpenChange={setMissingProductOpen}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl bg-white"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">اطلب منتجاً غير موجود</DialogTitle><DialogDescription className="text-right">اكتب ما تحتاجه وسيتابع فريق لحظة إمكانية توفيره أو إضافة متجر مناسب.</DialogDescription></DialogHeader><div className="grid gap-3 rounded-2xl bg-slate-50 p-4"><div><Label>اسمك</Label><Input className="mt-1 border-slate-200 bg-white shadow-sm" value={missingRequesterName} onChange={event => setMissingRequesterName(event.target.value)} placeholder="الاسم" /></div><div><Label>رقم الهاتف</Label><Input className="mt-1 border-slate-200 bg-white shadow-sm" dir="ltr" inputMode="tel" value={missingProductPhone} onChange={event => setMissingProductPhone(event.target.value)} placeholder="+9639xxxxxxxx" /></div><div><Label>اسم المنتج المطلوب</Label><Input className="mt-1 border-slate-200 bg-white shadow-sm" value={missingProductName} onChange={event => setMissingProductName(event.target.value)} placeholder="مثال: حقيبة مدرسية للصف الخامس" /></div><div><Label>تفاصيل إضافية (اختياري)</Label><Textarea className="mt-1 border-slate-200 bg-white shadow-sm" value={missingProductNotes} onChange={event => setMissingProductNotes(event.target.value)} placeholder="اللون أو المقاس أو العلامة التجارية" /></div><Button disabled={createMissingProductRequest.isPending || missingRequesterName.trim().length < 2 || missingProductName.trim().length < 2 || !/^\+9639\d{8}$/.test(missingProductPhone)} onClick={() => createMissingProductRequest.mutate({ customerName: missingRequesterName.trim(), customerPhone: missingProductPhone.trim(), productName: missingProductName.trim(), notes: missingProductNotes.trim() || undefined })} className="mt-1 rounded-2xl bg-red-600 py-6 hover:bg-red-700">{createMissingProductRequest.isPending ? "جارٍ الإرسال..." : "إرسال الطلب"}</Button></div></DialogContent></Dialog>
       {screen === "store" && selectedStore ? <StoreProductsScreen store={selectedStore} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("stores"); setSelectedProduct(null); }} onChooseProduct={product => { setSelectedProduct(product); setScreen("productQuantity"); }} onOpenOffers={() => setScreen("storeOffers")} /> : null}

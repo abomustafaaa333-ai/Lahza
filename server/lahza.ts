@@ -1,10 +1,10 @@
-import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, storeTrafficEvents, stores, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
@@ -23,6 +23,19 @@ const categories = ["restaurants", "groceries", "household", "produce", "bakery"
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
 const adminRoles = ["owner", "supervisor"] as const;
 const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"] as const;
+export type PartnerReportRow = { orderId: number; status: (typeof orderStatuses)[number]; totalAmount: number; itemName: string; quantity: string };
+export function summarizePartnerReportRows(rows: PartnerReportRow[]) {
+  const byOrder = new Map<number, PartnerReportRow>();
+  rows.forEach(row => { if (!byOrder.has(row.orderId)) byOrder.set(row.orderId, row); });
+  const orderRows = Array.from(byOrder.values());
+  const completed = orderRows.filter(row => row.status === "completed").length;
+  const cancelled = orderRows.filter(row => row.status === "cancelled" || row.status === "rejected").length;
+  const sales = orderRows.filter(row => row.status !== "cancelled" && row.status !== "rejected").reduce((sum, row) => sum + row.totalAmount, 0);
+  const products = new Map<string, number>();
+  rows.forEach(row => products.set(row.itemName, (products.get(row.itemName) ?? 0) + (Number.parseFloat(row.quantity) || 0)));
+  const topProducts = Array.from(products.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, quantity]) => ({ name, quantity }));
+  return { orders: byOrder.size, completed, cancelled, sales, topProducts };
+}
 const MANBIJ_CENTER = { lat: 36.5281, lng: 37.9549 };
 
 type AdminRole = (typeof adminRoles)[number];
@@ -723,6 +736,16 @@ export const lahzaRouter = router({
       return { success: true, orderId: Number(created[0].insertId), totalAmount: itemAmount + tripFee };
     }),
   }),
+  traffic: router({
+    track: publicProcedure.input(z.object({ storeId: z.number().int().positive(), source: z.enum(["direct", "qr"]).default("direct") })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const store = await db.select({ id: stores.id }).from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true))).limit(1);
+      if (!store[0]) return { success: false } as const;
+      await db.insert(storeTrafficEvents).values({ storeId: input.storeId, source: input.source });
+      return { success: true } as const;
+    }),
+  }),
   partner: router({
     session: publicProcedure.query(async ({ ctx }) => {
       const session = await readPartnerSession(ctx);
@@ -748,6 +771,26 @@ export const lahzaRouter = router({
       ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
       ctx.res.clearCookie(ADMIN_COOKIE, getSessionCookieOptions(ctx.req));
       return { success: true };
+    }),
+    report: publicProcedure.query(async ({ ctx }) => {
+      const { db, partner } = await requirePartner(ctx);
+      const assignedStores = await db.select({ id: stores.id, name: stores.name }).from(stores).where(eq(stores.partnerId, partner.id));
+      const storeIds = assignedStores.map(store => store.id);
+      const now = new Date();
+      const periodEnd = new Date(now);
+      periodEnd.setHours(23, 59, 59, 999);
+      const periodStart = new Date(periodEnd);
+      periodStart.setDate(periodStart.getDate() - 6);
+      periodStart.setHours(0, 0, 0, 0);
+      const previousStart = new Date(periodStart);
+      previousStart.setDate(previousStart.getDate() - 7);
+      const orderLinesRows = storeIds.length ? await db.select({ orderId: orders.id, status: orders.status, totalAmount: orders.totalAmount, catalogItemId: orderLines.catalogItemId, itemName: orderLines.itemName, quantity: orderLines.quantity, storeId: catalogItems.storeId, createdAt: orders.createdAt }).from(orderLines).innerJoin(orders, eq(orderLines.orderId, orders.id)).innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(and(inArray(catalogItems.storeId, storeIds), gte(orders.createdAt, previousStart), lt(orders.createdAt, new Date(periodEnd.getTime() + 1)))) : [];
+      const currentRows = orderLinesRows.filter(row => row.createdAt >= periodStart);
+      const previousRows = orderLinesRows.filter(row => row.createdAt < periodStart);
+      const summarize = (rows: typeof orderLinesRows) => summarizePartnerReportRows(rows);
+      const traffic = storeIds.length ? await db.select({ source: storeTrafficEvents.source }).from(storeTrafficEvents).where(and(inArray(storeTrafficEvents.storeId, storeIds), gte(storeTrafficEvents.createdAt, periodStart), lt(storeTrafficEvents.createdAt, new Date(periodEnd.getTime() + 1)))) : [];
+      const qrVisits = traffic.filter(event => event.source === "qr").length;
+      return { periodStart, periodEnd, stores: assignedStores, current: summarize(currentRows), previous: summarize(previousRows), visits: traffic.length, qrVisits, directVisits: traffic.length - qrVisits };
     }),
     store: router({
       update: publicProcedure.input(z.object({ storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {

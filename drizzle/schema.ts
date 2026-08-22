@@ -48,6 +48,12 @@ export const stores = mysqlTable("stores", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const storeTrafficEvents = mysqlTable("store_traffic_events", {
+  id: int("id").autoincrement().primaryKey(),
+  storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  source: mysqlEnum("source", ["direct", "qr"]).notNull().default("direct"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
 export const catalogItems = mysqlTable("catalog_items", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 80 }).notNull().unique(),
