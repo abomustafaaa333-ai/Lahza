@@ -27,6 +27,8 @@ const MANBIJ_CENTER = { lat: 36.5281, lng: 37.9549 };
 type AdminRole = (typeof adminRoles)[number];
 type AdminSession = { role: AdminRole; supervisorId?: number };
 type PartnerSession = { partnerId: number };
+type AdminSessionPayload = AdminSession & { runtimeId: string };
+type PartnerSessionPayload = PartnerSession & { runtimeId: string };
 
 const passwordSchema = z.string().min(4, "يجب أن تتكون كلمة المرور من 4 أحرف أو أرقام على الأقل").max(100);
 const coordinateSchema = z.number().finite("إحداثيات الموقع غير صالحة");
@@ -140,7 +142,7 @@ function sessionKey() {
   return new TextEncoder().encode(secret);
 }
 
-async function createSession(payload: AdminSession) {
+async function createSession(payload: AdminSessionPayload) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -148,20 +150,35 @@ async function createSession(payload: AdminSession) {
     .sign(sessionKey());
 }
 
-async function createPartnerSession(payload: PartnerSession) {
+async function createPartnerSession(payload: PartnerSessionPayload) {
   return new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("12h")
     .sign(sessionKey());
+}
+
+export function isAuthRuntimeId(value: unknown): value is string {
+  return typeof value === "string" && /^[a-zA-Z0-9-]{16,160}$/.test(value);
+}
+
+export function hasMatchingAuthRuntime(requestRuntimeId: unknown, tokenRuntimeId: unknown) {
+  return isAuthRuntimeId(requestRuntimeId) && isAuthRuntimeId(tokenRuntimeId) && requestRuntimeId === tokenRuntimeId;
+}
+
+function getAuthRuntimeId(ctx: TrpcContext) {
+  const header = ctx.req.headers["x-lahza-auth-runtime"];
+  const value = Array.isArray(header) ? header[0] : header;
+  return isAuthRuntimeId(value) ? value : null;
 }
 
 async function readSession(ctx: TrpcContext): Promise<AdminSession | null> {
   const token = parse(ctx.req.headers.cookie ?? "")[ADMIN_COOKIE];
-  if (!token) return null;
+  const runtimeId = getAuthRuntimeId(ctx);
+  if (!token || !runtimeId) return null;
   try {
     const { payload } = await jwtVerify(token, sessionKey());
-    if (payload.role !== "owner" && payload.role !== "supervisor") return null;
+    if ((payload.role !== "owner" && payload.role !== "supervisor") || !hasMatchingAuthRuntime(runtimeId, payload.runtimeId)) return null;
     return { role: payload.role, supervisorId: typeof payload.supervisorId === "number" ? payload.supervisorId : undefined };
   } catch {
     return null;
@@ -170,10 +187,11 @@ async function readSession(ctx: TrpcContext): Promise<AdminSession | null> {
 
 async function readPartnerSession(ctx: TrpcContext): Promise<PartnerSession | null> {
   const token = parse(ctx.req.headers.cookie ?? "")[PARTNER_COOKIE];
-  if (!token) return null;
+  const runtimeId = getAuthRuntimeId(ctx);
+  if (!token || !runtimeId) return null;
   try {
     const { payload } = await jwtVerify(token, sessionKey());
-    if (typeof payload.partnerId !== "number") return null;
+    if (typeof payload.partnerId !== "number" || !hasMatchingAuthRuntime(runtimeId, payload.runtimeId)) return null;
     return { partnerId: payload.partnerId };
   } catch {
     return null;
@@ -208,15 +226,15 @@ async function requirePartnerStore(ctx: TrpcContext, storeId: number) {
 function setAdminCookie(ctx: TrpcContext, token: string) {
   ctx.res.cookie(ADMIN_COOKIE, token, {
     ...getSessionCookieOptions(ctx.req),
-    maxAge: 12 * 60 * 60 * 1000,
   });
+  ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
 }
 
 function setPartnerCookie(ctx: TrpcContext, token: string) {
   ctx.res.cookie(PARTNER_COOKIE, token, {
     ...getSessionCookieOptions(ctx.req),
-    maxAge: 12 * 60 * 60 * 1000,
   });
+  ctx.res.clearCookie(ADMIN_COOKIE, getSessionCookieOptions(ctx.req));
 }
 
 async function getSettings() {
@@ -601,20 +619,23 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const found = await db.select({ id: partners.id, name: partners.name, username: partners.username, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes }).from(partners).where(eq(partners.id, session.partnerId)).limit(1);
-      if (!found[0]) return null;
+      if (!found[0] || !found[0].active) return null;
       const assignedStores = await db.select().from(stores).where(eq(stores.partnerId, found[0].id)).orderBy(stores.category, stores.sortOrder, stores.name);
       return { ...found[0], stores: assignedStores };
     }),
     login: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: passwordSchema })).mutation(async ({ ctx, input }) => {
+      const runtimeId = getAuthRuntimeId(ctx);
+      if (!runtimeId) throw new Error("تعذر تأمين جلسة الشريك، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const found = await db.select().from(partners).where(and(eq(partners.username, input.username), eq(partners.active, true))).limit(1);
       if (!found[0] || !await verifySecret(input.password, found[0].passwordHash)) throw new Error("بيانات دخول الشريك غير صحيحة");
-      setPartnerCookie(ctx, await createPartnerSession({ partnerId: found[0].id }));
+      setPartnerCookie(ctx, await createPartnerSession({ partnerId: found[0].id, runtimeId }));
       return { id: found[0].id, name: found[0].name };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
+      ctx.res.clearCookie(ADMIN_COOKIE, getSessionCookieOptions(ctx.req));
       return { success: true };
     }),
     store: router({
@@ -977,21 +998,24 @@ export const lahzaRouter = router({
       z.object({ role: z.literal("owner"), pin: passwordSchema }),
       z.object({ role: z.literal("supervisor"), username: z.string().trim().min(3).max(64), password: passwordSchema }),
     ])).mutation(async ({ ctx, input }) => {
+      const runtimeId = getAuthRuntimeId(ctx);
+      if (!runtimeId) throw new Error("تعذر تأمين جلسة الإدارة، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       if (input.role === "owner") {
         const settings = await getSettings();
         if (!await verifySecret(input.pin, settings.masterPinHash)) throw new Error("رمز PIN غير صحيح");
-        setAdminCookie(ctx, await createSession({ role: "owner" }));
+        setAdminCookie(ctx, await createSession({ role: "owner", runtimeId }));
         return { role: "owner" as const };
       }
       const found = await db.select().from(supervisors).where(and(eq(supervisors.username, input.username), eq(supervisors.active, true))).limit(1);
       if (!found[0] || !await verifySecret(input.password, found[0].passwordHash)) throw new Error("بيانات دخول المشرف غير صحيحة");
-      setAdminCookie(ctx, await createSession({ role: "supervisor", supervisorId: found[0].id }));
+      setAdminCookie(ctx, await createSession({ role: "supervisor", supervisorId: found[0].id, runtimeId }));
       return { role: "supervisor" as const };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       ctx.res.clearCookie(ADMIN_COOKIE, getSessionCookieOptions(ctx.req));
+      ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
       return { success: true };
     }),
     changePin: publicProcedure.input(z.object({ currentPin: passwordSchema, newPin: passwordSchema })).mutation(async ({ ctx, input }) => {

@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { getAuthRuntimeId } from "@/lib/authRuntime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -14,7 +15,9 @@ const trpcClient = trpc.createClient({
       url: "/api/trpc",
       transformer: superjson,
       fetch(input, init) {
-        return globalThis.fetch(input, { ...(init ?? {}), credentials: "include" });
+        const headers = new Headers(init?.headers);
+        headers.set("x-lahza-auth-runtime", getAuthRuntimeId());
+        return globalThis.fetch(input, { ...(init ?? {}), credentials: "include", headers });
       },
     }),
   ],

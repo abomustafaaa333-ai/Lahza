@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, hasMatchingAuthRuntime, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
-describe("اختصار الصفحة الرئيسية للإدارة", () => {
+	describe("اختصار الصفحة الرئيسية للإدارة", () => {
   it("يظهر لوحة التحكم للمالك ولوحة الإشراف للمشرف ولا يظهر للعميل", () => {
     expect(getAdminHomeShortcut("owner")).toMatchObject({ label: "لوحة التحكم", path: "/admin" });
     expect(getAdminHomeShortcut("supervisor")).toMatchObject({ label: "لوحة الإشراف", path: "/admin" });
@@ -17,6 +17,21 @@ describe("اختصار الصفحة الرئيسية للإدارة", () => {
 	  expect(getHomeShortcut({ adminRole: "supervisor", partnerActive: true })).toMatchObject({ label: "لوحة الإشراف", path: "/admin" });
 	  expect(getHomeShortcut({ adminRole: null, partnerActive: true })).toMatchObject({ label: "متجري", path: "/partner/store" });
 	});
+	});
+
+describe("حماية جلسات الأدوار", () => {
+  const activeRuntime = "59f19ed6-e89b-4e4f-b2e0-1fd1e358cac6";
+
+  it("يقبل فقط معرّف تشغيل صالحاً ويطابق تماماً معرّف الجلسة الموقّعة", () => {
+    expect(isAuthRuntimeId(activeRuntime)).toBe(true);
+    expect(isAuthRuntimeId("قصير")).toBe(false);
+    expect(hasMatchingAuthRuntime(activeRuntime, activeRuntime)).toBe(true);
+  });
+
+  it("يرفض جلسة المالك أو المشرف أو الشريك عند إعادة فتح التطبيق بمعرّف تشغيل مختلف", () => {
+    expect(hasMatchingAuthRuntime("6d1e628a-c54c-4e79-b995-6680d1bbcd67", activeRuntime)).toBe(false);
+    expect(hasMatchingAuthRuntime(undefined, activeRuntime)).toBe(false);
+  });
 });
 
 describe("حالة المتجر للعميل", () => {
