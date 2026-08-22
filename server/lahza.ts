@@ -739,12 +739,13 @@ export const lahzaRouter = router({
         return partner ? [{ ...item, partnerName: partner.name, storeOpen: partner.storeOpen }] : [];
       });
     }),
-    offers: publicProcedure.input(z.object({ storeId: z.number().int().positive() }).optional()).query(async ({ input }) => {
+    offers: publicProcedure.input(z.object({ storeId: z.number().int().positive().optional(), includeRegular: z.boolean().optional() }).optional()).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await cleanExpiredOffers();
       const now = new Date();
-      const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)), ...(input?.storeId ? [eq(partnerOffers.storeId, input.storeId)] : [eq(partnerOffers.featuredStatus, "approved")]))).orderBy(desc(partnerOffers.createdAt));
+      const featuredOnly = !input?.storeId && !input?.includeRegular;
+      const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)), ...(input?.storeId ? [eq(partnerOffers.storeId, input.storeId)] : featuredOnly ? [eq(partnerOffers.featuredStatus, "approved")] : []))).orderBy(desc(partnerOffers.createdAt));
       const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
       const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
       const offerProductIds = activeOffers.flatMap(offer => offer.catalogItemId ? [offer.catalogItemId] : []);
@@ -753,7 +754,7 @@ export const lahzaRouter = router({
       const storeById = new Map(activeStores.map(store => [store.id, store]));
       const productById = new Map(offerProducts.map(product => [product.id, product]));
       return activeOffers.flatMap(offer => {
-        if (!canShowFeaturedOffer(offer.featuredStatus, offer.active, offer.expiresAt, now)) return [];
+        if (featuredOnly && !canShowFeaturedOffer(offer.featuredStatus, offer.active, offer.expiresAt, now)) return [];
         const partner = partnerById.get(offer.partnerId);
         const store = offer.storeId ? storeById.get(offer.storeId) : null;
         const product = offer.catalogItemId ? productById.get(offer.catalogItemId) : null;
