@@ -27,7 +27,7 @@ export const partners = mysqlTable("partners", {
 export const stores = mysqlTable("stores", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 140 }).notNull(),
-  category: mysqlEnum("category", ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers", "sweets", "clothing", "mobile_accessories", "beauty_boutique"]).notNull(),
+  category: mysqlEnum("category", ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"]).notNull(),
   partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
   active: boolean("active").notNull().default(true),
   sortOrder: int("sortOrder").notNull().default(0),
@@ -39,7 +39,7 @@ export const catalogItems = mysqlTable("catalog_items", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 80 }).notNull().unique(),
   name: varchar("name", { length: 160 }).notNull(),
-  category: mysqlEnum("category", ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers", "sweets", "clothing", "mobile_accessories", "beauty_boutique"]).notNull(),
+  category: mysqlEnum("category", ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"]).notNull(),
   unit: varchar("unit", { length: 16 }).notNull(),
   unitPrice: int("unitPrice").notNull().default(0),
   available: boolean("available").notNull().default(true),
@@ -186,6 +186,17 @@ export const customerProfiles = mysqlTable("customer_profiles", {
 export const customerPresence = mysqlTable("customer_presence", {
   deviceId: varchar("deviceId", { length: 80 }).primaryKey(),
   lastSeen: timestamp("lastSeen").defaultNow().onUpdateNow().notNull(),
+});
+
+export const missingProductRequests = mysqlTable("missing_product_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  customerName: varchar("customerName", { length: 80 }).notNull(),
+  customerPhone: varchar("customerPhone", { length: 24 }).notNull(),
+  productName: varchar("productName", { length: 180 }).notNull(),
+  notes: varchar("notes", { length: 500 }),
+  status: mysqlEnum("status", ["new", "contacted", "fulfilled", "closed"]).notNull().default("new"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 export type User = typeof users.$inferSelect;

@@ -7,7 +7,7 @@ import { IntercityBooking, type IntercityTripSelection } from "@/components/Inte
 import { trpc } from "@/lib/trpc";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
-import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, toNewSyp, type LahzaCategory } from "@shared/lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, toNewSyp, type LahzaCategory } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
 import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Pencil, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
@@ -44,8 +44,8 @@ const minimumDeliveryOrderSyp = MINIMUM_DELIVERY_ORDER_NEW_SYP;
 
 const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
   { id: 1001, name: "عدس أحمر", category: "groceries", unit: "كغ", unitPrice: 25000, available: true },
-  { id: 1002, name: "فروج طازج", category: "chicken", unit: "كغ", unitPrice: 45000, available: true },
-  { id: 1003, name: "جرة غاز منزلية", category: "fuel", unit: "قنينة", unitPrice: 0, available: true },
+  { id: 1002, name: "فروج طازج", category: "restaurants", unit: "كغ", unitPrice: 45000, available: true },
+  { id: 1003, name: "جرة غاز منزلية", category: "gas", unit: "قنينة", unitPrice: 0, available: true },
   { id: 1004, name: "عرض طعميني — صحن حلويات", category: "offers", unit: "وحدة", unitPrice: 30000, available: true },
   { id: 1005, name: "عرض منبج — خصم على التوصيل", category: "offers", unit: "وحدة", unitPrice: 0, available: true },
 ];
@@ -60,7 +60,14 @@ function getDeviceId() {
 }
 
 const categoryIcons = {
+  restaurants: UtensilsCrossed,
   groceries: Wheat,
+  produce: Store,
+  bakery: CakeSlice,
+  gas: Fuel,
+  baby: PackagePlus,
+  school_stationery: ClipboardList,
+  beauty_personal_care: Sparkles,
   chicken: UtensilsCrossed,
   breakfast: UtensilsCrossed,
   lamb: UtensilsCrossed,
@@ -76,7 +83,14 @@ const categoryIcons = {
 };
 
 const categoryColors = {
+  restaurants: "from-red-100 to-rose-50 text-red-800",
   groceries: "from-amber-100 to-orange-50 text-amber-800",
+  produce: "from-emerald-100 to-lime-50 text-emerald-800",
+  bakery: "from-orange-100 to-amber-50 text-orange-800",
+  gas: "from-blue-100 to-sky-50 text-blue-800",
+  baby: "from-sky-100 to-indigo-50 text-sky-800",
+  school_stationery: "from-violet-100 to-indigo-50 text-violet-800",
+  beauty_personal_care: "from-pink-100 to-rose-50 text-pink-800",
   chicken: "from-red-100 to-rose-50 text-red-800",
   breakfast: "from-yellow-100 to-amber-50 text-amber-800",
   lamb: "from-orange-100 to-red-50 text-orange-800",
@@ -175,6 +189,11 @@ export default function Home() {
   const [taxiType, setTaxiType] = useState<"standard" | "van">("standard");
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
+  const [missingProductOpen, setMissingProductOpen] = useState(false);
+  const [missingRequesterName, setMissingRequesterName] = useState("");
+  const [missingProductName, setMissingProductName] = useState("");
+  const [missingProductPhone, setMissingProductPhone] = useState("");
+  const [missingProductNotes, setMissingProductNotes] = useState("");
 
   const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false, refetchOnMount: "always", refetchOnWindowFocus: true });
@@ -182,6 +201,17 @@ export default function Home() {
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const createMissingProductRequest = trpc.lahza.missingProducts.create.useMutation({
+    onSuccess: () => {
+      setMissingProductOpen(false);
+      setMissingRequesterName("");
+      setMissingProductName("");
+      setMissingProductPhone("");
+      setMissingProductNotes("");
+      toast.success("تم إرسال طلبك للإدارة، وسنتابع توفر المنتج.");
+    },
+    onError: error => toast.error(error.message),
+  });
   const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery({ category: activeCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
   const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
@@ -491,7 +521,7 @@ export default function Home() {
           <PageHeading eyebrow={selectedIntercityTrip ? "اطلب من جرابلس" : "طلبك للبيت"} title="اختر احتياجك" detail={selectedIntercityTrip ? `طلبك سيُسجل ضمن ${selectedIntercityTrip.title}. أضف المنتجات من أقسام منبج ثم أرسل السلة.` : "أضف المنتجات من القسم المناسب، ثم راجع طلبك قبل الإرسال."} onBack={goHome} />
           <section className="app-shell pb-32">
             <div className="category-grid">
-              {(Object.keys(categoryMeta) as LahzaCategory[]).map(category => {
+              {customerDeliveryCategories.map(category => {
                 const meta = categoryMeta[category];
                 const Icon = categoryIcons[category];
                 const count = cart.filter(line => line.category === category).length;
@@ -502,12 +532,15 @@ export default function Home() {
                 </button>;
               })}
             </div>
+            <button type="button" onClick={() => setMissingProductOpen(true)} className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-dashed border-blue-300 bg-blue-50/70 px-4 py-4 text-right text-blue-950 transition hover:bg-blue-100"><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white"><CircleHelp className="h-5 w-5" /></span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">لم تجد ما تريد؟</strong><small className="text-xs font-medium text-slate-600">اطلب منتجاً غير موجود وسنبحث عن متجر يوفره.</small></span><ChevronLeft className="h-5 w-5" /></button>
           </section>
           <div className="bottom-cta"><div><span>السلة</span><strong>{cart.length ? `${cart.length} أصناف` : "فارغة"}</strong></div><Button disabled={!cart.length} onClick={openDeliveryCheckout} className="rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700">متابعة <ChevronLeft className="mr-1 h-4 w-4" /></Button></div>
         </>
       ) : null}
 
       {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("delivery"); setActiveCategory(null); }} onChoose={store => { setSelectedStore(store); setScreen("store"); }} /> : null}
+
+      <Dialog open={missingProductOpen} onOpenChange={setMissingProductOpen}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">اطلب منتجاً غير موجود</DialogTitle><DialogDescription className="text-right">اكتب ما تحتاجه وسيتابع فريق لحظة إمكانية توفيره أو إضافة متجر مناسب.</DialogDescription></DialogHeader><div className="grid gap-3"><div><Label>اسمك</Label><Input value={missingRequesterName} onChange={event => setMissingRequesterName(event.target.value)} placeholder="الاسم" /></div><div><Label>رقم الهاتف</Label><Input dir="ltr" inputMode="tel" value={missingProductPhone} onChange={event => setMissingProductPhone(event.target.value)} placeholder="+9639xxxxxxxx" /></div><div><Label>اسم المنتج المطلوب</Label><Input value={missingProductName} onChange={event => setMissingProductName(event.target.value)} placeholder="مثال: حقيبة مدرسية للصف الخامس" /></div><div><Label>تفاصيل إضافية (اختياري)</Label><Textarea value={missingProductNotes} onChange={event => setMissingProductNotes(event.target.value)} placeholder="اللون أو المقاس أو العلامة التجارية" /></div><Button disabled={createMissingProductRequest.isPending || missingRequesterName.trim().length < 2 || missingProductName.trim().length < 2 || !/^\+9639\d{8}$/.test(missingProductPhone)} onClick={() => createMissingProductRequest.mutate({ customerName: missingRequesterName.trim(), customerPhone: missingProductPhone.trim(), productName: missingProductName.trim(), notes: missingProductNotes.trim() || undefined })} className="mt-1 rounded-2xl bg-red-600 py-6 hover:bg-red-700">{createMissingProductRequest.isPending ? "جارٍ الإرسال..." : "إرسال الطلب"}</Button></div></DialogContent></Dialog>
       {screen === "store" && selectedStore ? <StoreProductsScreen store={selectedStore} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("stores"); setSelectedProduct(null); }} onChooseProduct={product => { setSelectedProduct(product); setScreen("productQuantity"); }} onOpenOffers={() => setScreen("storeOffers")} /> : null}
       {screen === "productQuantity" && selectedStore && selectedProduct ? <ProductQuantityScreen store={selectedStore} product={selectedProduct} onBack={() => setScreen("store")} onAdd={quantity => { void addFromStore(selectedStore.id, () => addLine({ category: selectedStore.category, itemName: selectedProduct.name, quantity, unit: selectedProduct.unit, unitPrice: selectedProduct.unitPrice, catalogItemId: selectedProduct.id < 0 ? undefined : selectedProduct.id, priceKnown: selectedStore.category !== "pharmacy" && selectedProduct.unitPrice > 0 }, "store")); }} /> : null}
       {screen === "storeOffers" && selectedStore ? <StoreOffersScreen store={selectedStore} offers={(partnerOffers as CustomerOffer[]).filter(offer => offer.storeId === selectedStore.id)} loading={partnerOffersQuery.isLoading && !isStaticDemo} onBack={() => setScreen("store")} onChoose={chooseOffer} /> : null}

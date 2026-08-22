@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
@@ -19,7 +19,7 @@ import type { TrpcContext } from "./_core/context";
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
-const categories = ["groceries", "chicken", "breakfast", "lamb", "butcher", "fuel", "pharmacy", "other", "offers", "sweets", "clothing", "mobile_accessories", "beauty_boutique"] as const;
+const categories = ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const adminRoles = ["owner", "supervisor"] as const;
 const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"] as const;
 const MANBIJ_CENTER = { lat: 36.5281, lng: 37.9549 };
@@ -278,6 +278,8 @@ async function getDrivingQuote(customerLat: number, customerLng: number) {
 async function ensureCatalogSeed() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+  const existing = await db.select({ id: catalogItems.id }).from(catalogItems).limit(1);
+  if (existing.length) return db;
   for (const item of catalogSeed) {
     await db.insert(catalogItems).values({
       code: item.code,
@@ -374,6 +376,12 @@ const intercityOrderInput = z.object({
 });
 
 const deviceIdSchema = z.string().trim().min(16, "معرف الجهاز غير صالح").max(80);
+const missingProductRequestInput = z.object({
+  customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
+  customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
+  productName: z.string().trim().min(2, "اكتب اسم المنتج المطلوب").max(180),
+  notes: z.string().trim().max(500).optional(),
+});
 export function calculateLineTotal(quantity: number, unitPrice: number, unit: string) {
   if (unit === "جرام") return Math.round((quantity / 1000) * unitPrice);
   return Math.round(quantity * unitPrice);
@@ -459,6 +467,27 @@ export const lahzaRouter = router({
       const activeSince = new Date(Date.now() - 2 * 60 * 1000);
       const activeRows = await db.select({ deviceId: customerPresence.deviceId }).from(customerPresence).where(gt(customerPresence.lastSeen, activeSince));
       return { activeVisitors: activeRows.length };
+    }),
+  }),
+  missingProducts: router({
+    create: publicProcedure.input(missingProductRequestInput).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await db.insert(missingProductRequests).values({ ...input, notes: input.notes || null });
+      return { success: true };
+    }),
+    list: publicProcedure.query(async ({ ctx }) => {
+      await requireAdmin(ctx);
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      return db.select().from(missingProductRequests).orderBy(desc(missingProductRequests.createdAt));
+    }),
+    updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["new", "contacted", "fulfilled", "closed"]) })).mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx);
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await db.update(missingProductRequests).set({ status: input.status }).where(eq(missingProductRequests.id, input.id));
+      return { success: true };
     }),
   }),
   delivery: router({

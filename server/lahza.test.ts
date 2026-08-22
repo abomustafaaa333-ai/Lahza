@@ -123,26 +123,28 @@ describe("سعة رحلة منبج إلى جرابلس", () => {
   });
 });
 
-describe("قسم الكازيات والغاز", () => {
-  it("يعرض جرة غاز كوحدة قابلة للتسعير", () => {
+describe("قسم الغاز المنزلي", () => {
+  it("يعرض جرة غاز كوحدة قابلة للتسعير من دون إظهار الوقود القديم", () => {
     const gasCylinder = catalogSeed.find(item => item.name === "جرة غاز");
-    expect(categoryMeta.fuel.title).toBe("الكازيات والغاز");
-    expect(gasCylinder).toMatchObject({ category: "fuel", unit: "قنينة" });
+    expect(categoryMeta.gas.title).toBe("الغاز المنزلي");
+    expect(gasCylinder).toMatchObject({ category: "gas", unit: "قنينة" });
   });
 });
 
 describe("الأقسام ومحتوى الواجهة الجديد", () => {
-  it("يُعرّف قسمي منتجات أخرى والعروض للإدارة والعميل", () => {
-    expect(categoryMeta.other.title).toBe("منتجات أخرى");
-    expect(categoryMeta.offers.title).toBe("العروض");
-    expect(categoryMeta.offers.priced).toBe(true);
+  it("يبقي التصنيفات القديمة للتاريخ ويخفيها من قوائم الإنشاء والعميل", () => {
+    expect(categoryMeta.other.title).toBe("منتجات غير مصنفة");
+    expect(categoryMeta.offers.title).toBe("عروض قديمة");
+    expect(Object.keys(categoryMeta)).not.toContain("other");
+    expect(Object.keys(categoryMeta)).not.toContain("offers");
   });
 
-  it("يُعرّف أقسام المتاجر الجديدة لاختيار المتجر ثم منتجاته", () => {
+  it("يُعرّف أقسام المتاجر الجديدة بالأسماء المعتمدة", () => {
     expect(categoryMeta.sweets.title).toBe("الحلويات والمعجنات");
     expect(categoryMeta.clothing.title).toBe("الألبسة");
-    expect(categoryMeta.mobile_accessories.title).toBe("الموبايلات والإكسسوارات");
-    expect(categoryMeta.beauty_boutique.title).toBe("مواد التجميل والبوتيك");
+    expect(categoryMeta.mobile_accessories.title).toBe("موبايلات وإلكترونيات خفيفة");
+    expect(categoryMeta.beauty_personal_care.title).toBe("عناية شخصية وتجميل");
+    expect(categoryMeta.school_stationery.title).toBe("أدوات مدرسية وقرطاسية");
   });
 
   it("يوفر نصين افتراضيين منفصلين للشريط المتحرك", () => {

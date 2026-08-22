@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { buildEmployeeOrderWhatsAppUrl, buildWhatsAppLocationUrl, mapUrlFromNotes, shareCustomerContact, shareOrderImage } from "@/lib/adminShare";
-import { categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, orderStatusLabels, toNewSyp, type LahzaCategory } from "@shared/lahza";
+import { categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, orderStatusLabels, storeCategories, toNewSyp, type LahzaCategory } from "@shared/lahza";
 import { Archive, ArrowRight, BadgeDollarSign, BellRing, CarFront, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Pencil, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
@@ -11,7 +11,7 @@ import { toast } from "sonner";
 
 const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
 
-type Tab = "orders" | "intercityOrders" | "taxiOrders" | "archive" | "catalog" | "expiredOffers" | "stores" | "delivery" | "customers" | "employees" | "team" | "partners" | "intercity" | "settings";
+type Tab = "orders" | "intercityOrders" | "taxiOrders" | "archive" | "catalog" | "expiredOffers" | "stores" | "delivery" | "customers" | "missingProducts" | "employees" | "team" | "partners" | "intercity" | "settings";
 const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: boolean }[] = [
   { id: "orders", label: "طلبات التوصيل", icon: ClipboardList },
   { id: "intercityOrders", label: "طلبات جرابلس", icon: Route },
@@ -22,6 +22,7 @@ const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: bo
   { id: "stores", label: "المتاجر", icon: Store, ownerOnly: true },
   { id: "delivery", label: "رسوم التوصيل", icon: MapPinned },
   { id: "customers", label: "الحضور", icon: UsersRound, ownerOnly: true },
+  { id: "missingProducts", label: "طلبات خاصة", icon: PackageSearch },
   { id: "employees", label: "موظفو لحظة", icon: UsersRound, ownerOnly: true },
   { id: "team", label: "المشرفون", icon: UsersRound, ownerOnly: true },
   { id: "partners", label: "الشركاء", icon: Store, ownerOnly: true },
@@ -53,7 +54,7 @@ export default function Admin() {
     {menuOpen ? <button className="admin-backdrop" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" /> : null}
     <section className="admin-content">
       <header className="admin-topbar"><button className="admin-menu-button" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button><div><p>لوحة التحكم</p><h1>{availableTabs.find(item => item.id === tab)?.label}</h1></div><div className="mr-auto flex items-center gap-2"><button className="admin-home-link mr-0" onClick={() => setLocation("/")}><span>الصفحة الرئيسية</span><ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => logout.mutate()} disabled={logout.isPending} className="inline-flex items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-2 text-[0.63rem] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed"><LogOut className="h-4 w-4" /><span>{logout.isPending ? "جارٍ الخروج..." : "تسجيل الخروج"}</span></button></div></header>
-      <div className="admin-page">{tab === "orders" ? <OrdersPanel scope="delivery" /> : null}{tab === "intercityOrders" ? <OrdersPanel scope="intercity" /> : null}{tab === "taxiOrders" ? <OrdersPanel scope="taxi" /> : null}{tab === "archive" ? <OrdersPanel scope="archive" /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" ? <ExpiredOffersPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
+      <div className="admin-page">{tab === "orders" ? <OrdersPanel scope="delivery" /> : null}{tab === "intercityOrders" ? <OrdersPanel scope="intercity" /> : null}{tab === "taxiOrders" ? <OrdersPanel scope="taxi" /> : null}{tab === "archive" ? <OrdersPanel scope="archive" /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" ? <ExpiredOffersPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "missingProducts" ? <MissingProductRequestsPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
     </section>
   </div>;
 }
@@ -364,6 +365,16 @@ function SettingsPanel() {
     setTickerSecondary(normalizeTickerText(interfaceSettingsQuery.data.tickerSecondary, DEFAULT_TICKER_SECONDARY));
   }, [interfaceSettingsQuery.data]);
   return <div className="space-y-5"><section className="admin-section"><div className="admin-section-heading"><div><p>محتوى واجهة العميل</p><h2>الشريطان المتحركان</h2></div><Settings2 className="h-5 w-5 text-red-600" /></div><p className="settings-copy">يظهر النصان في شريط واحد أعلى التطبيق، ويفصل بينهما رمز نجمة تلقائياً.</p>{interfaceSettingsQuery.isLoading ? <PanelLoading text="جارٍ تحميل نصوص الشريط" /> : <div className="pin-form"><div><Label>نص الشريط الأول</Label><Input value={tickerPrimary} onChange={event => setTickerPrimary(event.target.value.slice(0, 220))} placeholder="حقق ١٠ طلبات واربح معنا هدية" /></div><div><Label>نص الشريط الثاني</Label><Input value={tickerSecondary} onChange={event => setTickerSecondary(event.target.value.slice(0, 220))} placeholder="لحظة — منبج بين يديك" /></div><Button disabled={updateInterface.isPending || tickerPrimary.trim().length < 2 || tickerSecondary.trim().length < 2} onClick={() => updateInterface.mutate({ tickerPrimary: tickerPrimary.trim(), tickerSecondary: tickerSecondary.trim() })} className="rounded-xl bg-red-600 hover:bg-red-700"><Settings2 className="h-4 w-4" /> {updateInterface.isPending ? "جارٍ الحفظ..." : "حفظ نصي الشريط"}</Button></div>}</section><section className="admin-section"><div className="admin-section-heading"><div><p>حماية لوحة التحكم</p><h2>تغيير رمز PIN للمالك</h2></div><KeyRound className="h-5 w-5 text-blue-900" /></div><p className="settings-copy">لا تشارك رمز الدخول مع المشرفين. لديهم حسابات مستقلة تُنشأ من هذه اللوحة.</p><div className="pin-form"><div><Label>رمز PIN الحالي</Label><Input type="password" inputMode="numeric" value={currentPin} onChange={e => setCurrentPin(e.target.value)} /></div><div><Label>رمز PIN الجديد</Label><Input type="password" inputMode="numeric" value={newPin} onChange={e => setNewPin(e.target.value)} /></div><Button disabled={changePin.isPending} onClick={() => changePin.mutate({ currentPin, newPin })} className="rounded-xl bg-blue-900 hover:bg-blue-950"><KeyRound className="h-4 w-4" /> حفظ الرمز الجديد</Button></div></section></div>;
+}
+
+function MissingProductRequestsPanel() {
+  const utils = trpc.useUtils();
+  const requestsQuery = trpc.lahza.missingProducts.list.useQuery();
+  const updateStatus = trpc.lahza.missingProducts.updateStatus.useMutation({ onSuccess: () => { void utils.lahza.missingProducts.list.invalidate(); toast.success("تم تحديث حالة الطلب الخاص"); }, onError: error => toast.error(error.message) });
+  if (requestsQuery.isLoading) return <PanelLoading text="جارٍ تحميل طلبات المنتجات" />;
+  const requests = requestsQuery.data ?? [];
+  const statusLabel = { new: "جديد", contacted: "تم التواصل", fulfilled: "تم توفيره", closed: "مغلق" } as const;
+  return <div className="space-y-5"><section className="admin-section"><div className="admin-section-heading"><div><p>إشارات الطلب من العملاء</p><h2>طلبات المنتجات غير الموجودة</h2></div><PackageSearch className="h-5 w-5 text-red-600" /></div><p className="settings-copy">راجع الطلبات المتكررة قبل إضافة متجر أو قسم جديد. لا تعد العميل بالتوفر قبل تأكيد الشريك.</p>{requests.length ? <div className="space-y-3">{requests.map(request => <article key={request.id} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><strong className="block text-sm text-blue-950">{request.productName}</strong><span className="mt-1 block text-xs font-bold text-slate-700">{request.customerName}</span><a dir="ltr" href={`tel:${request.customerPhone}`} className="mt-1 inline-flex items-center gap-1 text-xs text-blue-800"><Phone className="h-3 w-3" /> {request.customerPhone}</a>{request.notes ? <p className="mt-2 text-xs leading-6 text-slate-600">{request.notes}</p> : null}<small className="mt-2 block text-[0.68rem] text-slate-400">{new Date(request.createdAt).toLocaleString("ar-SY", { dateStyle: "medium", timeStyle: "short" })}</small></div><select value={request.status} disabled={updateStatus.isPending} onChange={event => updateStatus.mutate({ id: request.id, status: event.target.value as "new" | "contacted" | "fulfilled" | "closed" })} className="form-select w-auto text-xs"><option value="new">{statusLabel.new}</option><option value="contacted">{statusLabel.contacted}</option><option value="fulfilled">{statusLabel.fulfilled}</option><option value="closed">{statusLabel.closed}</option></select></div></article>)}</div> : <Empty icon={PackageSearch} title="لا توجد طلبات خاصة بعد" text="ستظهر هنا المنتجات التي يبحث عنها العملاء ولم يجدوها في الأقسام الحالية." />}</section></div>;
 }
 
 function Empty({ icon: Icon, title, text }: { icon: typeof ClipboardList; title: string; text: string }) { return <div className="admin-empty"><Icon className="h-7 w-7" /><h3>{title}</h3><p>{text}</p></div>; }

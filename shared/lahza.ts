@@ -1,17 +1,24 @@
 export type LahzaCategory =
+  | "restaurants"
   | "groceries"
-  | "chicken"
-  | "breakfast"
-  | "lamb"
+  | "produce"
+  | "bakery"
   | "butcher"
-  | "fuel"
+  | "gas"
   | "pharmacy"
-  | "other"
-  | "offers"
   | "sweets"
   | "clothing"
   | "mobile_accessories"
-  | "beauty_boutique";
+  | "beauty_personal_care"
+  | "baby"
+  | "school_stationery"
+  | "chicken"
+  | "breakfast"
+  | "lamb"
+  | "fuel"
+  | "beauty_boutique"
+  | "other"
+  | "offers";
 
 export type CatalogSeed = {
   code: string;
@@ -21,20 +28,37 @@ export type CatalogSeed = {
 };
 
 export const categoryMeta: Record<LahzaCategory, { title: string; subtitle: string; unit: string; priced: boolean }> = {
-  groceries: { title: "البقوليات", subtitle: "حبوب وأرز وبرغل", unit: "وحدة", priced: true },
-  chicken: { title: "مطاعم فروج", subtitle: "وجبات وسندويش", unit: "وحدة", priced: true },
-  breakfast: { title: "فلافل وإفطار", subtitle: "وجبات صباحية", unit: "وحدة", priced: true },
-  lamb: { title: "مطاعم لحم غنم", subtitle: "مشاوي ولحم بعجين", unit: "وحدة", priced: true },
-  butcher: { title: "الملحمة", subtitle: "الكمية بالجرام", unit: "جرام", priced: true },
-  fuel: { title: "الكازيات والغاز", subtitle: "وقود بالليتر أو قناني غاز", unit: "ليتر", priced: true },
-  pharmacy: { title: "الصيدليات", subtitle: "أضف أسماء الأدوية", unit: "طلب", priced: false },
-  other: { title: "منتجات أخرى", subtitle: "منتجات متنوعة تضيفها الإدارة", unit: "وحدة", priced: true },
-  offers: { title: "العروض", subtitle: "عروض مميزة يضيفها المدير", unit: "وحدة", priced: true },
+  restaurants: { title: "مطاعم ومأكولات", subtitle: "إفطار، فروج، مشاوي وسندويش", unit: "وحدة", priced: true },
+  groceries: { title: "بقاليات ومواد غذائية", subtitle: "أرز ومعلبات وألبان ومنظفات", unit: "وحدة", priced: true },
+  produce: { title: "خضار وفواكه", subtitle: "خضار وفواكه طازجة", unit: "وحدة", priced: true },
+  bakery: { title: "مخابز وأفران", subtitle: "خبز ومعجنات يومية", unit: "وحدة", priced: true },
+  butcher: { title: "الملحمة ولحوم ودواجن", subtitle: "الكمية بالجرام", unit: "جرام", priced: true },
+  gas: { title: "الغاز المنزلي", subtitle: "قناني غاز من مورد معتمد", unit: "قنينة", priced: true },
+  pharmacy: { title: "صيدليات واحتياجات صحية", subtitle: "احتياجات صحية وعناية شخصية", unit: "طلب", priced: false },
   sweets: { title: "الحلويات والمعجنات", subtitle: "حلويات، كيك ومعجنات طازجة", unit: "وحدة", priced: true },
   clothing: { title: "الألبسة", subtitle: "ملابس وإكسسوارات متنوعة", unit: "وحدة", priced: true },
-  mobile_accessories: { title: "الموبايلات والإكسسوارات", subtitle: "هواتف وملحقات وأجهزة", unit: "وحدة", priced: true },
-  beauty_boutique: { title: "مواد التجميل والبوتيك", subtitle: "عناية شخصية ومستحضرات تجميل", unit: "وحدة", priced: true },
+  mobile_accessories: { title: "موبايلات وإلكترونيات خفيفة", subtitle: "شواحن وسماعات وملحقات", unit: "وحدة", priced: true },
+  beauty_personal_care: { title: "عناية شخصية وتجميل", subtitle: "عناية ومكياج وعطور", unit: "وحدة", priced: true },
+  baby: { title: "مستلزمات الطفل", subtitle: "حفاضات ومناديل وعناية", unit: "وحدة", priced: true },
+  school_stationery: { title: "أدوات مدرسية وقرطاسية", subtitle: "دفاتر وأقلام وحقائب وفنون", unit: "وحدة", priced: true },
+  chicken: { title: "مطاعم فروج (قديم)", subtitle: "سيُنقل إلى مطاعم ومأكولات", unit: "وحدة", priced: true },
+  breakfast: { title: "فلافل وإفطار (قديم)", subtitle: "سيُنقل إلى مطاعم ومأكولات", unit: "وحدة", priced: true },
+  lamb: { title: "مطاعم لحم غنم (قديم)", subtitle: "سيُنقل إلى مطاعم ومأكولات", unit: "وحدة", priced: true },
+  fuel: { title: "كازيات ووقود (قديم)", subtitle: "سيُنقل إلى الغاز المنزلي أو يُخفى", unit: "وحدة", priced: true },
+  beauty_boutique: { title: "تجميل وبوتيك (قديم)", subtitle: "سيُنقل إلى عناية شخصية وتجميل", unit: "وحدة", priced: true },
+  other: { title: "منتجات غير مصنفة", subtitle: "تصنيف إداري مؤقت", unit: "وحدة", priced: true },
+  offers: { title: "عروض قديمة", subtitle: "تدار من مساحة العروض", unit: "وحدة", priced: true },
 };
+
+for (const legacyCategory of ["chicken", "breakfast", "lamb", "fuel", "beauty_boutique", "other", "offers"] as const) {
+  Object.defineProperty(categoryMeta, legacyCategory, { enumerable: false });
+}
+
+/** الأقسام المتاحة لإنشاء متجر أو منتج جديد. */
+export const storeCategories = ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery"] as const satisfies readonly LahzaCategory[];
+
+/** الأقسام الظاهرة للعميل في صفحة طلبك للبيت. */
+export const customerDeliveryCategories = ["restaurants", "groceries", "produce", "pharmacy", "bakery", "sweets", "butcher", "baby", "school_stationery", "beauty_personal_care", "mobile_accessories", "clothing", "gas"] as const satisfies readonly LahzaCategory[];
 
 export const DEFAULT_TICKER_PRIMARY = "حقق ١٠ طلبات واربح معنا هدية";
 export const DEFAULT_TICKER_SECONDARY = "لحظة — منبج بين يديك";
@@ -49,12 +73,9 @@ const makeSeed = (category: LahzaCategory, unit: CatalogSeed["unit"], names: str
 
 export const catalogSeed: CatalogSeed[] = [
   ...makeSeed("groceries", "وحدة", ["عدس أصفر", "عدس أسود", "حمص حب", "فاصولياء بيضاء", "فول يابس", "برغل أبيض ناعم", "برغل أبيض خشن", "برغل أحمر", "أرز مصري", "أرز كبسة طويل", "فريك", "ذرة", "سميد"]),
-  ...makeSeed("chicken", "وحدة", ["فروج مشوي", "فروج بروستد", "شاورما فروج عربي", "ساندويش شاورما فروج", "ساندويش بروستد", "ساندويش شيش طاووق", "وجبة شيش طاووق", "ساندويش كريسبي", "وجبة كريسبي", "ساندويش فاهيتا", "ساندويش فرنسي"]),
-  ...makeSeed("breakfast", "وحدة", ["صحن فلافل", "ساندويش فلافل", "صحن فول", "صحن حمص/مسبحة", "صحن فتة بالسمنة", "صحن فتة بالزيت"]),
-  ...makeSeed("lamb", "وحدة", ["كباب غنم مشوي", "شقف لحم غنم", "ساندويش كباب غنم", "ساندويش شاورما لحم", "وجبة شاورما لحم", "شرحات لحم غنم", "لحم بعجين منبجي"]),
+  ...makeSeed("restaurants", "وحدة", ["فروج مشوي", "فروج بروستد", "شاورما فروج عربي", "ساندويش شاورما فروج", "صحن فلافل", "ساندويش فلافل", "صحن فول", "كباب غنم مشوي", "ساندويش شاورما لحم", "لحم بعجين منبجي"]),
   ...makeSeed("butcher", "جرام", ["لحم غنم", "لحم فروج"]),
-  ...makeSeed("fuel", "ليتر", ["بنزين", "مازوت"]),
-  { code: "fuel-gas-cylinder", name: "جرة غاز", category: "fuel", unit: "قنينة" },
+  { code: "gas-cylinder", name: "جرة غاز", category: "gas", unit: "قنينة" },
 ];
 
 function safeMoneyValue(value: number) {
