@@ -24,11 +24,23 @@ export const partners = mysqlTable("partners", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const customCategories = mysqlTable("custom_categories", {
+  id: int("id").autoincrement().primaryKey(),
+  slug: varchar("slug", { length: 80 }).notNull().unique(),
+  title: varchar("title", { length: 120 }).notNull(),
+  subtitle: varchar("subtitle", { length: 180 }).notNull().default("متاجر ومنتجات القسم"),
+  active: boolean("active").notNull().default(true),
+  sortOrder: int("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const stores = mysqlTable("stores", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 140 }).notNull(),
-  category: mysqlEnum("category", ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"]).notNull(),
+  category: mysqlEnum("category", ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"]).notNull(),
   restaurantType: mysqlEnum("restaurantType", ["all", "breakfast", "chicken", "grills", "sandwiches"]).notNull().default("all"),
+  customCategoryId: int("customCategoryId").references(() => customCategories.id, { onDelete: "set null" }),
   partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
   active: boolean("active").notNull().default(true),
   sortOrder: int("sortOrder").notNull().default(0),
@@ -40,13 +52,14 @@ export const catalogItems = mysqlTable("catalog_items", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 80 }).notNull().unique(),
   name: varchar("name", { length: 160 }).notNull(),
-  category: mysqlEnum("category", ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"]).notNull(),
+  category: mysqlEnum("category", ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"]).notNull(),
   unit: varchar("unit", { length: 16 }).notNull(),
   unitPrice: int("unitPrice").notNull().default(0),
   available: boolean("available").notNull().default(true),
   deleted: boolean("deleted").notNull().default(false),
   partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
   storeId: int("storeId").references(() => stores.id, { onDelete: "set null" }),
+  customCategoryId: int("customCategoryId").references(() => customCategories.id, { onDelete: "set null" }),
   imageUrl: varchar("imageUrl", { length: 500 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),

@@ -1,6 +1,7 @@
 export type LahzaCategory =
   | "restaurants"
   | "groceries"
+  | "household"
   | "produce"
   | "bakery"
   | "butcher"
@@ -30,6 +31,7 @@ export type CatalogSeed = {
 export const categoryMeta: Record<LahzaCategory, { title: string; subtitle: string; unit: string; priced: boolean }> = {
   restaurants: { title: "مطاعم ومأكولات", subtitle: "إفطار، فروج، مشاوي وسندويش", unit: "وحدة", priced: true },
   groceries: { title: "بقاليات ومواد غذائية", subtitle: "أرز ومعلبات وألبان ومنظفات", unit: "وحدة", priced: true },
+  household: { title: "المواد المنزلية", subtitle: "منظفات وأدوات منزلية للاستخدام اليومي", unit: "وحدة", priced: true },
   produce: { title: "خضار وفواكه", subtitle: "خضار وفواكه طازجة", unit: "وحدة", priced: true },
   bakery: { title: "مخابز وأفران", subtitle: "خبز ومعجنات يومية", unit: "وحدة", priced: true },
   butcher: { title: "الملحمة ولحوم ودواجن", subtitle: "الكمية بالجرام", unit: "جرام", priced: true },
@@ -55,10 +57,10 @@ for (const legacyCategory of ["chicken", "breakfast", "lamb", "fuel", "beauty_bo
 }
 
 /** الأقسام المتاحة لإنشاء متجر أو منتج جديد. */
-export const storeCategories = ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery"] as const satisfies readonly LahzaCategory[];
+export const storeCategories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery"] as const satisfies readonly LahzaCategory[];
 
 /** الأقسام الظاهرة للعميل في صفحة طلبك للبيت. */
-export const customerDeliveryCategories = ["restaurants", "groceries", "produce", "pharmacy", "bakery", "sweets", "butcher", "baby", "school_stationery", "beauty_personal_care", "mobile_accessories", "clothing", "gas"] as const satisfies readonly LahzaCategory[];
+export const customerDeliveryCategories = ["restaurants", "groceries", "household", "produce", "pharmacy", "bakery", "sweets", "butcher", "baby", "school_stationery", "beauty_personal_care", "mobile_accessories", "clothing", "gas"] as const satisfies readonly LahzaCategory[];
 
 export type RestaurantType = "all" | "breakfast" | "chicken" | "grills" | "sandwiches";
 export const restaurantTypeMeta: Record<RestaurantType, string> = {

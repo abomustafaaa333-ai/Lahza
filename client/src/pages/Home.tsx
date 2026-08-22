@@ -28,6 +28,7 @@ type CartLine = {
 };
 
 type StoreOption = { id: number; name: string; category: LahzaCategory; restaurantType?: RestaurantType; storeOpen?: boolean | null };
+type CustomDeliveryCategory = { id: number; slug: string; title: string; subtitle: string };
 type StoreProduct = { id: number; name: string; unit: string; unitPrice: number; available: boolean };
 type CustomerOffer = { id: number; text: string; partnerName: string; storeName?: string | null; storeId?: number | null; storeCategory?: string | null; catalogItemId?: number | null; productName?: string | null; productUnit?: string | null; productPrice?: number | null; imageUrl?: string | null; storeOpen?: boolean | null };
 
@@ -62,6 +63,7 @@ function getDeviceId() {
 const categoryIcons = {
   restaurants: UtensilsCrossed,
   groceries: Wheat,
+  household: ShoppingBasket,
   produce: Store,
   bakery: CakeSlice,
   gas: Fuel,
@@ -85,6 +87,7 @@ const categoryIcons = {
 const categoryColors = {
   restaurants: "from-red-100 to-rose-50 text-red-800",
   groceries: "from-amber-100 to-orange-50 text-amber-800",
+  household: "from-slate-100 to-blue-50 text-blue-800",
   produce: "from-emerald-100 to-lime-50 text-emerald-800",
   bakery: "from-orange-100 to-amber-50 text-orange-800",
   gas: "from-blue-100 to-sky-50 text-blue-800",
@@ -165,6 +168,7 @@ export default function Home() {
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState<LahzaCategory | null>(null);
+  const [activeCustomCategory, setActiveCustomCategory] = useState<CustomDeliveryCategory | null>(null);
   const [restaurantFilter, setRestaurantFilter] = useState<RestaurantType>("all");
   const [selectedStore, setSelectedStore] = useState<StoreOption | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<StoreProduct | null>(null);
@@ -200,6 +204,7 @@ export default function Home() {
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false, refetchOnMount: "always", refetchOnWindowFocus: true });
   const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const createMissingProductRequest = trpc.lahza.missingProducts.create.useMutation({
@@ -213,13 +218,17 @@ export default function Home() {
     },
     onError: error => toast.error(error.message),
   });
-  const categoryStoresInput = useMemo(() => ({ category: activeCategory ?? "groceries", restaurantType: activeCategory === "restaurants" ? restaurantFilter : undefined }), [activeCategory, restaurantFilter]);
+  const categoryStoresInput = useMemo(() => ({ category: activeCategory ?? "groceries", restaurantType: activeCategory === "restaurants" ? restaurantFilter : undefined, customCategorySlug: activeCategory === "other" ? activeCustomCategory?.slug : undefined }), [activeCategory, restaurantFilter, activeCustomCategory?.slug]);
   const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
   const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
   const categoryStores: StoreOption[] = isStaticDemo && activeCategory
     ? [{ id: -1, name: "متجر لحظة التجريبي", category: activeCategory }]
     : categoryStoresQuery.data ?? [];
+  const deliveryCategories = useMemo(() => [
+    ...customerDeliveryCategories.map(category => ({ key: category, category, title: categoryMeta[category].title, subtitle: categoryMeta[category].subtitle, custom: null as CustomDeliveryCategory | null })),
+    ...(customCategoriesQuery.data ?? []).map(category => ({ key: `custom-${category.id}`, category: "other" as LahzaCategory, title: category.title, subtitle: category.subtitle, custom: category as CustomDeliveryCategory })),
+  ], [customCategoriesQuery.data]);
   const selectedStoreProducts = isStaticDemo
     ? products.filter(product => product.category === activeCategory)
     : storeProductsQuery.data?.products ?? [];
@@ -421,6 +430,7 @@ export default function Home() {
   const goHome = () => {
     setScreen("home");
     setActiveCategory(null);
+    setActiveCustomCategory(null);
     setSelectedStore(null);
     setSelectedProduct(null);
     setSelectedOffer(null);
@@ -523,13 +533,13 @@ export default function Home() {
           <PageHeading eyebrow={selectedIntercityTrip ? "اطلب من جرابلس" : "طلبك للبيت"} title="اختر احتياجك" detail={selectedIntercityTrip ? `طلبك سيُسجل ضمن ${selectedIntercityTrip.title}. أضف المنتجات من أقسام منبج ثم أرسل السلة.` : "أضف المنتجات من القسم المناسب، ثم راجع طلبك قبل الإرسال."} onBack={goHome} />
           <section className="app-shell pb-32">
             <div className="category-grid">
-              {customerDeliveryCategories.map(category => {
-                const meta = categoryMeta[category];
-                const Icon = categoryIcons[category];
-                const count = cart.filter(line => line.category === category).length;
-                return <button key={category} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCategory(category); setScreen("stores"); }} className="category-card">
-                  <span className={`category-icon bg-gradient-to-br ${categoryColors[category]}`}><Icon className="h-5 w-5" /></span>
-                  <span className="category-card-copy"><span>{meta.title}</span><small>{meta.subtitle}</small></span>
+              {deliveryCategories.map(item => {
+                const Icon = item.custom ? Store : categoryIcons[item.category];
+                const count = cart.filter(line => line.category === item.category).length;
+                const color = item.custom ? "from-slate-100 to-blue-50 text-blue-800" : categoryColors[item.category];
+                return <button key={item.key} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }} className="category-card">
+                  <span className={`category-icon bg-gradient-to-br ${color}`}><Icon className="h-5 w-5" /></span>
+                  <span className="category-card-copy"><span>{item.title}</span><small>{item.subtitle}</small></span>
                   {count > 0 ? <span className="category-badge">{count}</span> : <Plus className="h-4 w-4 text-slate-300" />}
                 </button>;
               })}
@@ -540,7 +550,7 @@ export default function Home() {
         </>
       ) : null}
 
-      {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} restaurantFilter={restaurantFilter} onRestaurantFilterChange={setRestaurantFilter} onBack={() => { setScreen("delivery"); setActiveCategory(null); }} onChoose={store => { setSelectedStore(store); setScreen("store"); }} /> : null}
+      {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} categoryTitle={activeCustomCategory?.title} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} restaurantFilter={restaurantFilter} onRestaurantFilterChange={setRestaurantFilter} onBack={() => { setScreen("delivery"); setActiveCategory(null); setActiveCustomCategory(null); }} onChoose={store => { setSelectedStore(store); setScreen("store"); }} /> : null}
 
       <Dialog open={missingProductOpen} onOpenChange={setMissingProductOpen}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl bg-white"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">اطلب منتجاً غير موجود</DialogTitle><DialogDescription className="text-right">اكتب ما تحتاجه وسيتابع فريق لحظة إمكانية توفيره أو إضافة متجر مناسب.</DialogDescription></DialogHeader><div className="grid gap-3 rounded-2xl bg-slate-50 p-4"><div><Label>اسمك</Label><Input className="mt-1 border-slate-200 bg-white shadow-sm" value={missingRequesterName} onChange={event => setMissingRequesterName(event.target.value)} placeholder="الاسم" /></div><div><Label>رقم الهاتف</Label><Input className="mt-1 border-slate-200 bg-white shadow-sm" dir="ltr" inputMode="tel" value={missingProductPhone} onChange={event => setMissingProductPhone(event.target.value)} placeholder="+9639xxxxxxxx" /></div><div><Label>اسم المنتج المطلوب</Label><Input className="mt-1 border-slate-200 bg-white shadow-sm" value={missingProductName} onChange={event => setMissingProductName(event.target.value)} placeholder="مثال: حقيبة مدرسية للصف الخامس" /></div><div><Label>تفاصيل إضافية (اختياري)</Label><Textarea className="mt-1 border-slate-200 bg-white shadow-sm" value={missingProductNotes} onChange={event => setMissingProductNotes(event.target.value)} placeholder="اللون أو المقاس أو العلامة التجارية" /></div><Button disabled={createMissingProductRequest.isPending || missingRequesterName.trim().length < 2 || missingProductName.trim().length < 2 || !/^\+9639\d{8}$/.test(missingProductPhone)} onClick={() => createMissingProductRequest.mutate({ customerName: missingRequesterName.trim(), customerPhone: missingProductPhone.trim(), productName: missingProductName.trim(), notes: missingProductNotes.trim() || undefined })} className="mt-1 rounded-2xl bg-red-600 py-6 hover:bg-red-700">{createMissingProductRequest.isPending ? "جارٍ الإرسال..." : "إرسال الطلب"}</Button></div></DialogContent></Dialog>
       {screen === "store" && selectedStore ? <StoreProductsScreen store={selectedStore} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("stores"); setSelectedProduct(null); }} onChooseProduct={product => { setSelectedProduct(product); setScreen("productQuantity"); }} onOpenOffers={() => setScreen("storeOffers")} /> : null}
@@ -603,9 +613,10 @@ export default function Home() {
   );
 }
 
-function StoresScreen({ category, stores, loading, restaurantFilter, onRestaurantFilterChange, onBack, onChoose }: { category: LahzaCategory; stores: StoreOption[]; loading: boolean; restaurantFilter: RestaurantType; onRestaurantFilterChange: (filter: RestaurantType) => void; onBack: () => void; onChoose: (store: StoreOption) => void }) {
+function StoresScreen({ category, categoryTitle, stores, loading, restaurantFilter, onRestaurantFilterChange, onBack, onChoose }: { category: LahzaCategory; categoryTitle?: string; stores: StoreOption[]; loading: boolean; restaurantFilter: RestaurantType; onRestaurantFilterChange: (filter: RestaurantType) => void; onBack: () => void; onChoose: (store: StoreOption) => void }) {
   const meta = categoryMeta[category];
-  return <><PageHeading eyebrow="متاجر القسم" title={`متاجر ${meta.title}`} detail="اختر متجراً لعرض منتجاته وعروضه في صفحة مستقلة." onBack={onBack} /><section className="app-shell pb-12">{category === "restaurants" ? <div className="mb-5 flex flex-wrap gap-2" aria-label="فلترة أنواع المطاعم">{(Object.keys(restaurantTypeMeta) as RestaurantType[]).map(type => <button key={type} type="button" onClick={() => onRestaurantFilterChange(type)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${restaurantFilter === type ? "bg-red-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-700 hover:border-red-200 hover:bg-red-50"}`}>{restaurantTypeMeta[type]}</button>)}</div> : null}{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="grid gap-3 sm:grid-cols-2">{stores.map(store => <button key={store.id} onClick={() => onChoose(store)} className="rounded-3xl border border-slate-100 bg-gradient-to-bl from-white to-slate-50 p-5 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md active:scale-[.98]"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-900"><Store className="h-5 w-5" /></span><strong className="mt-4 block text-lg text-blue-950">{store.name}</strong><small className="mt-1 block text-xs text-slate-500">فتح صفحة المتجر</small></button>)}</div> : <EmptyStoreList categoryTitle={meta.title} />}</section></>;
+  const title = categoryTitle ?? meta.title;
+  return <><PageHeading eyebrow="متاجر القسم" title={`متاجر ${title}`} detail="اختر متجراً لعرض منتجاته وعروضه في صفحة مستقلة." onBack={onBack} /><section className="app-shell pb-12">{category === "restaurants" ? <div className="mb-5 flex flex-wrap gap-2" aria-label="فلترة أنواع المطاعم">{(Object.keys(restaurantTypeMeta) as RestaurantType[]).map(type => <button key={type} type="button" onClick={() => onRestaurantFilterChange(type)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${restaurantFilter === type ? "bg-red-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-700 hover:border-red-200 hover:bg-red-50"}`}>{restaurantTypeMeta[type]}</button>)}</div> : null}{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="grid gap-3 sm:grid-cols-2">{stores.map(store => <button key={store.id} onClick={() => onChoose(store)} className="rounded-3xl border border-slate-100 bg-gradient-to-bl from-white to-slate-50 p-5 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md active:scale-[.98]"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-900"><Store className="h-5 w-5" /></span><strong className="mt-4 block text-lg text-blue-950">{store.name}</strong><small className="mt-1 block text-xs text-slate-500">فتح صفحة المتجر</small></button>)}</div> : <EmptyStoreList categoryTitle={title} />}</section></>;
 }
 
 function StoreProductsScreen({ store, products, loading, onBack, onChooseProduct, onOpenOffers }: { store: StoreOption; products: StoreProduct[]; loading: boolean; onBack: () => void; onChooseProduct: (product: StoreProduct) => void; onOpenOffers: () => void }) {

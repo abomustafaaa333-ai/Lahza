@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, stores, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
@@ -19,7 +19,7 @@ import type { TrpcContext } from "./_core/context";
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
-const categories = ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
+const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
 const adminRoles = ["owner", "supervisor"] as const;
 const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"] as const;
@@ -315,13 +315,22 @@ const catalogItemInput = z.object({
   price: newSypMoneyInput,
   available: z.boolean().default(true),
   storeId: z.number().int().positive().optional(),
+  customCategoryId: z.number().int().positive().nullable().optional(),
 });
 
 export const storeInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المتجر").max(140),
   category: z.enum(categories),
   restaurantType: z.enum(["all", "breakfast", "chicken", "grills", "sandwiches"]).default("all"),
+  customCategoryId: z.number().int().positive().nullable().optional(),
   partnerId: z.number().int().positive().nullable().optional(),
+  active: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).max(10_000).default(0),
+});
+
+const customCategoryInput = z.object({
+  title: z.string().trim().min(2, "أدخل اسم القسم").max(120),
+  subtitle: z.string().trim().min(2, "أدخل وصفاً مختصراً للقسم").max(180),
   active: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
 });
@@ -407,6 +416,13 @@ async function findStoreForCatalog(db: NonNullable<Awaited<ReturnType<typeof get
   if (!store) throw new Error("المتجر المختار غير موجود");
   if (store.category !== category) throw new Error("يجب أن يكون المنتج ضمن القسم نفسه للمتجر المختار");
   return store;
+}
+
+async function getActiveCustomCategory(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, customCategoryId: number | null | undefined) {
+  if (!customCategoryId) return null;
+  const found = await db.select().from(customCategories).where(and(eq(customCategories.id, customCategoryId), eq(customCategories.active, true))).limit(1);
+  if (!found[0]) throw new Error("القسم المخصص المختار غير متاح حالياً");
+  return found[0];
 }
 
 export const orderInputSchema = z.object({
@@ -500,6 +516,13 @@ export const lahzaRouter = router({
   delivery: router({
     quote: publicProcedure.input(z.object({ locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180) })).mutation(async ({ input }) => getDrivingQuote(input.locationLat, input.locationLng)),
   }),
+  customCategories: router({
+    listActive: publicProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      return db.select().from(customCategories).where(eq(customCategories.active, true)).orderBy(customCategories.sortOrder, customCategories.title);
+    }),
+  }),
   catalog: router({
     list: publicProcedure.query(async () => {
       const db = await ensureCatalogSeed();
@@ -510,6 +533,7 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const store = await findStoreForCatalog(db, input.storeId, input.category);
+      const customCategory = input.category === "other" ? await getActiveCustomCategory(db, store?.customCategoryId ?? input.customCategoryId) : null;
       await db.insert(catalogItems).values({
         code: `custom-${input.category}-${randomBytes(8).toString("hex")}`,
         name: input.name,
@@ -519,6 +543,7 @@ export const lahzaRouter = router({
         available: input.available,
         deleted: false,
         storeId: store?.id ?? null,
+        customCategoryId: customCategory?.id ?? null,
       });
       return { success: true };
     }),
@@ -527,7 +552,8 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const store = await findStoreForCatalog(db, input.storeId, input.category);
-      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
+      const customCategory = input.category === "other" ? await getActiveCustomCategory(db, store?.customCategoryId ?? input.customCategoryId) : null;
+      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, customCategoryId: customCategory?.id ?? null, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
       return { success: true };
     }),
     updatePrice: publicProcedure.input(z.object({ id: z.number().int().positive(), price: newSypMoneyInput })).mutation(async ({ ctx, input }) => {
@@ -553,10 +579,14 @@ export const lahzaRouter = router({
     }),
   }),
   storefront: router({
-    stores: publicProcedure.input(z.object({ category: z.enum(categories), restaurantType: z.enum(restaurantTypes).optional() })).query(async ({ input }) => {
+    stores: publicProcedure.input(z.object({ category: z.enum(categories), restaurantType: z.enum(restaurantTypes).optional(), customCategorySlug: z.string().trim().max(80).optional() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true))).orderBy(stores.sortOrder, stores.name);
+      const customCategory = input.category === "other" && input.customCategorySlug
+        ? (await db.select().from(customCategories).where(and(eq(customCategories.slug, input.customCategorySlug), eq(customCategories.active, true))).limit(1))[0]
+        : null;
+      if (input.category === "other" && !customCategory) return [];
+      const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true), ...(customCategory ? [eq(stores.customCategoryId, customCategory.id)] : []))).orderBy(stores.sortOrder, stores.name);
       const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen }).from(partners);
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       const filteredStores = filterRestaurantStores(categoryStores, input.category, input.restaurantType);
@@ -687,7 +717,12 @@ export const lahzaRouter = router({
     stores: router({
       list: publicProcedure.query(async ({ ctx }) => {
         const { db, partner } = await requirePartner(ctx);
-        return db.select().from(stores).where(eq(stores.partnerId, partner.id)).orderBy(stores.category, stores.sortOrder, stores.name);
+        const partnerStores = await db.select().from(stores).where(eq(stores.partnerId, partner.id)).orderBy(stores.category, stores.sortOrder, stores.name);
+        const customIds = partnerStores.flatMap(store => store.customCategoryId ? [store.customCategoryId] : []);
+        if (!customIds.length) return partnerStores.map(store => ({ ...store, categoryTitle: null }));
+        const categoryRows = await db.select({ id: customCategories.id, title: customCategories.title }).from(customCategories).where(inArray(customCategories.id, customIds));
+        const titleById = new Map(categoryRows.map(category => [category.id, category.title]));
+        return partnerStores.map(store => ({ ...store, categoryTitle: store.customCategoryId ? titleById.get(store.customCategoryId) ?? null : null }));
       }),
     }),
     catalog: router({
@@ -700,13 +735,13 @@ export const lahzaRouter = router({
       create: publicProcedure.input(partnerProductInput).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك إضافة منتجات القسم الخاص بمتجرك فقط");
-        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, imageUrl: input.imageUrl || null });
+        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || null });
         return { success: true };
       }),
       update: publicProcedure.input(partnerProductInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك تعديل منتجات القسم الخاص بمتجرك فقط");
-        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, imageUrl: input.imageUrl || null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
+        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -891,6 +926,42 @@ export const lahzaRouter = router({
     }),
   }),
   admin: router({
+    categories: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return db.select().from(customCategories).orderBy(customCategories.sortOrder, customCategories.title);
+      }),
+      create: publicProcedure.input(customCategoryInput).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const slug = `custom-${randomBytes(6).toString("hex")}`;
+        await db.insert(customCategories).values({ ...input, slug });
+        return { success: true };
+      }),
+      update: publicProcedure.input(customCategoryInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const { id, ...patch } = input;
+        await db.update(customCategories).set(patch).where(eq(customCategories.id, id));
+        return { success: true };
+      }),
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const [storeLink, itemLink] = await Promise.all([
+          db.select({ id: stores.id }).from(stores).where(eq(stores.customCategoryId, input.id)).limit(1),
+          db.select({ id: catalogItems.id }).from(catalogItems).where(eq(catalogItems.customCategoryId, input.id)).limit(1),
+        ]);
+        if (storeLink[0] || itemLink[0]) throw new Error("لا يمكن حذف قسم مرتبط بمتاجر أو منتجات. أخفه بدلاً من ذلك أو انقل بياناته أولاً.");
+        await db.delete(customCategories).where(eq(customCategories.id, input.id));
+        return { success: true };
+      }),
+    }),
     stores: router({
       list: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx);
@@ -906,7 +977,9 @@ export const lahzaRouter = router({
           const assignedPartner = await db.select({ id: partners.id }).from(partners).where(and(eq(partners.id, input.partnerId), eq(partners.active, true))).limit(1);
           if (!assignedPartner[0]) throw new Error("اختر حساب شريك نشطاً لتعيين المتجر");
         }
-        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", partnerId: input.partnerId ?? null, active: input.active, sortOrder: input.sortOrder });
+        const customCategory = input.category === "other" ? await getActiveCustomCategory(db, input.customCategoryId) : null;
+        if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
+        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", customCategoryId: customCategory?.id ?? null, partnerId: input.partnerId ?? null, active: input.active, sortOrder: input.sortOrder });
         return { success: true };
       }),
       update: publicProcedure.input(storeInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -917,8 +990,10 @@ export const lahzaRouter = router({
           const assignedPartner = await db.select({ id: partners.id }).from(partners).where(and(eq(partners.id, input.partnerId), eq(partners.active, true))).limit(1);
           if (!assignedPartner[0]) throw new Error("اختر حساب شريك نشطاً لتعيين المتجر");
         }
-        const { id, category, restaurantType, ...patch } = input;
-        await db.update(stores).set({ ...patch, category, restaurantType: category === "restaurants" ? restaurantType : "all" }).where(eq(stores.id, id));
+        const customCategory = input.category === "other" ? await getActiveCustomCategory(db, input.customCategoryId) : null;
+        if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
+        const { id, category, restaurantType, customCategoryId: _customCategoryId, ...patch } = input;
+        await db.update(stores).set({ ...patch, category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null }).where(eq(stores.id, id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

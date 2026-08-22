@@ -5,6 +5,7 @@ describe("أقسام متاجر لحظة", () => {
   it("يعرض الأقسام الجديدة للعميل ويخفي التصنيفات القديمة والعروض", () => {
     expect(customerDeliveryCategories).toContain("restaurants");
     expect(customerDeliveryCategories).toContain("produce");
+    expect(customerDeliveryCategories).toContain("household");
     expect(customerDeliveryCategories).toContain("school_stationery");
     expect(customerDeliveryCategories).not.toContain("fuel");
     expect(customerDeliveryCategories).not.toContain("other");
@@ -15,5 +16,6 @@ describe("أقسام متاجر لحظة", () => {
     expect(Object.keys(categoryMeta)).toEqual(storeCategories);
     expect(categoryMeta.restaurants.title).toBe("مطاعم ومأكولات");
     expect(categoryMeta.groceries.title).toBe("بقاليات ومواد غذائية");
+    expect(categoryMeta.household.title).toBe("المواد المنزلية");
   });
 });

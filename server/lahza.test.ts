@@ -182,6 +182,12 @@ describe("تعيين الشريك للمتجر", () => {
     expect(storeInput.parse({ ...base, restaurantType: "grills" }).restaurantType).toBe("grills");
   });
 
+  it("يقبل القسم المنزلي وربط متجر بقسم مخصص", () => {
+    const base = { name: "متجر المنزل", partnerId: null, active: true, sortOrder: 1 };
+    expect(storeInput.parse({ ...base, category: "household" }).category).toBe("household");
+    expect(storeInput.parse({ ...base, category: "other", customCategoryId: 9 }).customCategoryId).toBe(9);
+  });
+
   it("يفلتر نوع المطعم ويبقي المتاجر العامة ظاهرة ضمن كل نوع", () => {
     const stores = [
       { id: 1, restaurantType: "all" as const },
