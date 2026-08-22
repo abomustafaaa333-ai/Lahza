@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, hasMatchingAuthRuntime, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
 	describe("اختصار الصفحة الرئيسية للإدارة", () => {
@@ -174,6 +174,22 @@ describe("تعيين الشريك للمتجر", () => {
   it("يقبل تعيين حساب شريك أو إزالة التعيين من بيانات المتجر", () => {
     expect(storeInput.parse({ name: "حلويات الشام", category: "sweets", partnerId: 7, active: true, sortOrder: 1 }).partnerId).toBe(7);
     expect(storeInput.parse({ name: "حلويات الشام", category: "sweets", partnerId: null, active: true, sortOrder: 1 }).partnerId).toBeNull();
+  });
+
+  it("يقبل نوع المطعم ويضع «كل المطاعم» افتراضياً للمتجر الجديد", () => {
+    const base = { name: "مطعم الشام", category: "restaurants" as const, partnerId: null, active: true, sortOrder: 1 };
+    expect(storeInput.parse(base).restaurantType).toBe("all");
+    expect(storeInput.parse({ ...base, restaurantType: "grills" }).restaurantType).toBe("grills");
+  });
+
+  it("يفلتر نوع المطعم ويبقي المتاجر العامة ظاهرة ضمن كل نوع", () => {
+    const stores = [
+      { id: 1, restaurantType: "all" as const },
+      { id: 2, restaurantType: "grills" as const },
+      { id: 3, restaurantType: "breakfast" as const },
+    ];
+    expect(filterRestaurantStores(stores, "restaurants", "grills").map(store => store.id)).toEqual([1, 2]);
+    expect(filterRestaurantStores(stores, "restaurants", "all").map(store => store.id)).toEqual([1, 2, 3]);
   });
 });
 

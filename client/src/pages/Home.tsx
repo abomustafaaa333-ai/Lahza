@@ -7,7 +7,7 @@ import { IntercityBooking, type IntercityTripSelection } from "@/components/Inte
 import { trpc } from "@/lib/trpc";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
-import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, toNewSyp, type LahzaCategory } from "@shared/lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, restaurantTypeMeta, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
 import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Pencil, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
@@ -27,7 +27,7 @@ type CartLine = {
   priceKnown: boolean;
 };
 
-type StoreOption = { id: number; name: string; category: LahzaCategory; storeOpen?: boolean | null };
+type StoreOption = { id: number; name: string; category: LahzaCategory; restaurantType?: RestaurantType; storeOpen?: boolean | null };
 type StoreProduct = { id: number; name: string; unit: string; unitPrice: number; available: boolean };
 type CustomerOffer = { id: number; text: string; partnerName: string; storeName?: string | null; storeId?: number | null; storeCategory?: string | null; catalogItemId?: number | null; productName?: string | null; productUnit?: string | null; productPrice?: number | null; imageUrl?: string | null; storeOpen?: boolean | null };
 
@@ -165,6 +165,7 @@ export default function Home() {
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState<LahzaCategory | null>(null);
+  const [restaurantFilter, setRestaurantFilter] = useState<RestaurantType>("all");
   const [selectedStore, setSelectedStore] = useState<StoreOption | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<StoreProduct | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<CustomerOffer | null>(null);
@@ -212,7 +213,8 @@ export default function Home() {
     },
     onError: error => toast.error(error.message),
   });
-  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery({ category: activeCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
+  const categoryStoresInput = useMemo(() => ({ category: activeCategory ?? "groceries", restaurantType: activeCategory === "restaurants" ? restaurantFilter : undefined }), [activeCategory, restaurantFilter]);
+  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
   const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
   const categoryStores: StoreOption[] = isStaticDemo && activeCategory
@@ -525,7 +527,7 @@ export default function Home() {
                 const meta = categoryMeta[category];
                 const Icon = categoryIcons[category];
                 const count = cart.filter(line => line.category === category).length;
-                return <button key={category} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setActiveCategory(category); setScreen("stores"); }} className="category-card">
+                return <button key={category} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCategory(category); setScreen("stores"); }} className="category-card">
                   <span className={`category-icon bg-gradient-to-br ${categoryColors[category]}`}><Icon className="h-5 w-5" /></span>
                   <span className="category-card-copy"><span>{meta.title}</span><small>{meta.subtitle}</small></span>
                   {count > 0 ? <span className="category-badge">{count}</span> : <Plus className="h-4 w-4 text-slate-300" />}
@@ -538,7 +540,7 @@ export default function Home() {
         </>
       ) : null}
 
-      {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("delivery"); setActiveCategory(null); }} onChoose={store => { setSelectedStore(store); setScreen("store"); }} /> : null}
+      {screen === "stores" && activeCategory ? <StoresScreen category={activeCategory} stores={categoryStores} loading={categoryStoresQuery.isLoading && !isStaticDemo} restaurantFilter={restaurantFilter} onRestaurantFilterChange={setRestaurantFilter} onBack={() => { setScreen("delivery"); setActiveCategory(null); }} onChoose={store => { setSelectedStore(store); setScreen("store"); }} /> : null}
 
       <Dialog open={missingProductOpen} onOpenChange={setMissingProductOpen}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">اطلب منتجاً غير موجود</DialogTitle><DialogDescription className="text-right">اكتب ما تحتاجه وسيتابع فريق لحظة إمكانية توفيره أو إضافة متجر مناسب.</DialogDescription></DialogHeader><div className="grid gap-3"><div><Label>اسمك</Label><Input value={missingRequesterName} onChange={event => setMissingRequesterName(event.target.value)} placeholder="الاسم" /></div><div><Label>رقم الهاتف</Label><Input dir="ltr" inputMode="tel" value={missingProductPhone} onChange={event => setMissingProductPhone(event.target.value)} placeholder="+9639xxxxxxxx" /></div><div><Label>اسم المنتج المطلوب</Label><Input value={missingProductName} onChange={event => setMissingProductName(event.target.value)} placeholder="مثال: حقيبة مدرسية للصف الخامس" /></div><div><Label>تفاصيل إضافية (اختياري)</Label><Textarea value={missingProductNotes} onChange={event => setMissingProductNotes(event.target.value)} placeholder="اللون أو المقاس أو العلامة التجارية" /></div><Button disabled={createMissingProductRequest.isPending || missingRequesterName.trim().length < 2 || missingProductName.trim().length < 2 || !/^\+9639\d{8}$/.test(missingProductPhone)} onClick={() => createMissingProductRequest.mutate({ customerName: missingRequesterName.trim(), customerPhone: missingProductPhone.trim(), productName: missingProductName.trim(), notes: missingProductNotes.trim() || undefined })} className="mt-1 rounded-2xl bg-red-600 py-6 hover:bg-red-700">{createMissingProductRequest.isPending ? "جارٍ الإرسال..." : "إرسال الطلب"}</Button></div></DialogContent></Dialog>
       {screen === "store" && selectedStore ? <StoreProductsScreen store={selectedStore} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("stores"); setSelectedProduct(null); }} onChooseProduct={product => { setSelectedProduct(product); setScreen("productQuantity"); }} onOpenOffers={() => setScreen("storeOffers")} /> : null}
@@ -601,9 +603,9 @@ export default function Home() {
   );
 }
 
-function StoresScreen({ category, stores, loading, onBack, onChoose }: { category: LahzaCategory; stores: StoreOption[]; loading: boolean; onBack: () => void; onChoose: (store: StoreOption) => void }) {
+function StoresScreen({ category, stores, loading, restaurantFilter, onRestaurantFilterChange, onBack, onChoose }: { category: LahzaCategory; stores: StoreOption[]; loading: boolean; restaurantFilter: RestaurantType; onRestaurantFilterChange: (filter: RestaurantType) => void; onBack: () => void; onChoose: (store: StoreOption) => void }) {
   const meta = categoryMeta[category];
-  return <><PageHeading eyebrow="متاجر القسم" title={`متاجر ${meta.title}`} detail="اختر متجراً لعرض منتجاته وعروضه في صفحة مستقلة." onBack={onBack} /><section className="app-shell pb-12">{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="grid gap-3 sm:grid-cols-2">{stores.map(store => <button key={store.id} onClick={() => onChoose(store)} className="rounded-3xl border border-slate-100 bg-gradient-to-bl from-white to-slate-50 p-5 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md active:scale-[.98]"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-900"><Store className="h-5 w-5" /></span><strong className="mt-4 block text-lg text-blue-950">{store.name}</strong><small className="mt-1 block text-xs text-slate-500">فتح صفحة المتجر</small></button>)}</div> : <EmptyStoreList categoryTitle={meta.title} />}</section></>;
+  return <><PageHeading eyebrow="متاجر القسم" title={`متاجر ${meta.title}`} detail="اختر متجراً لعرض منتجاته وعروضه في صفحة مستقلة." onBack={onBack} /><section className="app-shell pb-12">{category === "restaurants" ? <div className="mb-5 flex flex-wrap gap-2" aria-label="فلترة أنواع المطاعم">{(Object.keys(restaurantTypeMeta) as RestaurantType[]).map(type => <button key={type} type="button" onClick={() => onRestaurantFilterChange(type)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${restaurantFilter === type ? "bg-red-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-700 hover:border-red-200 hover:bg-red-50"}`}>{restaurantTypeMeta[type]}</button>)}</div> : null}{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="grid gap-3 sm:grid-cols-2">{stores.map(store => <button key={store.id} onClick={() => onChoose(store)} className="rounded-3xl border border-slate-100 bg-gradient-to-bl from-white to-slate-50 p-5 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md active:scale-[.98]"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-900"><Store className="h-5 w-5" /></span><strong className="mt-4 block text-lg text-blue-950">{store.name}</strong><small className="mt-1 block text-xs text-slate-500">فتح صفحة المتجر</small></button>)}</div> : <EmptyStoreList categoryTitle={meta.title} />}</section></>;
 }
 
 function StoreProductsScreen({ store, products, loading, onBack, onChooseProduct, onOpenOffers }: { store: StoreOption; products: StoreProduct[]; loading: boolean; onBack: () => void; onChooseProduct: (product: StoreProduct) => void; onOpenOffers: () => void }) {

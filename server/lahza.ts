@@ -20,6 +20,7 @@ const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
 const categories = ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
+const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
 const adminRoles = ["owner", "supervisor"] as const;
 const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"] as const;
 const MANBIJ_CENTER = { lat: 36.5281, lng: 37.9549 };
@@ -29,6 +30,11 @@ type AdminSession = { role: AdminRole; supervisorId?: number };
 type PartnerSession = { partnerId: number };
 type AdminSessionPayload = AdminSession & { runtimeId: string };
 type PartnerSessionPayload = PartnerSession & { runtimeId: string };
+
+export function filterRestaurantStores<T extends { restaurantType: (typeof restaurantTypes)[number] }>(items: T[], category: (typeof categories)[number], restaurantType?: (typeof restaurantTypes)[number]) {
+  if (category !== "restaurants" || !restaurantType || restaurantType === "all") return items;
+  return items.filter(store => store.restaurantType === restaurantType || store.restaurantType === "all");
+}
 
 const passwordSchema = z.string().min(4, "يجب أن تتكون كلمة المرور من 4 أحرف أو أرقام على الأقل").max(100);
 const coordinateSchema = z.number().finite("إحداثيات الموقع غير صالحة");
@@ -314,6 +320,7 @@ const catalogItemInput = z.object({
 export const storeInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المتجر").max(140),
   category: z.enum(categories),
+  restaurantType: z.enum(["all", "breakfast", "chicken", "grills", "sandwiches"]).default("all"),
   partnerId: z.number().int().positive().nullable().optional(),
   active: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
@@ -546,13 +553,14 @@ export const lahzaRouter = router({
     }),
   }),
   storefront: router({
-    stores: publicProcedure.input(z.object({ category: z.enum(categories) })).query(async ({ input }) => {
+    stores: publicProcedure.input(z.object({ category: z.enum(categories), restaurantType: z.enum(restaurantTypes).optional() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true))).orderBy(stores.sortOrder, stores.name);
       const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen }).from(partners);
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
-      return categoryStores.flatMap(store => {
+      const filteredStores = filterRestaurantStores(categoryStores, input.category, input.restaurantType);
+      return filteredStores.flatMap(store => {
         if (!store.partnerId) return [{ ...store, storeOpen: true }];
         const partner = partnerById.get(store.partnerId);
         return partner?.active ? [{ ...store, storeOpen: partner.storeOpen }] : [];
@@ -898,7 +906,7 @@ export const lahzaRouter = router({
           const assignedPartner = await db.select({ id: partners.id }).from(partners).where(and(eq(partners.id, input.partnerId), eq(partners.active, true))).limit(1);
           if (!assignedPartner[0]) throw new Error("اختر حساب شريك نشطاً لتعيين المتجر");
         }
-        await db.insert(stores).values({ name: input.name, category: input.category, partnerId: input.partnerId ?? null, active: input.active, sortOrder: input.sortOrder });
+        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", partnerId: input.partnerId ?? null, active: input.active, sortOrder: input.sortOrder });
         return { success: true };
       }),
       update: publicProcedure.input(storeInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -909,8 +917,8 @@ export const lahzaRouter = router({
           const assignedPartner = await db.select({ id: partners.id }).from(partners).where(and(eq(partners.id, input.partnerId), eq(partners.active, true))).limit(1);
           if (!assignedPartner[0]) throw new Error("اختر حساب شريك نشطاً لتعيين المتجر");
         }
-        const { id, ...patch } = input;
-        await db.update(stores).set(patch).where(eq(stores.id, id));
+        const { id, category, restaurantType, ...patch } = input;
+        await db.update(stores).set({ ...patch, category, restaurantType: category === "restaurants" ? restaurantType : "all" }).where(eq(stores.id, id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

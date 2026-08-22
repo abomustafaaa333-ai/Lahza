@@ -1,0 +1,1 @@
+ALTER TABLE `stores` ADD `restaurantType` enum('all','breakfast','chicken','grills','sandwiches') DEFAULT 'all' NOT NULL;

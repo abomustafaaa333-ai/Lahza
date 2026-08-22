@@ -28,6 +28,7 @@ export const stores = mysqlTable("stores", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 140 }).notNull(),
   category: mysqlEnum("category", ["restaurants", "groceries", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"]).notNull(),
+  restaurantType: mysqlEnum("restaurantType", ["all", "breakfast", "chicken", "grills", "sandwiches"]).notNull().default("all"),
   partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
   active: boolean("active").notNull().default(true),
   sortOrder: int("sortOrder").notNull().default(0),

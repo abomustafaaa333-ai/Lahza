@@ -60,6 +60,15 @@ export const storeCategories = ["restaurants", "groceries", "produce", "bakery",
 /** الأقسام الظاهرة للعميل في صفحة طلبك للبيت. */
 export const customerDeliveryCategories = ["restaurants", "groceries", "produce", "pharmacy", "bakery", "sweets", "butcher", "baby", "school_stationery", "beauty_personal_care", "mobile_accessories", "clothing", "gas"] as const satisfies readonly LahzaCategory[];
 
+export type RestaurantType = "all" | "breakfast" | "chicken" | "grills" | "sandwiches";
+export const restaurantTypeMeta: Record<RestaurantType, string> = {
+  all: "كل المطاعم",
+  breakfast: "إفطار",
+  chicken: "فروج",
+  grills: "مشاوي",
+  sandwiches: "سندويش",
+};
+
 export const DEFAULT_TICKER_PRIMARY = "حقق ١٠ طلبات واربح معنا هدية";
 export const DEFAULT_TICKER_SECONDARY = "لحظة — منبج بين يديك";
 export const SYP_CONVERSION_FACTOR = 100;
