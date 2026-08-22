@@ -2,8 +2,15 @@ import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
+
+describe("بحث المنتجات", () => {
+  it("ينقي عبارة البحث من المسافات والرموز الخاصة بالمطابقة", () => {
+    expect(normalizeProductSearchText("  عدس_%  ")).toBe("عدس");
+    expect(normalizeProductSearchText("فروج مشوي")).toBe("فروج مشوي");
+  });
+});
 
 	describe("اختصار الصفحة الرئيسية للإدارة", () => {
   it("يظهر لوحة التحكم للمالك ولوحة الإشراف للمشرف ولا يظهر للعميل", () => {

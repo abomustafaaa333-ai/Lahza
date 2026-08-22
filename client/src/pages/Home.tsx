@@ -10,7 +10,7 @@ import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partn
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, restaurantTypeMeta, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
-import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Pencil, Phone, Pill, Plus, Route, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Pencil, Phone, Pill, Plus, Route, Search, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ type StoreOption = { id: number; name: string; category: LahzaCategory; restaura
 type CustomDeliveryCategory = { id: number; slug: string; title: string; subtitle: string };
 type StoreProduct = { id: number; name: string; unit: string; unitPrice: number; available: boolean };
 type CustomerOffer = { id: number; text: string; partnerName: string; storeName?: string | null; storeId?: number | null; storeCategory?: string | null; catalogItemId?: number | null; productName?: string | null; productUnit?: string | null; productPrice?: number | null; imageUrl?: string | null; storeOpen?: boolean | null };
+type ProductSearchResult = { id: number; name: string; unit: string; price: number; available: boolean; storeId: number; storeName: string; storeCategory: LahzaCategory; storeOpen: boolean };
 
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 const demoAssetPrefix = isStaticDemo ? "." : "";
@@ -112,7 +113,7 @@ function lineTotal(line: Pick<CartLine, "quantity" | "unitPrice" | "unit">) {
   return line.unit === "جرام" ? Math.round((line.quantity / 1000) * line.unitPrice) : Math.round(line.quantity * line.unitPrice);
 }
 
-function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart: () => void; cartCount: number }) {
+function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => void; onCart: () => void; onSearch: () => void; cartCount: number }) {
   return (
     <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 pt-9 backdrop-blur-xl">
       <div className="app-shell flex h-[92px] items-center justify-between gap-3">
@@ -128,10 +129,7 @@ function Header({ onSecret, onCart, cartCount }: { onSecret: () => void; onCart:
           <span className="flex h-12 w-[138px] items-center justify-center rounded-xl bg-white"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-12 w-full object-contain" /></span>
           <small>منبج بين يديك</small>
         </button>
-        <button className="relative grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95" onClick={onCart} aria-label="عرض السلة">
-          <ShoppingBasket className="h-6 w-6" />
-          {cartCount > 0 ? <span className="cart-count">{cartCount}</span> : null}
-        </button>
+        <div className="flex items-center gap-2"><button className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /></button><button className="relative grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95" onClick={onCart} aria-label="عرض السلة"><ShoppingBasket className="h-6 w-6" />{cartCount > 0 ? <span className="cart-count">{cartCount}</span> : null}</button></div>
       </div>
     </header>
   );
@@ -195,6 +193,8 @@ export default function Home() {
   const [pickup, setPickup] = useState("");
   const [destination, setDestination] = useState("");
   const [missingProductOpen, setMissingProductOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState("");
   const [missingRequesterName, setMissingRequesterName] = useState("");
   const [missingProductName, setMissingProductName] = useState("");
   const [missingProductPhone, setMissingProductPhone] = useState("");
@@ -205,6 +205,9 @@ export default function Home() {
   const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const normalizedSearchText = searchText.trim();
+  const productSearchInput = useMemo(() => ({ query: normalizedSearchText }), [normalizedSearchText]);
+  const productSearchQuery = trpc.lahza.storefront.searchProducts.useQuery(productSearchInput, { enabled: !isStaticDemo && searchOpen && normalizedSearchText.length >= 2, retry: false });
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const createMissingProductRequest = trpc.lahza.missingProducts.create.useMutation({
@@ -437,6 +440,16 @@ export default function Home() {
     setSelectedIntercityTrip(null);
   };
 
+  const openSearchResult = (result: ProductSearchResult) => {
+    setSearchOpen(false);
+    setSearchText("");
+    setActiveCategory(result.storeCategory);
+    setActiveCustomCategory(null);
+    setSelectedProduct(null);
+    setSelectedStore({ id: result.storeId, name: result.storeName, category: result.storeCategory, storeOpen: result.storeOpen });
+    setScreen("store");
+  };
+
   const openOfferLocation = (offer: PartnerGallerySlide) => {
     setSelectedGalleryOffer(null);
     setFocusedOfferId(offer.id);
@@ -474,11 +487,13 @@ export default function Home() {
 
   return (
     <main dir="rtl" className="min-h-screen bg-white text-slate-950">
-      <Header onSecret={() => setSecretOpen(true)} onCart={openDeliveryCheckout} cartCount={cart.length} />
+      <Header onSecret={() => setSecretOpen(true)} onCart={openDeliveryCheckout} onSearch={() => setSearchOpen(true)} cartCount={cart.length} />
       <div className="reward-ticker" aria-label="رسائل لحظة"><div className="reward-ticker-track"><span>{tickerPrimary}<b aria-hidden="true">★</b>{tickerSecondary}</span><span aria-hidden="true">{tickerPrimary}<b>★</b>{tickerSecondary}</span></div></div>
       <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> عروض المتاجر</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...tickerOffers, ...tickerOffers].map((offer, index) => <span key={`${offer.id}-${index}`}><button type="button" onClick={() => offer.id > 0 && setSelectedGalleryOffer({ id: offer.id, imageUrl: offer.imageUrl ?? "", name: offer.text, partnerName: offer.partnerName, storeId: offer.storeId ?? null, storeCategory: offer.storeCategory ?? null, unitPrice: offer.productPrice ?? 0, storeOpen: offer.storeOpen })} className="cursor-pointer text-right transition hover:text-red-700" aria-label={`فتح عرض ${offer.text}`}>{offer.partnerName} — {offer.text}</button><b aria-hidden="true">★</b></span>)}</div></div></div>
 
       <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <><DialogClose aria-label="إغلاق العرض" className="absolute right-4 top-4 z-10 grid h-12 w-12 place-items-center rounded-full border border-white/70 bg-slate-950/50 text-white shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-slate-950/70 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"><X className="h-7 w-7" strokeWidth={3} /><span className="sr-only">إغلاق العرض</span></DialogClose>{selectedGalleryOffer.imageUrl ? <img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /> : <div className="grid h-52 place-items-center bg-gradient-to-br from-red-600 to-orange-500 text-white"><BadgePercent className="h-14 w-14" /></div>}<div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={() => openOfferLocation(selectedGalleryOffer)} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
+
+      <Dialog open={searchOpen} onOpenChange={open => { setSearchOpen(open); if (!open) setSearchText(""); }}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-blue-950"><Search className="h-5 w-5 text-red-600" /> البحث عن منتج</DialogTitle><DialogDescription className="text-right">اكتب اسم المنتج أو المتجر، وستظهر لك الأسعار وحالة التوفر.</DialogDescription></DialogHeader><div className="mt-3"><Label htmlFor="product-search">اسم المنتج أو المتجر</Label><Input id="product-search" autoFocus value={searchText} onChange={event => setSearchText(event.target.value)} placeholder="مثال: فروج، عدس، حلويات..." className="mt-2 h-12 border-slate-200 bg-white text-base shadow-sm" /></div><div className="mt-4 max-h-[52vh] space-y-2 overflow-y-auto pr-1">{normalizedSearchText.length < 2 ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">اكتب حرفين على الأقل لبدء البحث.</div> : productSearchQuery.isLoading ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">جارٍ البحث عن المنتجات...</div> : productSearchQuery.data?.length ? productSearchQuery.data.map(result => <button key={result.id} type="button" onClick={() => openSearchResult(result as ProductSearchResult)} className="w-full rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition hover:border-blue-200 hover:bg-blue-50 active:scale-[0.99]"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate text-base text-blue-950">{result.name}</strong><small className="mt-1 block truncate text-xs font-bold text-slate-500">من متجر: {result.storeName}</small></span><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${result.available ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{result.available ? "متاح" : "غير متاح"}</span></span><span className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><strong className="text-red-600">{result.price > 0 ? formatNewSyp(result.price) : "السعر عند التأكيد"}</strong><small className={result.storeOpen ? "text-slate-500" : "font-bold text-amber-700"}>{result.storeOpen ? "فتح صفحة المتجر" : "المتجر مغلق حالياً"}</small></span></button>) : <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">لم نجد منتجات أو متاجر مطابقة. يمكنك استخدام «لم تجد ما تريد؟» لطلب المنتج من الإدارة.</div>}</div></DialogContent></Dialog>
 
       {screen === "home" ? (
         <>

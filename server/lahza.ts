@@ -409,6 +409,10 @@ export function meetsMinimumDeliveryOrder(itemsTotalInLegacySyp: number) {
   return toNewSyp(itemsTotalInLegacySyp) >= MINIMUM_DELIVERY_ORDER_SYP;
 }
 
+export function normalizeProductSearchText(value: string) {
+  return value.trim().replace(/[%_]/g, "");
+}
+
 async function findStoreForCatalog(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, storeId: number | undefined, category: LahzaCategory) {
   if (!storeId) return null;
   const found = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
@@ -610,6 +614,35 @@ export const lahzaRouter = router({
       }
       const products = await db.select().from(catalogItems).where(and(eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name);
       return { store: { ...store, storeOpen }, products };
+    }),
+    searchProducts: publicProcedure.input(z.object({ query: z.string().trim().min(2, "اكتب حرفين على الأقل للبحث").max(80) })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const normalizedQuery = normalizeProductSearchText(input.query);
+      if (normalizedQuery.length < 2) return [];
+      const pattern = `%${normalizedQuery}%`;
+      const results = await db.select({
+        id: catalogItems.id,
+        name: catalogItems.name,
+        unit: catalogItems.unit,
+        unitPrice: catalogItems.unitPrice,
+        available: catalogItems.available,
+        storeId: stores.id,
+        storeName: stores.name,
+        storeCategory: stores.category,
+        storeOpen: partners.storeOpen,
+      }).from(catalogItems)
+        .innerJoin(stores, eq(catalogItems.storeId, stores.id))
+        .leftJoin(partners, eq(stores.partnerId, partners.id))
+        .where(and(
+          eq(catalogItems.deleted, false),
+          eq(stores.active, true),
+          or(isNull(stores.partnerId), eq(partners.active, true)),
+          or(sql`LOWER(${catalogItems.name}) LIKE LOWER(${pattern})`, sql`LOWER(${stores.name}) LIKE LOWER(${pattern})`),
+        ))
+        .orderBy(desc(catalogItems.available), stores.name, catalogItems.name)
+        .limit(30);
+      return results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen ?? true }));
     }),
     availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ input }) => {
       const db = await getDb();
