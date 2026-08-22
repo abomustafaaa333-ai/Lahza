@@ -1059,7 +1059,7 @@ export const lahzaRouter = router({
         await db.insert(pointTransactions).values({ customerPhone: input.customerPhone, points: -10, reason: "reward_redeemed", rewardPercent: pointsRewardPercent, orderId });
       }
       if (appliedDiscountCode) await db.update(discountCodes).set({ usedCount: sql`${discountCodes.usedCount} + 1` }).where(eq(discountCodes.code, appliedDiscountCode));
-      if (appliedReferralCode) await db.update(customerReferrals).set({ referredPhone: input.customerPhone, referredOrderId: orderId, completedAt: initialStatus === "preparing" ? new Date() : null }).where(eq(customerReferrals.code, appliedReferralCode));
+      if (appliedReferralCode) await db.update(customerReferrals).set({ referredPhone: input.customerPhone, referredOrderId: orderId, completedAt: null }).where(eq(customerReferrals.code, appliedReferralCode));
       if (resolvedLines.length) {
         await db.insert(orderLines).values(resolvedLines.map(line => ({
           orderId,
