@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, storeTrafficEvents, stores, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, customerReferrals, discountCodes, storeTrafficEvents, stores, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
@@ -461,6 +461,8 @@ export const orderInputSchema = z.object({
   locationLat: coordinateSchema.min(-90).max(90).optional(),
   locationLng: coordinateSchema.min(-180).max(180).optional(),
   paymentMethod: z.enum(["sham_cash", "cash"]),
+  discountCode: z.string().trim().min(2).max(40).optional(),
+  referralCode: z.string().trim().min(2).max(40).optional(),
   lines: z.array(lineInput).max(30),
   taxiType: z.enum(["standard", "van"]).optional(),
   pickupLocation: z.string().trim().max(220).optional(),
@@ -507,6 +509,17 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await db.insert(customerPresence).values({ deviceId: input.deviceId, lastSeen: new Date() }).onDuplicateKeyUpdate({ set: { lastSeen: new Date() } });
       return { success: true };
+    }),
+    referral: router({
+      getOrCreate: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/) })).mutation(async ({ input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const existing = await db.select({ code: customerReferrals.code }).from(customerReferrals).where(eq(customerReferrals.ownerPhone, input.phone)).limit(1);
+        if (existing[0]) return { code: existing[0].code };
+        const code = `LHZ-${randomBytes(4).toString("hex").toUpperCase()}`;
+        await db.insert(customerReferrals).values({ code, ownerPhone: input.phone });
+        return { code };
+      }),
     }),
     dashboard: publicProcedure.query(async ({ ctx }) => {
       await requireAdmin(ctx, ["owner"]);
@@ -928,8 +941,31 @@ export const lahzaRouter = router({
         return { ...line, unitPrice, lineTotal, priceKnown: !isPharmacy && Boolean(product && !product.deleted) };
       });
       const itemsTotal = totalAmount;
+      let discountAmount = 0;
+      let appliedDiscountCode: string | null = null;
+      let appliedReferralCode: string | null = null;
+      if (input.discountCode || input.referralCode) {
+        const code = (input.discountCode ?? input.referralCode ?? "").trim().toUpperCase();
+        const discount = (await db.select().from(discountCodes).where(and(eq(discountCodes.code, code), eq(discountCodes.active, true))).limit(1))[0];
+        const referral = !discount ? (await db.select().from(customerReferrals).where(eq(customerReferrals.code, code)).limit(1))[0] : null;
+        if (!discount && !referral) throw new Error("رمز الخصم أو الإحالة غير صالح");
+        if (discount) {
+          if (discount.expiresAt && discount.expiresAt.getTime() <= Date.now()) throw new Error("انتهت صلاحية رمز الخصم");
+          if (discount.maxUses !== null && discount.maxUses !== undefined && discount.usedCount >= discount.maxUses) throw new Error("اكتمل عدد مرات استخدام رمز الخصم");
+          discountAmount = Math.floor(itemsTotal * discount.discountPercent / 100);
+          appliedDiscountCode = discount.code;
+        } else if (referral) {
+          if (referral.ownerPhone === input.customerPhone || referral.referredPhone) throw new Error("لا يمكن استخدام رمز الإحالة لهذا العميل");
+          const ownerDiscount = await db.select({ discountPercent: discountCodes.discountPercent }).from(discountCodes).where(and(eq(discountCodes.active, true), eq(discountCodes.code, "REFERRAL"))).limit(1);
+          const referralPercent = ownerDiscount[0]?.discountPercent ?? 0;
+          discountAmount = Math.floor(itemsTotal * referralPercent / 100);
+          appliedReferralCode = referral.code;
+        }
+        discountAmount = Math.min(itemsTotal, Math.max(0, discountAmount));
+      }
+      const discountedItemsTotal = itemsTotal - discountAmount;
       const initialStatus = initialCustomerOrderStatus(input.orderType, resolvedLines);
-      if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(itemsTotal)) {
+      if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(discountedItemsTotal)) {
         throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(MINIMUM_DELIVERY_ORDER_SYP)}`);
       }
       const settings = await getSettings();
@@ -946,10 +982,10 @@ export const lahzaRouter = router({
         const activeLinkedReservations = linkedReservations.filter(order => ["pending", "confirmed", "preparing", "on_the_way"].includes(order.status)).length;
         if (!canReserveIntercityTrip(intercityTrip.capacity, legacyReservations.length + activeLinkedReservations)) throw new Error("اكتملت سعة هذا الحجز، اختر حجزاً آخر");
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.jarabulusDeliveryPercent);
-        totalAmount += deliveryFee;
+        totalAmount = discountedItemsTotal + deliveryFee;
       } else if (input.orderType === "delivery") {
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.manbijDeliveryPercent);
-        totalAmount += deliveryFee;
+        totalAmount = discountedItemsTotal + deliveryFee;
       }
 
       const created = await db.insert(orders).values({
@@ -960,6 +996,9 @@ export const lahzaRouter = router({
         customerPhone: input.customerPhone,
         paymentMethod: input.paymentMethod,
         totalAmount,
+        discountCode: appliedDiscountCode,
+        referralCode: appliedReferralCode,
+        discountAmount,
         deliveryDistanceMeters,
         deliveryFee,
         taxiType: input.taxiType ?? null,
@@ -973,6 +1012,8 @@ export const lahzaRouter = router({
         notes: [input.notes, intercityTrip ? `حجز جرابلس: ${intercityTrip.title} · ${intercityTrip.bookingCloseLabel} · ${intercityTrip.arrivalLabel}` : "", deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
       });
       const orderId = Number(created[0].insertId);
+      if (appliedDiscountCode) await db.update(discountCodes).set({ usedCount: sql`${discountCodes.usedCount} + 1` }).where(eq(discountCodes.code, appliedDiscountCode));
+      if (appliedReferralCode) await db.update(customerReferrals).set({ referredPhone: input.customerPhone, referredOrderId: orderId, completedAt: initialStatus === "preparing" ? new Date() : null }).where(eq(customerReferrals.code, appliedReferralCode));
       if (resolvedLines.length) {
         await db.insert(orderLines).values(resolvedLines.map(line => ({
           orderId,
@@ -1024,6 +1065,11 @@ export const lahzaRouter = router({
     }),
   }),
   admin: router({
+    discountCodes: router({
+      list: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); return db.select().from(discountCodes).orderBy(desc(discountCodes.createdAt)); }),
+      create: publicProcedure.input(z.object({ code: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/), discountPercent: z.number().int().min(1).max(100), maxUses: z.number().int().positive().optional(), expiresAt: z.string().datetime().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); const code = input.code.toUpperCase(); const exists = await db.select({ id: discountCodes.id }).from(discountCodes).where(eq(discountCodes.code, code)).limit(1); if (exists[0]) throw new Error("رمز الخصم مستخدم مسبقاً"); await db.insert(discountCodes).values({ code, discountPercent: input.discountPercent, maxUses: input.maxUses ?? null, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null, active: true }); return { success: true }; }),
+      toggle: publicProcedure.input(z.object({ id: z.number().int().positive(), active: z.boolean() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await db.update(discountCodes).set({ active: input.active }).where(eq(discountCodes.id, input.id)); return { success: true }; }),
+    }),
     categories: router({
       list: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner"]);

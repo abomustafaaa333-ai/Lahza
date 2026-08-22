@@ -133,6 +133,9 @@ export const orders = mysqlTable("orders", {
   customerPhone: varchar("customerPhone", { length: 24 }).notNull(),
   paymentMethod: mysqlEnum("paymentMethod", ["sham_cash", "cash"]).notNull(),
   totalAmount: int("totalAmount").notNull().default(0),
+  discountCode: varchar("discountCode", { length: 40 }),
+  referralCode: varchar("referralCode", { length: 40 }),
+  discountAmount: int("discountAmount").notNull().default(0),
   deliveryDistanceMeters: int("deliveryDistanceMeters").notNull().default(0),
   deliveryFee: int("deliveryFee").notNull().default(0),
   status: mysqlEnum("status", ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"]).notNull().default("pending"),
@@ -207,6 +210,26 @@ export const customerProfiles = mysqlTable("customer_profiles", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const discountCodes = mysqlTable("discount_codes", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 40 }).notNull().unique(),
+  discountPercent: int("discountPercent").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  maxUses: int("maxUses"),
+  usedCount: int("usedCount").notNull().default(0),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export const customerReferrals = mysqlTable("customer_referrals", {
+  id: int("id").autoincrement().primaryKey(),
+  code: varchar("code", { length: 40 }).notNull().unique(),
+  ownerPhone: varchar("ownerPhone", { length: 24 }).notNull(),
+  referredPhone: varchar("referredPhone", { length: 24 }),
+  referredOrderId: int("referredOrderId"),
+  completedAt: timestamp("completedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
 export const customerPresence = mysqlTable("customer_presence", {
   deviceId: varchar("deviceId", { length: 80 }).primaryKey(),
   lastSeen: timestamp("lastSeen").defaultNow().onUpdateNow().notNull(),

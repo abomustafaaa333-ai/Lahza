@@ -182,6 +182,9 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [checkoutName, setCheckoutName] = useState("");
   const [checkoutPhone, setCheckoutPhone] = useState("");
+  const [discountCode, setDiscountCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
+  const [myReferralCode, setMyReferralCode] = useState("");
   const [customerLocation, setCustomerLocation] = useState("");
   const [customerLocationUrl, setCustomerLocationUrl] = useState("");
   const [customerLat, setCustomerLat] = useState<number | null>(null);
@@ -214,6 +217,7 @@ export default function Home() {
   const productSearchQuery = trpc.lahza.storefront.searchProducts.useQuery(productSearchInput, { enabled: !isStaticDemo && searchOpen && normalizedSearchText.length >= 2, retry: false });
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const createReferralCode = trpc.lahza.customers.referral.getOrCreate.useMutation({ onSuccess: result => { setMyReferralCode(result.code); void navigator.clipboard?.writeText(result.code); toast.success(`رمز إحالتك: ${result.code}`); }, onError: error => toast.error(error.message) });
   const createMissingProductRequest = trpc.lahza.missingProducts.create.useMutation({
     onSuccess: () => {
       setMissingProductOpen(false);
@@ -434,6 +438,8 @@ export default function Home() {
       locationLat: hasManualLocation ? undefined : customerLat ?? undefined,
       locationLng: hasManualLocation ? undefined : customerLng ?? undefined,
       paymentMethod: payment,
+      discountCode: discountCode.trim() || undefined,
+      referralCode: referralCode.trim() || undefined,
       intercityTripId: selectedIntercityTrip?.id,
       notes: [notes.trim(), `الموقع: ${customerLocation.trim()}`, !hasManualLocation && customerLocationUrl ? `رابط الخريطة: ${customerLocationUrl}` : ""].filter(Boolean).join("\n") || undefined,
       taxiType: isTaxi ? taxiType : undefined,
@@ -624,7 +630,7 @@ export default function Home() {
             </div>
             <div className="checkout-card space-y-4">
               <div className="checkout-card-title"><UserRound className="h-5 w-5 text-red-600" /><span>بيانات التواصل وموقع الطلب</span></div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><Label htmlFor="customerName">الاسم</Label><Input id="customerName" value={checkoutName} onChange={e => setCheckoutName(e.target.value)} placeholder="اكتب الاسم" /></div><div><Label htmlFor="customerPhone">رقم الهاتف السوري</Label><div className="phone-entry" dir="ltr"><span>+963</span><Input id="customerPhone" inputMode="numeric" value={checkoutPhone} onChange={e => setCheckoutPhone(e.target.value.replace(/\D/g, "").slice(0, 9))} placeholder="9XXXXXXXX" /></div><small className="phone-help">اكتب الرقم ابتداءً من 9، من دون الصفر الأول.</small></div></div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><Label htmlFor="customerName">الاسم</Label><Input id="customerName" value={checkoutName} onChange={e => setCheckoutName(e.target.value)} placeholder="اكتب الاسم" /></div><div><Label htmlFor="customerPhone">رقم الهاتف السوري</Label><div className="phone-entry" dir="ltr"><span>+963</span><Input id="customerPhone" inputMode="numeric" value={checkoutPhone} onChange={e => setCheckoutPhone(e.target.value.replace(/\D/g, "").slice(0, 9))} placeholder="9XXXXXXXX" /></div><small className="phone-help">اكتب الرقم ابتداءً من 9، من دون الصفر الأول.</small></div></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><Label htmlFor="discountCode">رمز الخصم (اختياري)</Label><Input id="discountCode" value={discountCode} onChange={e => setDiscountCode(e.target.value.toUpperCase())} placeholder="مثال: LAHZA10" dir="ltr" /></div><div><Label htmlFor="referralCode">رمز الإحالة (اختياري)</Label><Input id="referralCode" value={referralCode} onChange={e => setReferralCode(e.target.value.toUpperCase())} placeholder="أدخل رمز صديقك" dir="ltr" /></div></div><div className="rounded-2xl border border-blue-100 bg-blue-50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><strong className="text-sm text-blue-950">رمز إحالتك</strong><p className="mt-1 text-xs text-slate-600">شاركه مع صديق، ويحصل على نسبة الخصم عند أول طلب.</p></div><Button type="button" variant="outline" disabled={!/^9\d{8}$/.test(checkoutPhone) || createReferralCode.isPending} onClick={() => createReferralCode.mutate({ phone: `+963${checkoutPhone}` })} className="rounded-xl border-blue-200 bg-white text-blue-900">{myReferralCode || "إنشاء الرمز"}</Button></div></div>
                 <div><Label htmlFor="customerLocation">موقعك</Label>{useManualLocation ? <Textarea id="customerLocation" value={customerLocation} onChange={event => setCustomerLocation(event.target.value)} placeholder="مثال: منبج، قرب دوار الساعة، بجانب الصيدلية" /> : <Input id="customerLocation" value={customerLocation} readOnly placeholder="استخدم زر تحديد موقعي" />}<div className="location-actions"><button onClick={locateCustomer} disabled={locating}><LocateFixed className="h-4 w-4" />{locating ? "جارٍ التحديد..." : "تحديد موقعي"}</button><button type="button" onClick={() => { const next = !useManualLocation; setUseManualLocation(next); setCustomerLocation(""); setCustomerLocationUrl(""); setCustomerLat(null); setCustomerLng(null); setLocationVerified(false); }} className="border border-blue-200 bg-blue-50 text-blue-900"><Pencil className="h-4 w-4" />{useManualLocation ? "استخدم GPS بدلاً من ذلك" : "سأكتب موقعي يدوياً"}</button></div>{useManualLocation ? <p className="verified-location">اكتب اسم الحي أو أقرب معلم ومعلومات تسهّل الوصول إليك.</p> : locationVerified ? <p className="verified-location">تم التحقق من الموقع عبر GPS</p> : <p className="location-required-note">اضغط تحديد موقعي أو اختر كتابة الموقع يدوياً لتأكيد طلبك.</p>}</div>
                 <div><Label htmlFor="notes">ملاحظات إضافية <span className="text-slate-400">(اختياري)</span></Label><Textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="أي تفاصيل مفيدة للطلب أو للمندوب" /></div>
             </div>

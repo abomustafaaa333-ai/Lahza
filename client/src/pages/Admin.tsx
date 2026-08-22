@@ -4,14 +4,14 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { buildEmployeeOrderWhatsAppUrl, buildWhatsAppLocationUrl, mapUrlFromNotes, shareCustomerContact, shareOrderImage } from "@/lib/adminShare";
 import { categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, orderStatusLabels, restaurantTypeMeta, storeCategories, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
-import { Archive, ArrowRight, BadgeDollarSign, BadgePercent, BellRing, CarFront, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Pencil, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X, XCircle } from "lucide-react";
+import { Archive, ArrowRight, BadgeDollarSign, BadgePercent, BellRing, TicketPercent, CarFront, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Pencil, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
 const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
 
-type Tab = "orders" | "intercityOrders" | "taxiOrders" | "archive" | "catalog" | "expiredOffers" | "stores" | "categories" | "delivery" | "customers" | "missingProducts" | "employees" | "team" | "partners" | "intercity" | "settings";
+type Tab = "orders" | "intercityOrders" | "taxiOrders" | "archive" | "catalog" | "discountCodes" | "expiredOffers" | "stores" | "categories" | "delivery" | "customers" | "missingProducts" | "employees" | "team" | "partners" | "intercity" | "settings";
 
 function RestaurantTypeSelect({ value, onChange }: { value: RestaurantType; onChange: (value: RestaurantType) => void }) {
   return <select value={value} onChange={event => onChange(event.target.value as RestaurantType)} className="form-select">{(Object.keys(restaurantTypeMeta) as RestaurantType[]).map(type => <option key={type} value={type}>{restaurantTypeMeta[type]}</option>)}</select>;
@@ -23,6 +23,7 @@ const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: bo
   { id: "taxiOrders", label: "طلبات سيارات الأجرة", icon: CarFront },
   { id: "archive", label: "الأرشيف", icon: Archive },
   { id: "catalog", label: "الأسعار", icon: BadgeDollarSign },
+  { id: "discountCodes", label: "رموز الخصم", icon: TicketPercent, ownerOnly: true },
   { id: "expiredOffers", label: "إدارة العروض", icon: BellRing, ownerOnly: true },
   { id: "stores", label: "المتاجر", icon: Store, ownerOnly: true },
   { id: "categories", label: "الأقسام", icon: Store, ownerOnly: true },
@@ -60,9 +61,20 @@ export default function Admin() {
     {menuOpen ? <button className="admin-backdrop" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" /> : null}
     <section className="admin-content">
       <header className="admin-topbar"><button className="admin-menu-button" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button><div><p>لوحة التحكم</p><h1>{availableTabs.find(item => item.id === tab)?.label}</h1></div><div className="mr-auto flex items-center gap-2"><button className="admin-home-link mr-0" onClick={() => setLocation("/")}><span>الصفحة الرئيسية</span><ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => logout.mutate()} disabled={logout.isPending} className="inline-flex items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-2 text-[0.63rem] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed"><LogOut className="h-4 w-4" /><span>{logout.isPending ? "جارٍ الخروج..." : "تسجيل الخروج"}</span></button></div></header>
-      <div className="admin-page">{tab === "orders" ? <OrdersPanel scope="delivery" /> : null}{tab === "intercityOrders" ? <OrdersPanel scope="intercity" /> : null}{tab === "taxiOrders" ? <OrdersPanel scope="taxi" /> : null}{tab === "archive" ? <OrdersPanel scope="archive" /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" && isOwner ? <OffersManagementPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "categories" && isOwner ? <CategoriesPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "missingProducts" ? <MissingProductRequestsPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
+      <div className="admin-page">{tab === "orders" ? <OrdersPanel scope="delivery" /> : null}{tab === "intercityOrders" ? <OrdersPanel scope="intercity" /> : null}{tab === "taxiOrders" ? <OrdersPanel scope="taxi" /> : null}{tab === "archive" ? <OrdersPanel scope="archive" /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "discountCodes" && isOwner ? <DiscountCodesPanel /> : null}{tab === "expiredOffers" && isOwner ? <OffersManagementPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "categories" && isOwner ? <CategoriesPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "missingProducts" ? <MissingProductRequestsPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
     </section>
   </div>;
+}
+
+function DiscountCodesPanel() {
+  const utils = trpc.useUtils();
+  const [code, setCode] = useState("");
+  const [percent, setPercent] = useState("10");
+  const [maxUses, setMaxUses] = useState("");
+  const codesQuery = trpc.lahza.admin.discountCodes.list.useQuery();
+  const create = trpc.lahza.admin.discountCodes.create.useMutation({ onSuccess: () => { setCode(""); setMaxUses(""); void utils.lahza.admin.discountCodes.list.invalidate(); toast.success("تم إنشاء رمز الخصم"); }, onError: error => toast.error(error.message) });
+  const toggle = trpc.lahza.admin.discountCodes.toggle.useMutation({ onSuccess: () => void utils.lahza.admin.discountCodes.list.invalidate(), onError: error => toast.error(error.message) });
+  return <section dir="rtl" className="space-y-5"><div className="rounded-3xl bg-gradient-to-l from-blue-950 to-blue-800 p-6 text-white"><div className="flex items-center gap-3"><TicketPercent className="h-8 w-8" /><div><h2 className="text-2xl font-black">رموز الخصم</h2><p className="mt-1 text-sm text-blue-100">أنشئ رمزاً بنسبة مئوية للعميل فقط.</p></div></div></div><section className="rounded-3xl border border-slate-200 bg-white p-5"><h3 className="font-black text-blue-950">إنشاء رمز جديد</h3><div className="mt-4 grid gap-3 sm:grid-cols-3"><div><Label>الرمز</Label><Input dir="ltr" value={code} onChange={event => setCode(event.target.value.toUpperCase())} placeholder="LAHZA10" /></div><div><Label>نسبة الخصم %</Label><Input inputMode="numeric" value={percent} onChange={event => setPercent(event.target.value.replace(/\D/g, ""))} /></div><div><Label>الحد الأقصى للاستخدام (اختياري)</Label><Input inputMode="numeric" value={maxUses} onChange={event => setMaxUses(event.target.value.replace(/\D/g, ""))} placeholder="بدون حد" /></div></div><Button disabled={create.isPending || code.trim().length < 3 || !percent || Number(percent) < 1 || Number(percent) > 100} onClick={() => create.mutate({ code: code.trim(), discountPercent: Number(percent), maxUses: maxUses ? Number(maxUses) : undefined })} className="mt-4 rounded-xl bg-red-600 hover:bg-red-700">{create.isPending ? "جارٍ الإنشاء..." : "إنشاء رمز الخصم"}</Button></section><section className="space-y-3">{(codesQuery.data ?? []).map(item => <article key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4"><div><strong className="font-black text-blue-950" dir="ltr">{item.code}</strong><p className="mt-1 text-sm text-slate-500">خصم {item.discountPercent}% · الاستخدام {item.usedCount}{item.maxUses ? ` من ${item.maxUses}` : ""}</p></div><Button variant="outline" onClick={() => toggle.mutate({ id: item.id, active: !item.active })} className={item.active ? "rounded-xl border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-xl border-slate-200 text-slate-500"}>{item.active ? "فعال" : "معطل"}</Button></article>)}{!codesQuery.isLoading && !(codesQuery.data ?? []).length ? <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-slate-500">لا توجد رموز خصم بعد.</div> : null}</section></section>;
 }
 
 function OffersManagementPanel() {
