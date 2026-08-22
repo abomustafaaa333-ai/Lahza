@@ -241,6 +241,7 @@ async function getSettings() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
   await ensureDeliveryPercentColumns(db);
+  await ensureTickerColumns(db);
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   if (current[0]) return current[0];
   const masterPinHash = await hashSecret("5555");
@@ -432,7 +433,8 @@ const adminOrderUpdateInput = z.object({
 
 export const lahzaRouter = router({
   interfaceSettings: router({
-    get: publicProcedure.query(async () => {
+    get: publicProcedure.query(async ({ ctx }) => {
+      ctx.res.setHeader("Cache-Control", "no-store, max-age=0");
       const settings = await getSettings();
       return readTickerSettings(settings);
     }),
