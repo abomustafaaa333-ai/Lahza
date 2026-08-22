@@ -5,12 +5,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { IntercityBooking, type IntercityTripSelection } from "@/components/IntercityBooking";
 import { trpc } from "@/lib/trpc";
+import { buildStoreShareUrl, parseSharedStoreId } from "@/lib/storeShare";
+import { QRCodeSVG } from "qrcode.react";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, restaurantTypeMeta, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
-import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Pencil, Phone, Pill, Plus, Route, Search, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Route, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -199,6 +201,7 @@ export default function Home() {
   const [missingProductName, setMissingProductName] = useState("");
   const [missingProductPhone, setMissingProductPhone] = useState("");
   const [missingProductNotes, setMissingProductNotes] = useState("");
+  const [sharedStoreId] = useState(() => parseSharedStoreId(window.location.search));
 
   const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false, refetchOnMount: "always", refetchOnWindowFocus: true });
@@ -224,6 +227,7 @@ export default function Home() {
   const categoryStoresInput = useMemo(() => ({ category: activeCategory ?? "groceries", restaurantType: activeCategory === "restaurants" ? restaurantFilter : undefined, customCategorySlug: activeCategory === "other" ? activeCustomCategory?.slug : undefined }), [activeCategory, restaurantFilter, activeCustomCategory?.slug]);
   const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
   const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
+  const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && Boolean(sharedStoreId), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
   const categoryStores: StoreOption[] = isStaticDemo && activeCategory
     ? [{ id: -1, name: "متجر لحظة التجريبي", category: activeCategory }]
@@ -235,6 +239,13 @@ export default function Home() {
   const selectedStoreProducts = isStaticDemo
     ? products.filter(product => product.category === activeCategory)
     : storeProductsQuery.data?.products ?? [];
+  useEffect(() => {
+    const sharedStore = sharedStoreQuery.data?.store;
+    if (!sharedStore || selectedStore?.id === sharedStore.id) return;
+    setActiveCategory(sharedStore.category as LahzaCategory);
+    setSelectedStore({ id: sharedStore.id, name: sharedStore.name, category: sharedStore.category as LahzaCategory, storeOpen: sharedStore.storeOpen });
+    setScreen("store");
+  }, [sharedStoreQuery.data, selectedStore?.id]);
   const tickerPrimary = normalizeTickerText(interfaceSettingsQuery.data?.tickerPrimary, DEFAULT_TICKER_PRIMARY);
   const tickerSecondary = normalizeTickerText(interfaceSettingsQuery.data?.tickerSecondary, DEFAULT_TICKER_SECONDARY);
   const adminLogin = trpc.lahza.admin.login.useMutation({
@@ -634,8 +645,27 @@ function StoresScreen({ category, categoryTitle, stores, loading, restaurantFilt
   return <><PageHeading eyebrow="متاجر القسم" title={`متاجر ${title}`} detail="اختر متجراً لعرض منتجاته وعروضه في صفحة مستقلة." onBack={onBack} /><section className="app-shell pb-12">{category === "restaurants" ? <div className="mb-5 flex flex-wrap gap-2" aria-label="فلترة أنواع المطاعم">{(Object.keys(restaurantTypeMeta) as RestaurantType[]).map(type => <button key={type} type="button" onClick={() => onRestaurantFilterChange(type)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${restaurantFilter === type ? "bg-red-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-700 hover:border-red-200 hover:bg-red-50"}`}>{restaurantTypeMeta[type]}</button>)}</div> : null}{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="grid gap-3 sm:grid-cols-2">{stores.map(store => <button key={store.id} onClick={() => onChoose(store)} className="rounded-3xl border border-slate-100 bg-gradient-to-bl from-white to-slate-50 p-5 text-right shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md active:scale-[.98]"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-900"><Store className="h-5 w-5" /></span><strong className="mt-4 block text-lg text-blue-950">{store.name}</strong><small className="mt-1 block text-xs text-slate-500">فتح صفحة المتجر</small></button>)}</div> : <EmptyStoreList categoryTitle={title} />}</section></>;
 }
 
+function StoreShareCard({ store }: { store: StoreOption }) {
+  const [qrOpen, setQrOpen] = useState(false);
+  const storeUrl = buildStoreShareUrl(window.location.origin, store.id);
+  const shareStore = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `متجر ${store.name} على لحظة`, text: `اطلب من ${store.name} عبر لحظة`, url: storeUrl });
+        return;
+      }
+      await navigator.clipboard.writeText(storeUrl);
+      toast.success("تم نسخ رابط المتجر");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      toast.error("تعذرت مشاركة الرابط، انسخه من رمز QR أو أعد المحاولة");
+    }
+  };
+  return <><section className="app-shell pb-2"><div className="rounded-3xl border border-blue-100 bg-gradient-to-l from-blue-50 to-white p-4 shadow-sm"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-900 text-white"><Share2 className="h-5 w-5" /></span><div className="min-w-0 flex-1"><strong className="block text-sm text-blue-950">رابط الدخول إلى المتجر</strong><small className="mt-1 block text-xs leading-5 text-slate-600">شارك المتجر مع من تحب أو اعرض رمز QR لفتحه مباشرة.</small></div></div><div className="mt-4 grid grid-cols-2 gap-2"><Button type="button" onClick={() => void shareStore()} className="rounded-2xl bg-blue-900 hover:bg-blue-950"><Share2 className="h-4 w-4" /> مشاركة الرابط</Button><Button type="button" variant="outline" onClick={() => setQrOpen(true)} className="rounded-2xl border-blue-200 bg-white text-blue-950 hover:bg-blue-50"><QrCode className="h-4 w-4" /> رمز QR</Button></div></div></section><Dialog open={qrOpen} onOpenChange={setQrOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl bg-white text-center"><DialogHeader><DialogTitle className="text-center text-xl text-blue-950">رمز متجر {store.name}</DialogTitle><DialogDescription className="text-center">امسح الرمز لفتح صفحة المتجر والمنتجات مباشرة.</DialogDescription></DialogHeader><div className="mx-auto mt-3 rounded-3xl border border-slate-100 bg-white p-4 shadow-sm"><QRCodeSVG value={storeUrl} size={220} level="M" includeMargin /></div><p dir="ltr" className="mt-3 break-all text-center text-[0.68rem] text-slate-400">{storeUrl}</p><Button type="button" onClick={() => void shareStore()} className="mt-3 w-full rounded-2xl bg-red-600 hover:bg-red-700"><Share2 className="h-4 w-4" /> مشاركة رابط المتجر</Button></DialogContent></Dialog></>;
+}
+
 function StoreProductsScreen({ store, products, loading, onBack, onChooseProduct, onOpenOffers }: { store: StoreOption; products: StoreProduct[]; loading: boolean; onBack: () => void; onChooseProduct: (product: StoreProduct) => void; onOpenOffers: () => void }) {
-  return <><PageHeading eyebrow="صفحة المتجر" title={store.name} detail="اختر منتجاً لتحديد كميته، أو افتح عروض المتجر." onBack={onBack} /><section className="app-shell pb-12"><button onClick={onOpenOffers} className="mb-5 flex w-full items-center justify-between rounded-3xl bg-gradient-to-l from-red-600 to-rose-600 p-5 text-right text-white shadow-lg shadow-red-100"><span><strong className="block text-lg">عروض {store.name}</strong><small className="mt-1 block text-red-100">افتح صفحة عروض المتجر</small></span><BadgePercent className="h-7 w-7" /></button>{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المنتجات...</div> : products.filter(product => product.available).length ? <div className="grid gap-3 sm:grid-cols-2">{products.filter(product => product.available).map(product => <button key={product.id} onClick={() => onChooseProduct(product)} className="rounded-3xl border border-slate-100 bg-white p-4 text-right shadow-sm transition hover:border-blue-200 hover:shadow-md active:scale-[.98]"><strong className="block text-base text-blue-950">{product.name}</strong><span className="mt-2 block text-sm font-bold text-red-600">{store.category === "pharmacy" || !product.unitPrice ? "يحدد السعر عند التأكيد" : formatSyp(product.unitPrice)}</span><small className="mt-1 block text-xs text-slate-500">اضغط لاختيار الكمية</small></button>)}</div> : <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><PackagePlus className="mx-auto h-7 w-7 text-slate-400" /><strong className="mt-3 block text-blue-950">لا توجد منتجات متاحة حالياً</strong></div>}</section></>;
+  return <><PageHeading eyebrow="صفحة المتجر" title={store.name} detail="اختر منتجاً لتحديد كميته، أو افتح عروض المتجر." onBack={onBack} /><StoreShareCard store={store} /><section className="app-shell pb-12"><button onClick={onOpenOffers} className="mb-5 flex w-full items-center justify-between rounded-3xl bg-gradient-to-l from-red-600 to-rose-600 p-5 text-right text-white shadow-lg shadow-red-100"><span><strong className="block text-lg">عروض {store.name}</strong><small className="mt-1 block text-red-100">افتح صفحة عروض المتجر</small></span><BadgePercent className="h-7 w-7" /></button>{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المنتجات...</div> : products.filter(product => product.available).length ? <div className="grid gap-3 sm:grid-cols-2">{products.filter(product => product.available).map(product => <button key={product.id} onClick={() => onChooseProduct(product)} className="rounded-3xl border border-slate-100 bg-white p-4 text-right shadow-sm transition hover:border-blue-200 hover:shadow-md active:scale-[.98]"><strong className="block text-base text-blue-950">{product.name}</strong><span className="mt-2 block text-sm font-bold text-red-600">{store.category === "pharmacy" || !product.unitPrice ? "يحدد السعر عند التأكيد" : formatSyp(product.unitPrice)}</span><small className="mt-1 block text-xs text-slate-500">اضغط لاختيار الكمية</small></button>)}</div> : <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><PackagePlus className="mx-auto h-7 w-7 text-slate-400" /><strong className="mt-3 block text-blue-950">لا توجد منتجات متاحة حالياً</strong></div>}</section></>;
 }
 
 function ProductQuantityScreen({ store, product, onBack, onAdd }: { store: StoreOption; product: StoreProduct; onBack: () => void; onAdd: (quantity: number) => void }) {
