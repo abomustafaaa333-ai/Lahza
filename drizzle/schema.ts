@@ -78,6 +78,10 @@ export const partnerOffers = mysqlTable("partner_offers", {
   expiresAt: timestamp("expiresAt"),
   deletedAt: timestamp("deletedAt"),
   active: boolean("active").notNull().default(true),
+  featuredStatus: mysqlEnum("featuredStatus", ["none", "pending", "approved", "rejected"]).notNull().default("none"),
+  featuredRequestedAt: timestamp("featuredRequestedAt"),
+  featuredReviewedAt: timestamp("featuredReviewedAt"),
+  featuredReviewNote: varchar("featuredReviewNote", { length: 300 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

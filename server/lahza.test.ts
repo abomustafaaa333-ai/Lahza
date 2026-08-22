@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, initialCustomerOrderStatus, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, canShowFeaturedOffer, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, initialCustomerOrderStatus, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
 describe("بحث المنتجات", () => {
@@ -336,5 +336,13 @@ describe("بيانات الطلب الإلزامية", () => {
     expect(initialCustomerOrderStatus("delivery", [{ priceKnown: false, unitPrice: 0 }])).toBe("pending");
     expect(initialCustomerOrderStatus("delivery", [{ priceKnown: true, unitPrice: 0 }])).toBe("pending");
     expect(initialCustomerOrderStatus("taxi", [])).toBe("pending");
+  });
+
+  it("يعرض العرض المميز بعد الاعتماد فقط ما دام نشطاً وغير منتهٍ", () => {
+    const now = new Date("2026-08-22T12:00:00Z");
+    expect(canShowFeaturedOffer("approved", true, new Date("2026-08-23T12:00:00Z"), now)).toBe(true);
+    expect(canShowFeaturedOffer("pending", true, new Date("2026-08-23T12:00:00Z"), now)).toBe(false);
+    expect(canShowFeaturedOffer("approved", false, new Date("2026-08-23T12:00:00Z"), now)).toBe(false);
+    expect(canShowFeaturedOffer("approved", true, new Date("2026-08-21T12:00:00Z"), now)).toBe(false);
   });
 });

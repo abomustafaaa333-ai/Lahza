@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 import { trpc } from "@/lib/trpc";
 import { buildEmployeeOrderWhatsAppUrl, buildWhatsAppLocationUrl, mapUrlFromNotes, shareCustomerContact, shareOrderImage } from "@/lib/adminShare";
 import { categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatSyp, normalizeTickerText, orderStatusLabels, restaurantTypeMeta, storeCategories, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
-import { Archive, ArrowRight, BadgeDollarSign, BellRing, CarFront, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Pencil, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X, XCircle } from "lucide-react";
+import { Archive, ArrowRight, BadgeDollarSign, BadgePercent, BellRing, CarFront, CheckCircle2, CircleDollarSign, ClipboardList, KeyRound, Loader2, LogOut, MapPinned, Menu, PackagePlus, PackageSearch, Pencil, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, UserPlus, UsersRound, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: bo
   { id: "taxiOrders", label: "طلبات سيارات الأجرة", icon: CarFront },
   { id: "archive", label: "الأرشيف", icon: Archive },
   { id: "catalog", label: "الأسعار", icon: BadgeDollarSign },
-  { id: "expiredOffers", label: "عروض منتهية", icon: BellRing },
+  { id: "expiredOffers", label: "إدارة العروض", icon: BellRing, ownerOnly: true },
   { id: "stores", label: "المتاجر", icon: Store, ownerOnly: true },
   { id: "categories", label: "الأقسام", icon: Store, ownerOnly: true },
   { id: "delivery", label: "رسوم التوصيل", icon: MapPinned },
@@ -60,9 +60,20 @@ export default function Admin() {
     {menuOpen ? <button className="admin-backdrop" onClick={() => setMenuOpen(false)} aria-label="إغلاق القائمة" /> : null}
     <section className="admin-content">
       <header className="admin-topbar"><button className="admin-menu-button" onClick={() => setMenuOpen(true)}><Menu className="h-5 w-5" /></button><div><p>لوحة التحكم</p><h1>{availableTabs.find(item => item.id === tab)?.label}</h1></div><div className="mr-auto flex items-center gap-2"><button className="admin-home-link mr-0" onClick={() => setLocation("/")}><span>الصفحة الرئيسية</span><ArrowRight className="h-4 w-4" /></button><button type="button" onClick={() => logout.mutate()} disabled={logout.isPending} className="inline-flex items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-2.5 py-2 text-[0.63rem] font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed"><LogOut className="h-4 w-4" /><span>{logout.isPending ? "جارٍ الخروج..." : "تسجيل الخروج"}</span></button></div></header>
-      <div className="admin-page">{tab === "orders" ? <OrdersPanel scope="delivery" /> : null}{tab === "intercityOrders" ? <OrdersPanel scope="intercity" /> : null}{tab === "taxiOrders" ? <OrdersPanel scope="taxi" /> : null}{tab === "archive" ? <OrdersPanel scope="archive" /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" ? <ExpiredOffersPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "categories" && isOwner ? <CategoriesPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "missingProducts" ? <MissingProductRequestsPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
+      <div className="admin-page">{tab === "orders" ? <OrdersPanel scope="delivery" /> : null}{tab === "intercityOrders" ? <OrdersPanel scope="intercity" /> : null}{tab === "taxiOrders" ? <OrdersPanel scope="taxi" /> : null}{tab === "archive" ? <OrdersPanel scope="archive" /> : null}{tab === "catalog" ? <CatalogPanel /> : null}{tab === "expiredOffers" && isOwner ? <OffersManagementPanel /> : null}{tab === "stores" && isOwner ? <StoresPanel /> : null}{tab === "categories" && isOwner ? <CategoriesPanel /> : null}{tab === "delivery" ? <DeliverySettingsPanel /> : null}{tab === "customers" && isOwner ? <CustomersPanel /> : null}{tab === "missingProducts" ? <MissingProductRequestsPanel /> : null}{tab === "employees" && isOwner ? <EmployeesPanel /> : null}{tab === "team" && isOwner ? <TeamPanel /> : null}{tab === "partners" && isOwner ? <PartnersPanel /> : null}{tab === "intercity" && isOwner ? <IntercityPanel /> : null}{tab === "settings" && isOwner ? <SettingsPanel /> : null}</div>
     </section>
   </div>;
+}
+
+function OffersManagementPanel() {
+  const utils = trpc.useUtils();
+  const requestsQuery = trpc.lahza.admin.offers.featuredRequests.useQuery();
+  const review = trpc.lahza.admin.offers.reviewFeatured.useMutation({
+    onSuccess: () => { utils.lahza.admin.offers.featuredRequests.invalidate(); utils.lahza.intercity.offers.invalidate(); toast.success("تمت مراجعة طلب العرض المميز"); },
+    onError: error => toast.error(error.message),
+  });
+  const requests = requestsQuery.data ?? [];
+  return <div className="space-y-5"><section className="admin-section"><div className="admin-section-heading"><div><p>قرار المالك</p><h2>طلبات العروض المميزة</h2></div><BadgePercent className="h-5 w-5 text-amber-600" /></div><p className="settings-copy">لا يظهر العرض في الشريط وصور الواجهة الرئيسية إلا بعد اعتمادك. راجع الصنف والسعر والصورة قبل الموافقة.</p>{requestsQuery.isLoading ? <PanelLoading text="جارٍ تحميل طلبات العروض المميزة" /> : requests.length ? <div className="mt-5 space-y-3">{requests.map(request => <article key={request.id} className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4"><div className="flex gap-3">{request.imageUrl ? <img src={request.imageUrl} alt="" className="h-16 w-16 rounded-xl object-cover" /> : <div className="grid h-16 w-16 place-items-center rounded-xl bg-white text-amber-600"><BadgePercent className="h-5 w-5" /></div>}<div className="min-w-0 flex-1"><strong className="block text-sm text-blue-950">{request.text}</strong><span className="mt-1 block text-xs text-slate-500">{request.storeName} · {request.partnerName}</span><span className="mt-1 block text-xs font-bold text-red-600">{request.product ? `${request.product.name} · ${formatSyp(request.product.unitPrice)}` : "الصنف غير متاح"}</span><small className="mt-2 block text-[0.7rem] text-slate-400">طُلب في {request.featuredRequestedAt ? new Date(request.featuredRequestedAt).toLocaleString("ar-SY", { dateStyle: "medium", timeStyle: "short" }) : "وقت غير محدد"}</small></div></div><div className="mt-4 flex flex-wrap gap-2"><Button disabled={review.isPending || !request.product?.available} onClick={() => review.mutate({ id: request.id, decision: "approved" })} className="rounded-xl bg-emerald-600 hover:bg-emerald-700"><CheckCircle2 className="h-4 w-4" /> اعتماد ونشر</Button><Button disabled={review.isPending} variant="outline" onClick={() => { const note = window.prompt("ملاحظة الرفض للشريك (اختيارية):") ?? undefined; if (note === undefined) return; review.mutate({ id: request.id, decision: "rejected", note: note.trim() || undefined }); }} className="rounded-xl border-red-200 bg-red-50 text-red-700 hover:bg-red-100"><XCircle className="h-4 w-4" /> رفض</Button></div></article>)}</div> : <Empty icon={BadgePercent} title="لا توجد طلبات عروض مميزة" text="ستظهر هنا عروض الشركاء التي تحتاج إلى موافقتك قبل النشر العام." />}</section><ExpiredOffersPanel /></div>;
 }
 
 function ExpiredOffersPanel() {

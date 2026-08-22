@@ -413,6 +413,10 @@ export function normalizeProductSearchText(value: string) {
   return value.trim().replace(/[%_]/g, "");
 }
 
+export function canShowFeaturedOffer(featuredStatus: "none" | "pending" | "approved" | "rejected", active: boolean, expiresAt: Date | null, now = new Date()) {
+  return featuredStatus === "approved" && active && (!expiresAt || expiresAt > now);
+}
+
 export function initialCustomerOrderStatus(orderType: "delivery" | "taxi", lines: Array<{ priceKnown: boolean; unitPrice: number }>) {
   return orderType === "delivery" && lines.length > 0 && lines.every(line => line.priceKnown && line.unitPrice > 0) ? "preparing" : "pending";
 }
@@ -683,12 +687,12 @@ export const lahzaRouter = router({
         return partner ? [{ ...item, partnerName: partner.name, storeOpen: partner.storeOpen }] : [];
       });
     }),
-    offers: publicProcedure.query(async () => {
+    offers: publicProcedure.input(z.object({ storeId: z.number().int().positive() }).optional()).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await cleanExpiredOffers();
       const now = new Date();
-      const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)))).orderBy(desc(partnerOffers.createdAt));
+      const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)), ...(input?.storeId ? [eq(partnerOffers.storeId, input.storeId)] : [eq(partnerOffers.featuredStatus, "approved")]))).orderBy(desc(partnerOffers.createdAt));
       const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
       const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
       const offerProductIds = activeOffers.flatMap(offer => offer.catalogItemId ? [offer.catalogItemId] : []);
@@ -697,6 +701,7 @@ export const lahzaRouter = router({
       const storeById = new Map(activeStores.map(store => [store.id, store]));
       const productById = new Map(offerProducts.map(product => [product.id, product]));
       return activeOffers.flatMap(offer => {
+        if (!canShowFeaturedOffer(offer.featuredStatus, offer.active, offer.expiresAt, now)) return [];
         const partner = partnerById.get(offer.partnerId);
         const store = offer.storeId ? storeById.get(offer.storeId) : null;
         const product = offer.catalogItemId ? productById.get(offer.catalogItemId) : null;
@@ -808,7 +813,7 @@ export const lahzaRouter = router({
         await cleanExpiredOffers();
         const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
         if (!product[0]) throw new Error("اختر صنفاً متاحاً من منتجات متجرك لهذا العرض");
-        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, catalogItemId: product[0].id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active });
+        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, catalogItemId: product[0].id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active, featuredStatus: "none" });
         return { success: true };
       }),
       update: publicProcedure.input(partnerOfferInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -816,7 +821,18 @@ export const lahzaRouter = router({
         await cleanExpiredOffers();
         const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
         if (!product[0]) throw new Error("اختر صنفاً متاحاً من منتجات متجرك لهذا العرض");
-        await db.update(partnerOffers).set({ catalogItemId: product[0].id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
+        await db.update(partnerOffers).set({ catalogItemId: product[0].id, text: input.text, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active, featuredStatus: "none", featuredRequestedAt: null, featuredReviewedAt: null, featuredReviewNote: null }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
+        return { success: true };
+      }),
+      requestFeatured: publicProcedure.input(z.object({ id: z.number().int().positive(), storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
+        await cleanExpiredOffers();
+        const offer = await db.select({ id: partnerOffers.id, active: partnerOffers.active, expiresAt: partnerOffers.expiresAt, catalogItemId: partnerOffers.catalogItemId }).from(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id))).limit(1);
+        const found = offer[0];
+        if (!found?.active || (found.expiresAt && found.expiresAt <= new Date()) || !found.catalogItemId) throw new Error("لا يمكن طلب عرض مميز إلا لعرض نشط مرتبط بصنف متاح");
+        const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, found.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
+        if (!product[0]) throw new Error("صنف العرض غير متاح حالياً؛ حدّث العرض قبل طلب تمييزه");
+        await db.update(partnerOffers).set({ featuredStatus: "pending", featuredRequestedAt: new Date(), featuredReviewedAt: null, featuredReviewNote: null }).where(eq(partnerOffers.id, found.id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive(), storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -1115,6 +1131,37 @@ export const lahzaRouter = router({
       }),
     }),
     offers: router({
+      featuredRequests: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await cleanExpiredOffers();
+        const rows = await db.select().from(partnerOffers).where(eq(partnerOffers.featuredStatus, "pending")).orderBy(desc(partnerOffers.featuredRequestedAt));
+        const [storeRows, partnerRows, productRows] = await Promise.all([
+          db.select({ id: stores.id, name: stores.name }).from(stores),
+          db.select({ id: partners.id, name: partners.name }).from(partners),
+          db.select({ id: catalogItems.id, name: catalogItems.name, available: catalogItems.available, unitPrice: catalogItems.unitPrice }).from(catalogItems).where(eq(catalogItems.deleted, false)),
+        ]);
+        const storeById = new Map(storeRows.map(store => [store.id, store.name]));
+        const partnerById = new Map(partnerRows.map(partner => [partner.id, partner.name]));
+        const productById = new Map(productRows.map(product => [product.id, product]));
+        return rows.map(offer => ({ ...offer, storeName: offer.storeId ? storeById.get(offer.storeId) ?? "متجر غير محدد" : "متجر غير محدد", partnerName: partnerById.get(offer.partnerId) ?? "شريك غير محدد", product: offer.catalogItemId ? productById.get(offer.catalogItemId) ?? null : null }));
+      }),
+      reviewFeatured: publicProcedure.input(z.object({ id: z.number().int().positive(), decision: z.enum(["approved", "rejected"]), note: z.string().trim().max(300).optional() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const found = await db.select({ id: partnerOffers.id, active: partnerOffers.active, expiresAt: partnerOffers.expiresAt, catalogItemId: partnerOffers.catalogItemId, featuredStatus: partnerOffers.featuredStatus }).from(partnerOffers).where(eq(partnerOffers.id, input.id)).limit(1);
+        const offer = found[0];
+        if (!offer || offer.featuredStatus !== "pending") throw new Error("طلب العرض المميز غير متاح للمراجعة");
+        if (input.decision === "approved") {
+          if (!offer.active || (offer.expiresAt && offer.expiresAt <= new Date()) || !offer.catalogItemId) throw new Error("لا يمكن اعتماد عرض غير نشط أو منتهٍ");
+          const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, offer.catalogItemId), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
+          if (!product[0]) throw new Error("لا يمكن اعتماد عرض لصنف غير متاح");
+        }
+        await db.update(partnerOffers).set({ featuredStatus: input.decision, featuredReviewedAt: new Date(), featuredReviewNote: input.note || null }).where(eq(partnerOffers.id, offer.id));
+        return { success: true };
+      }),
       expired: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx);
         const db = await getDb();
