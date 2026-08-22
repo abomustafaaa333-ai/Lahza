@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, initialCustomerOrderStatus, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 
 describe("بحث المنتجات", () => {
@@ -325,5 +325,16 @@ describe("بيانات الطلب الإلزامية", () => {
     });
 
     expect(parsed.success).toBe(false);
+  });
+
+  it("ينقل طلب المنتجات المتاحة والمسعّرة إلى التجهيز مباشرة", () => {
+    expect(initialCustomerOrderStatus("delivery", [{ priceKnown: true, unitPrice: 300 }])).toBe("preparing");
+    expect(initialCustomerOrderStatus("delivery", [{ priceKnown: true, unitPrice: 300 }, { priceKnown: true, unitPrice: 150 }])).toBe("preparing");
+  });
+
+  it("يبقي الأصناف غير المسعّرة أو غير المتاحة وطلبات التاكسي ضمن المراجعة", () => {
+    expect(initialCustomerOrderStatus("delivery", [{ priceKnown: false, unitPrice: 0 }])).toBe("pending");
+    expect(initialCustomerOrderStatus("delivery", [{ priceKnown: true, unitPrice: 0 }])).toBe("pending");
+    expect(initialCustomerOrderStatus("taxi", [])).toBe("pending");
   });
 });

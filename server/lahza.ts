@@ -413,6 +413,10 @@ export function normalizeProductSearchText(value: string) {
   return value.trim().replace(/[%_]/g, "");
 }
 
+export function initialCustomerOrderStatus(orderType: "delivery" | "taxi", lines: Array<{ priceKnown: boolean; unitPrice: number }>) {
+  return orderType === "delivery" && lines.length > 0 && lines.every(line => line.priceKnown && line.unitPrice > 0) ? "preparing" : "pending";
+}
+
 async function findStoreForCatalog(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, storeId: number | undefined, category: LahzaCategory) {
   if (!storeId) return null;
   const found = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
@@ -865,6 +869,7 @@ export const lahzaRouter = router({
         return { ...line, unitPrice, lineTotal, priceKnown: !isPharmacy && Boolean(product && !product.deleted) };
       });
       const itemsTotal = totalAmount;
+      const initialStatus = initialCustomerOrderStatus(input.orderType, resolvedLines);
       if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(itemsTotal)) {
         throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(MINIMUM_DELIVERY_ORDER_SYP)}`);
       }
@@ -890,6 +895,7 @@ export const lahzaRouter = router({
 
       const created = await db.insert(orders).values({
         orderType: input.orderType,
+        status: initialStatus,
         intercityTripId: intercityTrip?.id ?? null,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
