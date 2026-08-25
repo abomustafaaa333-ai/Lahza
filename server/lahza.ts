@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
@@ -407,6 +407,17 @@ const partnerAccountInput = z.object({
   password: passwordSchema,
 });
 
+export const supportContactInput = z.object({
+  label: z.string().trim().min(2, "أدخل اسماً واضحاً لجهة التواصل").max(80),
+  phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سوري صحيحاً يبدأ بـ +9639"),
+  callEnabled: z.boolean(),
+  whatsappEnabled: z.boolean(),
+  active: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).max(100_000).default(0),
+}).superRefine((input, context) => {
+  if (!input.callEnabled && !input.whatsappEnabled) context.addIssue({ code: "custom", message: "اختر الاتصال أو واتساب لجهة التواصل" });
+});
+
 export const partnerProductInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المنتج").max(160),
   category: z.enum(categories),
@@ -571,6 +582,13 @@ export const lahzaRouter = router({
     get: publicProcedure.query(async () => {
       const settings = await getSettings();
       return { manbijPercent: settings.manbijDeliveryPercent, jarabulusPercent: settings.jarabulusDeliveryPercent };
+    }),
+  }),
+  support: router({
+    contacts: publicProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      return db.select().from(supportContacts).where(eq(supportContacts.active, true)).orderBy(supportContacts.sortOrder, supportContacts.id);
     }),
   }),
   customers: router({
@@ -1506,6 +1524,36 @@ export const lahzaRouter = router({
         const nextTickerSettings = readTickerSettings(input);
         await saveTickerSettings(db, nextTickerSettings);
         return { success: true, ...nextTickerSettings };
+      }),
+    }),
+    supportContacts: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return db.select().from(supportContacts).orderBy(supportContacts.sortOrder, supportContacts.id);
+      }),
+      create: publicProcedure.input(supportContactInput).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.insert(supportContacts).values(input);
+        return { success: true };
+      }),
+      update: publicProcedure.input(supportContactInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const { id, ...patch } = input;
+        await db.update(supportContacts).set(patch).where(eq(supportContacts.id, id));
+        return { success: true };
+      }),
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.delete(supportContacts).where(eq(supportContacts.id, input.id));
+        return { success: true };
       }),
     }),
     employees: router({

@@ -204,6 +204,18 @@ export const lahzaEmployees = mysqlTable("lahza_employees", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const supportContacts = mysqlTable("support_contacts", {
+  id: int("id").autoincrement().primaryKey(),
+  label: varchar("label", { length: 80 }).notNull(),
+  phone: varchar("phone", { length: 24 }).notNull(),
+  callEnabled: boolean("callEnabled").notNull().default(true),
+  whatsappEnabled: boolean("whatsappEnabled").notNull().default(true),
+  active: boolean("active").notNull().default(true),
+  sortOrder: int("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const customerProfiles = mysqlTable("customer_profiles", {
   id: int("id").autoincrement().primaryKey(),
   deviceId: varchar("deviceId", { length: 80 }).notNull().unique(),

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, canShowFeaturedOffer, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, initialCustomerOrderStatus, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, canShowFeaturedOffer, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, initialCustomerOrderStatus, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, supportContactInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 import { demoProductTemplates } from "./demoCatalog";
 
@@ -18,6 +18,16 @@ describe("بحث المنتجات", () => {
   it("ينقي عبارة البحث من المسافات والرموز الخاصة بالمطابقة", () => {
     expect(normalizeProductSearchText("  عدس_%  ")).toBe("عدس");
     expect(normalizeProductSearchText("فروج مشوي")).toBe("فروج مشوي");
+  });
+});
+
+describe("جهات التواصل مع العملاء", () => {
+  it("يقبل رقماً سورياً مع وسيلة تواصل واحدة على الأقل", () => {
+    expect(supportContactInput.parse({ label: "خدمة العملاء", phone: "+963912345678", callEnabled: true, whatsappEnabled: false, active: true, sortOrder: 2 })).toMatchObject({ label: "خدمة العملاء", phone: "+963912345678" });
+  });
+
+  it("يرفض جهة بلا اتصال ولا واتساب", () => {
+    expect(() => supportContactInput.parse({ label: "الدعم", phone: "+963912345678", callEnabled: false, whatsappEnabled: false, active: true, sortOrder: 0 })).toThrow("اختر الاتصال أو واتساب");
   });
 });
 
