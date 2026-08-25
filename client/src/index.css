@@ -136,7 +136,7 @@ html, body { background: #fff8f1; }
 /* Shared fixed navigation and offer strip across the main app screens */
 .global-offer-bar { position: sticky; top: calc(9.35rem + .5cm); z-index: 28; width: min(100%, 760px); margin-inline: auto; padding: .25rem 0 .35rem; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; }
 .global-offer-bar .hero-image-frame { position: relative; inset: auto; width: 100%; height: clamp(9.75rem, 38vw, 15rem); overflow: hidden; border: 0; border-radius: 1.35rem; background: transparent; box-shadow: none; -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 7%, #000 93%, transparent 100%); mask-image: linear-gradient(to bottom, transparent 0%, #000 7%, #000 93%, transparent 100%); }
-.global-offer-bar .hero-offer-image { object-fit: cover; }
+.global-offer-bar .hero-offer-image { object-fit: cover; mix-blend-mode: multiply; filter: saturate(1.08) contrast(1.03); -webkit-mask-image: radial-gradient(ellipse at center, #000 62%, rgba(0,0,0,.96) 78%, transparent 100%); mask-image: radial-gradient(ellipse at center, #000 62%, rgba(0,0,0,.96) 78%, transparent 100%); }
 .home-bottom-nav { position: fixed; right: 50%; bottom: calc(.7rem + .5cm); z-index: 40; transform: translateX(50%); }
 main { padding-bottom: calc(5.4rem + .5cm); }
 .bottom-cta { bottom: calc(5.35rem + .5cm); z-index: 35; }
