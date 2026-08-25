@@ -481,3 +481,20 @@ body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323
 }
 
 .hero-offer-discount { position: absolute; top: .85rem; left: .85rem; z-index: 3; border-radius: 999px; background: #6f1028; color: #fffaf5; padding: .42rem .68rem; font-size: .72rem; font-weight: 900; box-shadow: 0 .45rem 1rem rgba(84, 22, 42, .28); }
+
+
+/* Clear old-versus-new price hierarchy inside the generated offer artwork. */
+.lahza-offer-artwork-prices { align-items: stretch; gap: .4rem; }
+.lahza-offer-price-old, .lahza-offer-price-new { display: grid; gap: .08rem; border-radius: .68rem; padding: .32rem .45rem; line-height: 1.1; }
+.lahza-offer-price-old { background: rgba(255,255,255,.5); }
+.lahza-offer-price-new { background: #6f1028; box-shadow: 0 .35rem .8rem rgba(84,22,42,.18); }
+.lahza-offer-price-old i, .lahza-offer-price-new i { font-size: .53rem; font-style: normal; font-weight: 800; }
+.lahza-offer-price-old i { color: #8c6470; }
+.lahza-offer-price-new i { color: #ffe1d5; }
+.lahza-offer-price-old del { color: #7e5360; font-size: .73rem; font-weight: 800; text-decoration-color: #d05b57; text-decoration-thickness: 2px; }
+.lahza-offer-price-new b { color: #fffaf5; font-size: .85rem; font-weight: 900; }
+.home-store-icon svg { color: #6f1028; filter: drop-shadow(0 2px 2px rgba(84,22,42,.14)); }
+.home-product-favorite { color: #ed665e; }
+.home-product-favorite svg { stroke-width: 2.5; }
+.cart-line-category { color: #6f1028; }
+.cart-line-category svg { stroke-width: 2.2; }
