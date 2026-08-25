@@ -13,6 +13,7 @@ export type PartnerGallerySource = {
   offerPrice?: number | null;
   discountPercent?: number | null;
   storeOpen?: boolean | null;
+  originalProductPrice?: number | null;
 };
 
 export type PartnerGallerySlide = {
@@ -23,6 +24,8 @@ export type PartnerGallerySlide = {
   imageUrl: string;
   partnerName: string;
   unitPrice: number;
+  originalProductPrice?: number | null;
+  offerPrice?: number | null;
   discountPercent?: number | null;
   storeOpen?: boolean | null;
 };
@@ -33,6 +36,6 @@ export function buildPartnerGallerySlides(items: PartnerGallerySource[]): Partne
     const imageUrl = item.imageUrl?.trim() || item.productImageUrl?.trim();
     if (!imageUrl || !/^(https:\/\/|\/)/i.test(imageUrl) || seenUrls.has(imageUrl)) return [];
     seenUrls.add(imageUrl);
-    return [{ id: item.id, ...(item.storeId != null ? { storeId: item.storeId } : {}), ...(item.storeCategory ? { storeCategory: item.storeCategory } : {}), name: item.name?.trim() || item.text?.trim() || "عرض متجر لحظة", imageUrl, partnerName: item.storeName?.trim() || item.partnerName?.trim() || "متجر لحظة", unitPrice: Math.max(0, Number(item.offerPrice ?? item.productPrice ?? item.unitPrice ?? 0)), ...(Number(item.discountPercent ?? 0) > 0 ? { discountPercent: Number(item.discountPercent) } : {}), ...(item.storeOpen != null ? { storeOpen: item.storeOpen } : {}) }];
+    return [{ id: item.id, ...(item.storeId != null ? { storeId: item.storeId } : {}), ...(item.storeCategory ? { storeCategory: item.storeCategory } : {}), name: item.name?.trim() || item.text?.trim() || "عرض متجر لحظة", imageUrl, partnerName: item.storeName?.trim() || item.partnerName?.trim() || "متجر لحظة", unitPrice: Math.max(0, Number(item.offerPrice ?? item.productPrice ?? item.unitPrice ?? 0)), ...(item.originalProductPrice != null ? { originalProductPrice: Math.max(0, Number(item.originalProductPrice)) } : {}), ...(item.offerPrice != null ? { offerPrice: Math.max(0, Number(item.offerPrice)) } : {}), ...(Number(item.discountPercent ?? 0) > 0 ? { discountPercent: Number(item.discountPercent) } : {}), ...(item.storeOpen != null ? { storeOpen: item.storeOpen } : {}) }];
   });
 }
