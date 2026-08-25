@@ -492,7 +492,11 @@ export default function Home() {
       toast.error("لا يدعم هذا الجهاز تحديد الموقع");
       return;
     }
-    toast.message("سيظهر الآن طلب إذن الموقع من هاتفك لتأكيد عنوان التوصيل.");
+    if (!window.isSecureContext && !isNativeLahzaApp()) {
+      toast.error("يتطلب تحديد الموقع فتح التطبيق عبر اتصال آمن HTTPS.");
+      return;
+    }
+    // يستدعي المتصفح مباشرة من ضغطة العميل كي تظهر نافذة السماح في الهاتف.
     setLocating(true);
     navigator.geolocation.getCurrentPosition(position => {
       const { latitude, longitude } = position.coords;
@@ -503,11 +507,19 @@ export default function Home() {
       setLocationVerified(true);
       setUseManualLocation(false);
       setLocating(false);
-      toast.success("تم تحديد موقعك بنجاح");
-    }, () => {
+      toast.success("تم السماح بالموقع وتأكيد عنوان التوصيل.");
+    }, error => {
       setLocating(false);
-      toast.error("تعذر تحديد الموقع. تحقق من إذن الموقع ثم حاول مجدداً.");
-    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+      if (error.code === error.PERMISSION_DENIED) {
+        toast.error("لم يتم منح إذن الموقع. عند ظهور نافذة الهاتف اختر «سماح أثناء الاستخدام»، ثم اضغط الزر مرة أخرى.");
+        return;
+      }
+      if (error.code === error.POSITION_UNAVAILABLE) {
+        toast.error("خدمة الموقع في الهاتف غير متاحة. فعّل «الموقع» من إعدادات الهاتف ثم أعد المحاولة.");
+        return;
+      }
+      toast.error("انتهت مهلة تحديد الموقع. تأكد من الإنترنت أو GPS ثم أعد المحاولة.");
+    }, { enableHighAccuracy: false, timeout: 20000, maximumAge: 0 });
   };
 
   const submitCheckout = () => {
