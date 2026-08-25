@@ -1035,8 +1035,8 @@ export const lahzaRouter = router({
         if (offerPrice >= product[0].unitPrice) throw new Error("يجب أن يكون سعر العرض أقل من سعر المنتج الأصلي");
         const discountPercent = Math.round((product[0].unitPrice - offerPrice) * 100 / product[0].unitPrice);
         if (discountPercent < 1 || discountPercent > 90) throw new Error("اجعل سعر العرض يحقق خصماً بين 1% و90%");
-        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, catalogItemId: product[0].id, text: input.text, discountPercent, offerPrice, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active, featuredStatus: "none" });
-        return { success: true };
+        const inserted = await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, catalogItemId: product[0].id, text: input.text, discountPercent, offerPrice, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active, featuredStatus: "none" });
+        return { success: true, id: Number(inserted[0].insertId) };
       }),
       update: publicProcedure.input(partnerOfferInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
