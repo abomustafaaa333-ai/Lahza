@@ -101,9 +101,9 @@ describe("الليرة السورية الجديدة", () => {
     expect(toLegacySyp(50.08)).toBe(5_000);
   });
 
-  it("يعرض السعر دائماً بوصفه ليرة سورية جديدة صحيحة بلا فاصلة", () => {
-    expect(formatSyp(50_000)).toContain("ل.س جديدة");
-    expect(formatNewSyp(300)).toContain("ل.س جديدة");
+  it("يعرض السعر دائماً بوصفه ل.س صحيحة بلا فاصلة", () => {
+    expect(formatSyp(50_000)).toContain("ل.س");
+    expect(formatNewSyp(300)).toContain("ل.س");
     expect(formatNewSyp(50.08)).not.toContain("٫");
   });
 });

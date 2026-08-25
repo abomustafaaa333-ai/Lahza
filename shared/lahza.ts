@@ -96,15 +96,15 @@ function safeMoneyValue(value: number) {
 /** يحوّل القيمة المخزّنة إلى ليرات سورية جديدة صحيحة، بلا أجزاء عشرية. */
 export const toNewSyp = (legacyValue: number) => Math.round(safeMoneyValue(legacyValue) / SYP_CONVERSION_FACTOR);
 
-/** يحوّل مبلغاً صحيحاً بالليرة الجديدة إلى قيمة التخزين التاريخية. */
+/** يحوّل مبلغاً صحيحاً بـ ل.س إلى قيمة التخزين التاريخية. */
 export const toLegacySyp = (newValue: number) => Math.round(safeMoneyValue(newValue)) * SYP_CONVERSION_FACTOR;
 
-export const formatNewSyp = (value: number) => `${new Intl.NumberFormat("ar-SY", { maximumFractionDigits: 0 }).format(Math.round(safeMoneyValue(value)))} ل.س جديدة`;
+export const formatNewSyp = (value: number) => `${new Intl.NumberFormat("ar-SY", { maximumFractionDigits: 0 }).format(Math.round(safeMoneyValue(value)))} ل.س`;
 
-/** تحسب رسوم التوصيل من مبلغ المنتجات المعروض بالليرة الجديدة، ثم تقرّبها إلى ليرة صحيحة. */
+/** تحسب رسوم التوصيل من مبلغ المنتجات المعروض بـ ل.س، ثم تقرّبها إلى ليرة صحيحة. */
 export const calculatePercentageDeliveryFeeNewSyp = (itemsTotalInLegacySyp: number, percentage: number) => Math.round(toNewSyp(itemsTotalInLegacySyp) * Math.max(0, Math.min(100, Math.round(Number(percentage) || 0))) / 100);
 
-/** يعرض القيم التاريخية المخزنة دائماً بالليرة السورية الجديدة. */
+/** يعرض القيم التاريخية المخزنة دائماً بـ ل.س. */
 export const formatSyp = (legacyValue: number) => formatNewSyp(toNewSyp(legacyValue));
 
 export const orderStatusLabels = {

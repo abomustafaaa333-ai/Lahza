@@ -6,7 +6,7 @@ describe("الانتقال من السلة إلى تأكيد الطلب", () => 
     expect(getDeliveryCheckoutGate(0, 0)).toMatchObject({ allowed: false, message: expect.stringContaining("السلة فارغة") });
   });
 
-  it("يرفض مجموعاً أقل من 300 ليرة سورية جديدة", () => {
+  it("يرفض مجموعاً أقل من 300 ل.س", () => {
     expect(getDeliveryCheckoutGate(1, 5_008)).toMatchObject({ allowed: false, totalNewSyp: 50 });
     expect(remainingDeliveryAmountNewSyp(5_008)).toBe(250);
   });
