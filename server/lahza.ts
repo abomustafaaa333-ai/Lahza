@@ -402,8 +402,8 @@ const customCategoryInput = z.object({
 });
 
 const partnerAccountInput = z.object({
-  name: z.string().trim().min(2, "أدخل اسم المتجر").max(120),
-  username: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9_]+$/, "استخدم أحرفاً إنجليزية أو أرقاماً أو شرطة سفلية"),
+  name: z.string().trim().min(2, "أدخل اسم الشريك أو المتجر").max(120),
+  phone: z.string().trim().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سورياً صحيحاً يبدأ بـ +9639"),
   password: passwordSchema,
 });
 
@@ -925,15 +925,22 @@ export const lahzaRouter = router({
       const assignedStores = await db.select().from(stores).where(eq(stores.partnerId, found[0].id)).orderBy(stores.category, stores.sortOrder, stores.name);
       return { ...found[0], stores: assignedStores };
     }),
-    login: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64), password: passwordSchema })).mutation(async ({ ctx, input }) => {
+    login: publicProcedure.input(z.object({ password: passwordSchema })).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
       if (!runtimeId) throw new Error("تعذر تأمين جلسة الشريك، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const found = await db.select().from(partners).where(and(eq(partners.username, input.username), eq(partners.active, true))).limit(1);
-      if (!found[0] || !await verifySecret(input.password, found[0].passwordHash)) throw new Error("بيانات دخول الشريك غير صحيحة");
-      setPartnerCookie(ctx, await createPartnerSession({ partnerId: found[0].id, runtimeId }));
-      return { id: found[0].id, name: found[0].name };
+      const candidates = await db.select().from(partners).where(eq(partners.active, true)).limit(100);
+      let found = null;
+      for (const candidate of candidates) {
+        if (await verifySecret(input.password, candidate.passwordHash)) {
+          found = candidate;
+          break;
+        }
+      }
+      if (!found) throw new Error("كلمة مرور الشريك غير صحيحة");
+      setPartnerCookie(ctx, await createPartnerSession({ partnerId: found.id, runtimeId }));
+      return { id: found.id, name: found.name };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
@@ -1391,9 +1398,9 @@ export const lahzaRouter = router({
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const exists = await db.select({ id: partners.id }).from(partners).where(eq(partners.username, input.username)).limit(1);
-        if (exists[0]) throw new Error("اسم مستخدم الشريك مستخدم بالفعل");
-        await db.insert(partners).values({ name: input.name, username: input.username, passwordHash: await hashSecret(input.password), active: true, storeOpen: true, preparationMinutes: 20 });
+        const exists = await db.select({ id: partners.id }).from(partners).where(eq(partners.username, input.phone)).limit(1);
+        if (exists[0]) throw new Error("رقم هاتف الشريك مستخدم بالفعل");
+        await db.insert(partners).values({ name: input.name, username: input.phone, passwordHash: await hashSecret(input.password), active: true, storeOpen: true, preparationMinutes: 20 });
         return { success: true };
       }),
       update: publicProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(120), active: z.boolean(), storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
