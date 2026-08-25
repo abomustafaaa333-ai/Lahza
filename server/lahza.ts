@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customCategories, customerPresence, customerProfiles, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
@@ -418,6 +418,41 @@ export const supportContactInput = z.object({
   if (!input.callEnabled && !input.whatsappEnabled) context.addIssue({ code: "custom", message: "اختر الاتصال أو واتساب لجهة التواصل" });
 });
 
+export const driverInput = z.object({
+  name: z.string().trim().min(2, "أدخل اسم المندوب").max(80),
+  phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم مندوب سورياً صحيحاً"),
+  vehicleType: z.enum(["motorcycle", "car", "van"]).default("motorcycle"),
+  region: z.string().trim().min(2).max(120).default("منبج"),
+  active: z.boolean().default(true),
+  available: z.boolean().default(true),
+});
+
+export const notificationCampaignInput = z.object({
+  kind: z.enum(["offer", "event", "reminder"]),
+  title: z.string().trim().min(2).max(120),
+  body: z.string().trim().min(2).max(300),
+  targetPath: z.string().trim().min(1).max(180).default("/"),
+  scheduledAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional(),
+  active: z.boolean().default(true),
+});
+
+export const inventoryMovementInput = z.object({
+  catalogItemId: z.number().int().positive(),
+  quantityDelta: z.number().int().refine(value => value !== 0, "يجب أن تكون حركة المخزون غير صفرية"),
+  reason: z.enum(["purchase", "adjustment", "order_reserved", "order_released"]).default("adjustment"),
+  orderId: z.number().int().positive().optional(),
+  note: z.string().trim().max(300).optional(),
+});
+
+export const financeEntryInput = z.object({
+  orderId: z.number().int().positive().optional(),
+  kind: z.enum(["order_income", "delivery_fee", "partner_payable", "driver_payable", "adjustment"]),
+  direction: z.enum(["credit", "debit"]),
+  amount: z.number().int().positive(),
+  note: z.string().trim().max(300).optional(),
+});
+
 export const partnerProductInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المنتج").max(160),
   category: z.enum(categories),
@@ -589,6 +624,26 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       return db.select().from(supportContacts).where(eq(supportContacts.active, true)).orderBy(supportContacts.sortOrder, supportContacts.id);
+    }),
+  }),
+  notifications: router({
+    feed: publicProcedure.input(z.object({ deviceId: deviceIdSchema })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const now = new Date();
+      const campaigns = await db.select().from(notificationCampaigns).where(and(eq(notificationCampaigns.active, true), or(isNull(notificationCampaigns.scheduledAt), lte(notificationCampaigns.scheduledAt, now)), or(isNull(notificationCampaigns.expiresAt), gte(notificationCampaigns.expiresAt, now)))).orderBy(desc(notificationCampaigns.createdAt));
+      const reads = await db.select({ campaignId: customerNotifications.campaignId, readAt: customerNotifications.readAt }).from(customerNotifications).where(eq(customerNotifications.deviceId, input.deviceId));
+      const readByCampaign = new Map(reads.map(row => [row.campaignId, row.readAt]));
+      return campaigns.map(campaign => ({ ...campaign, readAt: readByCampaign.get(campaign.id) ?? null, unread: !readByCampaign.has(campaign.id) }));
+    }),
+    markRead: publicProcedure.input(z.object({ deviceId: deviceIdSchema, campaignId: z.number().int().positive() })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await db.insert(customerPresence).values({ deviceId: input.deviceId, lastSeen: new Date() }).onDuplicateKeyUpdate({ set: { lastSeen: new Date() } });
+      const campaign = await db.select({ id: notificationCampaigns.id }).from(notificationCampaigns).where(and(eq(notificationCampaigns.id, input.campaignId), eq(notificationCampaigns.active, true))).limit(1);
+      if (!campaign[0]) throw new Error("الإشعار غير متاح حالياً");
+      await db.insert(customerNotifications).values({ campaignId: input.campaignId, deviceId: input.deviceId, readAt: new Date() }).onDuplicateKeyUpdate({ set: { readAt: new Date() } });
+      return { success: true };
     }),
   }),
   customers: router({
@@ -1524,6 +1579,142 @@ export const lahzaRouter = router({
         const nextTickerSettings = readTickerSettings(input);
         await saveTickerSettings(db, nextTickerSettings);
         return { success: true, ...nextTickerSettings };
+      }),
+    }),
+    drivers: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return db.select().from(drivers).orderBy(desc(drivers.createdAt));
+      }),
+      create: publicProcedure.input(driverInput).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const exists = await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.phone, input.phone)).limit(1);
+        if (exists[0]) throw new Error("رقم المندوب مستخدم بالفعل");
+        await db.insert(drivers).values(input);
+        return { success: true };
+      }),
+      update: publicProcedure.input(driverInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const { id, ...patch } = input;
+        await db.update(drivers).set(patch).where(eq(drivers.id, id));
+        return { success: true };
+      }),
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const assignment = await db.select({ id: orderAssignments.id }).from(orderAssignments).where(and(eq(orderAssignments.driverId, input.id), or(eq(orderAssignments.status, "assigned"), eq(orderAssignments.status, "accepted"), eq(orderAssignments.status, "picked_up")))).limit(1);
+        if (assignment[0]) throw new Error("لا يمكن حذف مندوب لديه طلب قيد التنفيذ");
+        await db.delete(drivers).where(eq(drivers.id, input.id));
+        return { success: true };
+      }),
+      assign: publicProcedure.input(z.object({ orderId: z.number().int().positive(), driverId: z.number().int().positive(), note: z.string().trim().max(300).optional() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const driver = await db.select({ id: drivers.id, active: drivers.active, available: drivers.available }).from(drivers).where(eq(drivers.id, input.driverId)).limit(1);
+        if (!driver[0] || !driver[0].active || !driver[0].available) throw new Error("المندوب غير متاح للتعيين");
+        const order = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, input.orderId)).limit(1);
+        if (!order[0]) throw new Error("الطلب غير موجود");
+        await db.insert(orderAssignments).values({ orderId: input.orderId, driverId: input.driverId, note: input.note || null }).onDuplicateKeyUpdate({ set: { driverId: input.driverId, status: "assigned", note: input.note || null, assignedAt: new Date() } });
+        await db.update(drivers).set({ available: false }).where(eq(drivers.id, input.driverId));
+        return { success: true };
+      }),
+    }),
+    inventory: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const rows = await db.select({ movement: inventoryMovements, itemName: catalogItems.name }).from(inventoryMovements).leftJoin(catalogItems, eq(inventoryMovements.catalogItemId, catalogItems.id)).orderBy(desc(inventoryMovements.createdAt)).limit(200);
+        const balances = new Map<number, number>();
+        for (const row of rows) balances.set(row.movement.catalogItemId, (balances.get(row.movement.catalogItemId) ?? 0) + row.movement.quantityDelta);
+        return { movements: rows.map(row => ({ ...row.movement, itemName: row.itemName ?? "منتج محذوف" })), balances: Array.from(balances.entries()).map(([catalogItemId, quantity]) => ({ catalogItemId, quantity })) };
+      }),
+      adjust: publicProcedure.input(inventoryMovementInput).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const item = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.deleted, false))).limit(1);
+        if (!item[0]) throw new Error("المنتج غير موجود");
+        await db.insert(inventoryMovements).values(input);
+        return { success: true };
+      }),
+    }),
+    finance: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return db.select().from(financeEntries).orderBy(desc(financeEntries.createdAt)).limit(300);
+      }),
+      create: publicProcedure.input(financeEntryInput).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.insert(financeEntries).values({ ...input, amount: toLegacySyp(input.amount) });
+        return { success: true };
+      }),
+      settle: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.update(financeEntries).set({ status: "settled", settledAt: new Date() }).where(eq(financeEntries.id, input.id));
+        return { success: true };
+      }),
+    }),
+    analytics: router({
+      dashboard: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const rows = await db.select({ id: orders.id, status: orders.status, orderType: orders.orderType, totalAmount: orders.totalAmount, createdAt: orders.createdAt }).from(orders).orderBy(desc(orders.createdAt)).limit(1000);
+        const byStatus = rows.reduce<Record<string, number>>((acc, row) => { acc[row.status] = (acc[row.status] ?? 0) + 1; return acc; }, {});
+        const totalAmount = rows.reduce((sum, row) => sum + row.totalAmount, 0);
+        return { totalOrders: rows.length, totalAmount: toNewSyp(totalAmount), byStatus, recentOrders: rows.slice(0, 10).map(row => ({ ...row, totalAmount: toNewSyp(row.totalAmount) })) };
+      }),
+    }),
+    notifications: router({
+      list: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return db.select().from(notificationCampaigns).orderBy(desc(notificationCampaigns.createdAt));
+      }),
+      create: publicProcedure.input(notificationCampaignInput).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.insert(notificationCampaigns).values({ ...input, scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null });
+        return { success: true };
+      }),
+      update: publicProcedure.input(notificationCampaignInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const { id, ...patch } = input;
+        await db.update(notificationCampaigns).set({ ...patch, scheduledAt: patch.scheduledAt ? new Date(patch.scheduledAt) : null, expiresAt: patch.expiresAt ? new Date(patch.expiresAt) : null }).where(eq(notificationCampaigns.id, id));
+        return { success: true };
+      }),
+      toggle: publicProcedure.input(z.object({ id: z.number().int().positive(), active: z.boolean() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.update(notificationCampaigns).set({ active: input.active }).where(eq(notificationCampaigns.id, input.id));
+        return { success: true };
+      }),
+      remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await db.delete(notificationCampaigns).where(eq(notificationCampaigns.id, input.id));
+        return { success: true };
       }),
     }),
     supportContacts: router({

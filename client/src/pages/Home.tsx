@@ -13,7 +13,7 @@ import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partn
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, formatNewSyp, formatSyp, restaurantTypeMeta, toLegacySyp, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
-import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -208,6 +208,7 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const [screen, setScreen] = useState<Screen>("home");
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
   const [discountPreview, setDiscountPreview] = useState<PromotionPreview | null>(null);
@@ -361,6 +362,23 @@ export default function Home() {
   });
   const checkStoreAvailability = trpc.lahza.storefront.availability.useMutation({ onError: error => toast.error(error.message) });
   const touchPresence = trpc.lahza.customers.touch.useMutation();
+  const deviceId = useMemo(() => getDeviceId(), []);
+  const notificationsQuery = trpc.lahza.notifications.feed.useQuery({ deviceId }, { enabled: !isStaticDemo, refetchInterval: 60_000, staleTime: 30_000 });
+  const markNotificationRead = trpc.lahza.notifications.markRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); } });
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) setNotificationPermission(window.Notification.permission);
+  }, []);
+
+  const enableCustomerNotifications = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      toast.error("الإشعارات الأصلية غير مدعومة في هذا المتصفح حالياً");
+      return;
+    }
+    const permission = await window.Notification.requestPermission();
+    setNotificationPermission(permission);
+    toast[permission === "granted" ? "success" : "error"](permission === "granted" ? "تم تفعيل تنبيهات لحظة" : "لم يتم تفعيل الإشعارات");
+  };
 
   useEffect(() => {
     if (isStaticDemo) return;
@@ -668,6 +686,7 @@ export default function Home() {
     <main dir="rtl" className="lahza-app-shell min-h-screen text-slate-950">
       <Header onSecret={() => setSecretOpen(true)} onCart={openCart} onSearch={() => setSearchOpen(true)} cartCount={cart.length} />
       {screen !== "store" && screen !== "productQuantity" && screen !== "storeOffers" && screen !== "checkout" ? <div className="global-offer-bar"><PartnerOfferGallery slides={partnerGallerySlides} onOpen={setSelectedGalleryOffer} /></div> : null}
+      {screen === "home" && !isStaticDemo && (notificationsQuery.data ?? []).some(notification => notification.unread) ? <section className="app-shell mt-3"><div className="rounded-3xl border border-orange-200 bg-gradient-to-l from-orange-50 via-white to-amber-50 p-4 shadow-[0_12px_30px_rgba(232,105,38,0.12)]"><div className="mb-3 flex items-center gap-2 text-[#63301b]"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#ff7a33] text-white"><BellRing className="h-4 w-4" /></span><div className="min-w-0 flex-1"><strong className="block text-sm font-black">تنبيهات لحظة</strong><small className="text-[11px] text-[#a9471b]">عروض وأخبار جديدة لك</small></div>{notificationPermission !== "granted" && "Notification" in window ? <button type="button" onClick={enableCustomerNotifications} className="rounded-xl bg-[#63301b] px-3 py-2 text-[11px] font-black text-white transition hover:bg-[#4a2618]">تفعيل</button> : null}</div><div className="space-y-2">{(notificationsQuery.data ?? []).filter(notification => notification.unread).slice(0, 3).map(notification => <button key={notification.id} type="button" onClick={() => { markNotificationRead.mutate({ deviceId, campaignId: notification.id }); if (notification.targetPath === "/offers") setScreen("offers"); }} className="w-full rounded-2xl border border-orange-100 bg-white/85 p-3 text-right transition hover:border-orange-300 hover:shadow-sm"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block text-sm text-[#4a2618]">{notification.title}</strong><small className="mt-1 block leading-5 text-slate-600">{notification.body}</small></span><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#ff6b2d]" aria-label="إشعار جديد" /></span></button>)}</div></div></section> : null}
 
       <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <><DialogClose aria-label="إغلاق العرض" className="absolute right-4 top-4 z-10 grid h-12 w-12 place-items-center rounded-full border border-white/70 bg-slate-950/50 text-white shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-slate-950/70 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"><X className="h-7 w-7" strokeWidth={3} /><span className="sr-only">إغلاق العرض</span></DialogClose>{selectedGalleryOffer.imageUrl ? <img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /> : <div className="grid h-52 place-items-center bg-gradient-to-br from-red-600 to-orange-500 text-white"><BadgePercent className="h-14 w-14" /></div>}<div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-[#4a2618]">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={() => openOfferLocation(selectedGalleryOffer)} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
 

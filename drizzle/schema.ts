@@ -280,5 +280,73 @@ export const missingProductRequests = mysqlTable("missing_product_requests", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const drivers = mysqlTable("drivers", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 80 }).notNull(),
+  phone: varchar("phone", { length: 24 }).notNull().unique(),
+  vehicleType: mysqlEnum("vehicleType", ["motorcycle", "car", "van"]).notNull().default("motorcycle"),
+  region: varchar("region", { length: 120 }).notNull().default("منبج"),
+  active: boolean("active").notNull().default(true),
+  available: boolean("available").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const orderAssignments = mysqlTable("order_assignments", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull().unique().references(() => orders.id, { onDelete: "cascade" }),
+  driverId: int("driverId").notNull().references(() => drivers.id, { onDelete: "restrict" }),
+  status: mysqlEnum("status", ["assigned", "accepted", "picked_up", "delivered", "cancelled"]).notNull().default("assigned"),
+  note: varchar("note", { length: 300 }),
+  assignedAt: timestamp("assignedAt").defaultNow().notNull(),
+  acceptedAt: timestamp("acceptedAt"),
+  deliveredAt: timestamp("deliveredAt"),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const inventoryMovements = mysqlTable("inventory_movements", {
+  id: int("id").autoincrement().primaryKey(),
+  catalogItemId: int("catalogItemId").notNull().references(() => catalogItems.id, { onDelete: "cascade" }),
+  quantityDelta: int("quantityDelta").notNull(),
+  reason: mysqlEnum("reason", ["purchase", "adjustment", "order_reserved", "order_released"]).notNull(),
+  orderId: int("orderId").references(() => orders.id, { onDelete: "set null" }),
+  note: varchar("note", { length: 300 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const financeEntries = mysqlTable("finance_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").references(() => orders.id, { onDelete: "set null" }),
+  kind: mysqlEnum("kind", ["order_income", "delivery_fee", "partner_payable", "driver_payable", "adjustment"]).notNull(),
+  direction: mysqlEnum("direction", ["credit", "debit"]).notNull(),
+  amount: int("amount").notNull().default(0),
+  status: mysqlEnum("status", ["open", "settled", "void"]).notNull().default("open"),
+  note: varchar("note", { length: 300 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  settledAt: timestamp("settledAt"),
+});
+
+export const notificationCampaigns = mysqlTable("notification_campaigns", {
+  id: int("id").autoincrement().primaryKey(),
+  kind: mysqlEnum("kind", ["offer", "event", "reminder"]).notNull(),
+  title: varchar("title", { length: 120 }).notNull(),
+  body: varchar("body", { length: 300 }).notNull(),
+  targetPath: varchar("targetPath", { length: 180 }).notNull().default("/"),
+  scheduledAt: timestamp("scheduledAt"),
+  expiresAt: timestamp("expiresAt"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const customerNotifications = mysqlTable("customer_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  campaignId: int("campaignId").notNull().references(() => notificationCampaigns.id, { onDelete: "cascade" }),
+  deviceId: varchar("deviceId", { length: 80 }).notNull().references(() => customerPresence.deviceId, { onDelete: "cascade" }),
+  readAt: timestamp("readAt"),
+  deliveredAt: timestamp("deliveredAt").defaultNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, table => ({ campaignDeviceUnique: uniqueIndex("customer_notifications_campaign_device_unique").on(table.campaignId, table.deviceId) }));
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
