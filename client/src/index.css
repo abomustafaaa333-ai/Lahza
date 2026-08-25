@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: "Tajawal", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; }
-html { width: 100%; max-width: 100%; overflow-x: clip; background: #fffaf5; }
-body { width: 100%; max-width: 100%; margin: 0; min-width: 320px; overflow-x: clip; font-family: "Tajawal", ui-sans-serif, system-ui, sans-serif; }
+html { width: 100%; max-width: 100%; overflow-x: clip; scroll-behavior: smooth; background: #fffaf5; }
+body { width: 100%; max-width: 100%; margin: 0; min-width: 320px; overflow-x: clip; font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; }
 #root { width: 100%; max-width: 100%; overflow-x: clip; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -326,18 +326,20 @@ main { padding-bottom: 5.4rem; }
 /* Lahza identity completion: calm cream, burgundy and coral */
 :root { --lahza-cream: #fffaf5; --lahza-surface: #fffdfb; --lahza-burgundy: #6f1028; --lahza-burgundy-deep: #54162a; --lahza-coral: #ed665e; --lahza-soft: #fff1ec; --lahza-border: #f0dfd8; --lahza-ease-out: cubic-bezier(.23, 1, .32, 1); }
 html { background: var(--lahza-cream); }
-body { font-family: "Tajawal", ui-sans-serif, system-ui, sans-serif; color: #4a323d; background: var(--lahza-cream); text-rendering: optimizeLegibility; }
+body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323d; background: var(--lahza-cream); text-rendering: optimizeLegibility; }
 .lahza-app-shell { position: relative; overflow: clip; min-height: 100vh; background: radial-gradient(circle at 88% 2%, rgba(237,102,94,.09), transparent 22rem), radial-gradient(circle at 3% 24%, rgba(111,16,40,.045), transparent 28rem), var(--lahza-cream); }
 .lahza-app-shell::before { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .55; background-image: radial-gradient(rgba(111,16,40,.12) .55px, transparent .55px); background-size: 14px 14px; content: ""; mask-image: linear-gradient(to bottom, black, transparent 56%); }
 .screen-transition { min-height: 1px; }
 @media (prefers-reduced-motion: no-preference) {
-  .screen-transition { animation: lahza-screen-enter .28s var(--lahza-ease-out) both; }
-  .lahza-app-shell button, .lahza-app-shell a[role="button"], .lahza-app-shell .home-category-card, .lahza-app-shell .product-image-card { transition: transform .16s var(--lahza-ease-out), box-shadow .18s var(--lahza-ease-out), background-color .18s var(--lahza-ease-out), border-color .18s var(--lahza-ease-out), color .18s var(--lahza-ease-out); }
-  .lahza-app-shell button:not(:disabled):active, .lahza-app-shell a[role="button"]:active { transform: scale(.97); }
+  .screen-transition { animation: lahza-screen-enter .42s var(--lahza-ease-out) both; will-change: transform, opacity; }
+  .lahza-app-shell button, .lahza-app-shell a[role="button"], .lahza-app-shell .home-category-card, .lahza-app-shell .product-image-card { transition: transform .2s var(--lahza-ease-out), opacity .18s var(--lahza-ease-out), box-shadow .22s var(--lahza-ease-out), background-color .22s var(--lahza-ease-out), border-color .22s var(--lahza-ease-out), color .22s var(--lahza-ease-out); }
+  .lahza-app-shell button:not(:disabled):active, .lahza-app-shell a[role="button"]:active { animation: lahza-tap-pop .24s var(--lahza-ease-out) both; transform: scale(.965); }
+  .lahza-app-shell button:not(:disabled):focus-visible, .lahza-app-shell a[role="button"]:focus-visible { outline: 3px solid rgba(237,102,94,.38); outline-offset: 3px; }
   .lahza-app-shell .home-category-card:nth-child(2), .lahza-app-shell .home-featured-store:nth-child(2), .lahza-app-shell .product-image-card:nth-child(2n) { animation-delay: 35ms; }
   .lahza-app-shell .home-category-card:nth-child(3), .lahza-app-shell .home-featured-store:nth-child(3), .lahza-app-shell .product-image-card:nth-child(3n) { animation-delay: 70ms; }
 }
-@keyframes lahza-screen-enter { from { opacity: 0; transform: translateY(10px) scale(.992); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes lahza-screen-enter { 0% { opacity: 0; transform: translateY(16px) scale(.982); filter: blur(2px); } 55% { opacity: 1; transform: translateY(-1px) scale(1.003); filter: blur(0); } 100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); } }
+@keyframes lahza-tap-pop { 0% { opacity: .72; transform: scale(.94); } 58% { opacity: 1; transform: scale(1.025); } 100% { opacity: 1; transform: scale(1); } }
 
 /* Keep interactive areas distinctly Lahza even when utility classes come from legacy panels. */
 .lahza-app-shell .bg-\[\#6f1028\], .lahza-app-shell .bg-\[\#54162a\] { box-shadow: 0 12px 24px -18px rgba(111,16,40,.8); }
