@@ -52,7 +52,13 @@ const categoryImageByKey: Partial<Record<LahzaCategory, string>> = {
   pharmacy: `${demoAssetPrefix}/assets/lahza-category-pharmacy.jpg`,
   bakery: `${demoAssetPrefix}/assets/lahza-category-bakery.jpg`,
   sweets: `${demoAssetPrefix}/assets/lahza-category-bakery.jpg`,
-  butcher: `${demoAssetPrefix}/assets/lahza-category-restaurants.jpg`,
+  butcher: `${demoAssetPrefix}/assets/lahza-category-butcher.jpg`,
+  gas: `${demoAssetPrefix}/assets/lahza-category-gas.jpg`,
+  baby: `${demoAssetPrefix}/assets/lahza-category-baby.jpg`,
+  school_stationery: `${demoAssetPrefix}/assets/lahza-category-stationery.jpg`,
+  beauty_personal_care: `${demoAssetPrefix}/assets/lahza-category-beauty.jpg`,
+  mobile_accessories: `${demoAssetPrefix}/assets/lahza-category-mobile.jpg`,
+  clothing: `${demoAssetPrefix}/assets/lahza-category-clothing.jpg`,
 };
 const minimumDeliveryOrderSyp = MINIMUM_DELIVERY_ORDER_NEW_SYP;
 
@@ -564,7 +570,7 @@ export default function Home() {
             </div>
             <button type="button" onClick={() => setMissingProductOpen(true)} className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-dashed border-blue-300 bg-blue-50/70 px-4 py-4 text-right text-blue-950 transition hover:bg-blue-100"><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white"><CircleHelp className="h-5 w-5" /></span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">لم تجد ما تريد؟</strong><small className="text-xs font-medium text-slate-600">اطلب منتجاً غير موجود وسنبحث عن متجر يوفره.</small></span><ChevronLeft className="h-5 w-5" /></button>
           </section>
-          <div className="bottom-cta"><div><span>السلة</span><strong>{cart.length ? `${cart.length} أصناف` : "فارغة"}</strong></div><Button disabled={!cart.length} onClick={openDeliveryCheckout} className="rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700">متابعة <ChevronLeft className="mr-1 h-4 w-4" /></Button></div>
+          {cart.length > 0 ? <div className="bottom-cta"><div><span>السلة</span><strong>{`${cart.length} أصناف`}</strong></div><Button onClick={openDeliveryCheckout} className="rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700">متابعة <ChevronLeft className="mr-1 h-4 w-4" /></Button></div> : null}
         </>
       ) : null}
 

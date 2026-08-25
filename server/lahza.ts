@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { catalogItems, customCategories, customerPresence, customerProfiles, intercityOrders, intercityTrips, lahzaEmployees, missingProductRequests, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supervisors, systemSettings } from "../drizzle/schema";
-import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -292,6 +292,41 @@ async function getDrivingQuote(customerLat: number, customerLng: number) {
     pricePerKm: settings.deliveryPricePerKm,
     deliveryFee,
   };
+}
+
+const demoStoreNames: Record<(typeof customerDeliveryCategories)[number], string[]> = {
+  restaurants: ["مذاق الساحة", "دار المشاوي", "بيت الشاورما", "مطبخ الياسمين", "لقمة هنية"],
+  groceries: ["سوق الندى", "بقالة البركة", "سلة البيت", "مؤونة الحارة", "ميني ماركت الورد"],
+  household: ["بيت الأناقة", "دار النظافة", "لمسة منزل", "ركن الترتيب", "أساس البيت"],
+  produce: ["خيرات الأرض", "بستان اليوم", "سلة الفلاح", "خضار الضيعة", "قطاف طازج"],
+  pharmacy: ["صيدلية العافية", "دواء وراحة", "ركن الصحة", "شفاء بلس", "صيدلية الياسمين"],
+  bakery: ["أفران الصباح", "خبز وريحان", "فرن الذهب", "رغيف الدار", "مخبز القمح"],
+  sweets: ["حلويات السعادة", "سكر وزهر", "بيت الكنافة", "حلا الشام", "لقمة سكر"],
+  butcher: ["ملحمة النخبة", "لحوم الساحة", "مذاق اللحم", "ملحمة البركة", "الذبيحة الطازجة"],
+  baby: ["عالم الصغار", "بيت البيبي", "خطوة طفل", "صغيري ستور", "أمومة وطفولة"],
+  school_stationery: ["مكتبة القلم", "دفتر وألوان", "قرطاسية النور", "مكتبة المعرفة", "ركن الطالب"],
+  beauty_personal_care: ["لمسة جمال", "عطر وورد", "بيت العناية", "إشراقة", "جمالك بلس"],
+  mobile_accessories: ["موبايل بلس", "ركن التقنية", "إكسسوارك", "شاشة وجراب", "تقنية اليوم"],
+  clothing: ["أناقة الورد", "خزانة مودا", "لمسة قماش", "ستايل البيت", "موضة اليوم"],
+  gas: ["غاز الحارة", "بيت الدفء", "أسطوانة بلس", "غاز الأمان", "خدمة الغاز"],
+};
+
+async function ensureDemoStores(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  for (const category of customerDeliveryCategories) {
+    const existing = await db.select({ id: stores.id }).from(stores).where(eq(stores.category, category)).orderBy(stores.sortOrder, stores.id).limit(5);
+    if (existing.length >= 5) continue;
+    const missingNames = demoStoreNames[category].slice(existing.length, 5);
+    for (let index = 0; index < missingNames.length; index += 1) {
+      const name = missingNames[index];
+      await db.insert(stores).values({ name, category, restaurantType: "all", active: true, sortOrder: 900 + existing.length + index });
+    }
+  }
+}
+
+export async function ensureDemoStoresSeed() {
+  const db = await getDb();
+  if (!db) return;
+  await ensureDemoStores(db);
 }
 
 async function ensureCatalogSeed() {
@@ -646,6 +681,7 @@ export const lahzaRouter = router({
     stores: publicProcedure.input(z.object({ category: z.enum(categories), restaurantType: z.enum(restaurantTypes).optional(), customCategorySlug: z.string().trim().max(80).optional() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureDemoStores(db);
       const customCategory = input.category === "other" && input.customCategorySlug
         ? (await db.select().from(customCategories).where(and(eq(customCategories.slug, input.customCategorySlug), eq(customCategories.active, true))).limit(1))[0]
         : null;
@@ -1166,6 +1202,7 @@ export const lahzaRouter = router({
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await ensureDemoStores(db);
         return db.select().from(stores).orderBy(stores.category, stores.sortOrder, stores.name);
       }),
       create: publicProcedure.input(storeInput).mutation(async ({ ctx, input }) => {
