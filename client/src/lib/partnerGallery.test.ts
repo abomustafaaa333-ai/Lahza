@@ -2,14 +2,16 @@ import { describe, expect, it } from "vitest";
 import { buildPartnerGallerySlides } from "./partnerGallery";
 
 describe("معرض صور عروض الشركاء", () => {
-  it("يعرض صور HTTPS الفريدة فقط ويحفظ بيانات العرض", () => {
+  it("يعرض كل عروض HTTPS ويحفظ بيانات العرض حتى عند تشابه الصور", () => {
     const slides = buildPartnerGallerySlides([
       { id: 1, name: "معمول", imageUrl: "https://images.example.com/maamoul.jpg", partnerName: "حلويات الشام", unitPrice: 30000, storeOpen: false },
       { id: 2, name: "الصورة نفسها", imageUrl: "https://images.example.com/maamoul.jpg", partnerName: "حلويات الشام", unitPrice: 30000 },
       { id: 3, name: "رابط غير آمن", imageUrl: "http://images.example.com/unsafe.jpg" },
     ]);
 
-    expect(slides).toEqual([{ id: 1, name: "معمول", imageUrl: "https://images.example.com/maamoul.jpg", partnerName: "حلويات الشام", unitPrice: 30000, storeOpen: false }]);
+    expect(slides).toHaveLength(2);
+    expect(slides[0]).toMatchObject({ id: 1, name: "معمول", imageUrl: "https://images.example.com/maamoul.jpg", partnerName: "حلويات الشام", unitPrice: 30000, storeOpen: false });
+    expect(slides[1]).toMatchObject({ id: 2, name: "الصورة نفسها", imageUrl: "https://images.example.com/maamoul.jpg" });
   });
 
   it("يستخدم صورة المنتج وسعر العرض ونسبة الخصم عند عدم رفع صورة إضافية", () => {
