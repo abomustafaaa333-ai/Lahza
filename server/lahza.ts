@@ -1163,6 +1163,14 @@ export const lahzaRouter = router({
       }
       return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending };
     }),
+    track: publicProcedure.input(z.object({ orderId: z.number().int().positive(), customerPhone: z.string().regex(/^\+9639\d{8}$/) })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const order = (await db.select().from(orders).where(and(eq(orders.id, input.orderId), eq(orders.customerPhone, input.customerPhone))).limit(1))[0];
+      if (!order) throw new Error("لم نجد طلباً بهذه البيانات");
+      const lines = await db.select().from(orderLines).where(eq(orderLines.orderId, order.id));
+      return { ...order, lines };
+    }),
     list: publicProcedure.query(async ({ ctx }) => {
       await requireAdmin(ctx);
       const db = await getDb();
