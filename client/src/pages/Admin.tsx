@@ -19,7 +19,7 @@ function RestaurantTypeSelect({ value, onChange }: { value: RestaurantType; onCh
 }
 
 const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: boolean }[] = [
-  { id: "orders", label: "طلبات التوصيل", icon: ClipboardList },
+  { id: "orders", label: "الطلبات", icon: ClipboardList },
   { id: "intercityOrders", label: "طلبات جرابلس", icon: Route },
   { id: "taxiOrders", label: "طلبات سيارات الأجرة", icon: CarFront },
   { id: "archive", label: "الأرشيف", icon: Archive },
