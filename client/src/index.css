@@ -132,3 +132,12 @@ html, body { background: #fffaf5; }
 .category-card .category-icon { width: 3.3rem; height: 3.3rem; border-radius: 1.05rem; display: grid; place-items: center; border: 1px solid rgba(121,18,47,.08); color: #79122f; background: linear-gradient(135deg,#fff0e9,#f7d7cf); }
 .category-card-copy span { color: #54162a; font-weight: 900; }
 .category-card-copy small { color: #9a8589; }
+
+/* Shared fixed navigation and offer strip across the main app screens */
+.global-offer-bar { position: sticky; top: 9.35rem; z-index: 28; width: min(100%, 760px); margin-inline: auto; padding: .45rem 1.1rem .65rem; background: rgba(255,250,245,.96); border-bottom: 1px solid #f1e5e4; box-shadow: 0 10px 22px -24px rgba(89,20,43,.6); backdrop-filter: blur(14px); }
+.global-offer-bar .hero-image-frame { position: relative; inset: auto; width: 100%; height: clamp(9.75rem, 38vw, 15rem); border-radius: 1.35rem; }
+.global-offer-bar .hero-offer-image { object-fit: cover; }
+.home-bottom-nav { position: fixed; right: 50%; bottom: .7rem; z-index: 40; transform: translateX(50%); }
+main { padding-bottom: 5.4rem; }
+.bottom-cta { bottom: 5.35rem; z-index: 35; }
+@media (max-width: 640px) { .global-offer-bar { top: 9.25rem; } }
