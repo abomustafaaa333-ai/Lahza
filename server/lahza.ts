@@ -886,7 +886,7 @@ export const lahzaRouter = router({
         const partner = partnerById.get(offer.partnerId);
         const store = offer.storeId ? storeById.get(offer.storeId) : null;
         const product = offer.catalogItemId ? productById.get(offer.catalogItemId) : null;
-        return partner && store?.partnerId === partner.id && product?.storeId === store.id ? [{ ...offer, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product.name, productUnit: product.unit, productPrice: offer.offerPrice > 0 ? offer.offerPrice : product.unitPrice, originalProductPrice: product.unitPrice, productImageUrl: product.imageUrl, storeOpen: partner.storeOpen }] : [];
+        return partner && store?.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: partner.storeOpen }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
