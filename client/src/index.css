@@ -505,6 +505,19 @@ body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323
 .header-cart-button { transform: translateY(.32rem); }
 .header-cart-button:hover { transform: translateY(.14rem); }
 
+/* Lahza logo: a compact location-moment symbol paired with a clear Arabic wordmark. */
+.brand-mark { gap: .14rem; min-width: 8.9rem; padding: .18rem .28rem; font-family: "Cairo", sans-serif; letter-spacing: 0; }
+.lahza-logo-lockup { display: inline-flex; align-items: center; direction: rtl; gap: .38rem; }
+.lahza-logo-symbol { position: relative; display: grid; width: 2rem; height: 2rem; flex: 0 0 auto; place-items: center; overflow: hidden; border-radius: .72rem .72rem .72rem .22rem; background: linear-gradient(145deg, #7b1631 0%, #54162a 100%); box-shadow: 0 .42rem .9rem rgba(111,16,40,.22); transform: rotate(-4deg); transition: transform .18s cubic-bezier(.23,1,.32,1), box-shadow .18s cubic-bezier(.23,1,.32,1); }
+.lahza-logo-symbol::before { position: absolute; top: .44rem; right: .62rem; width: .72rem; height: .72rem; border: .14rem solid #fffaf5; border-radius: 50% 50% 50% 0; content: ""; transform: rotate(-45deg); }
+.lahza-logo-symbol::after { position: absolute; right: .34rem; bottom: .35rem; width: .34rem; height: .34rem; border-radius: 50%; background: #ed665e; box-shadow: 0 0 0 .12rem rgba(237,102,94,.18); content: ""; }
+.lahza-logo-symbol i { position: absolute; bottom: .45rem; left: .42rem; width: .52rem; height: .12rem; border-radius: 99px; background: rgba(255,250,245,.72); transform: rotate(-38deg); }
+.lahza-logo-word { color: #64132c; font-family: "Cairo", sans-serif; font-size: 1.45rem; font-weight: 900; letter-spacing: -.1em; line-height: 1; text-shadow: 0 .16rem .5rem rgba(111,16,40,.08); }
+.brand-mark small { margin-top: 0; color: #c5524f; font-family: "Cairo", sans-serif; font-size: .46rem; font-weight: 800; letter-spacing: .015em; line-height: 1.1; }
+.brand-mark:hover .lahza-logo-symbol { box-shadow: 0 .58rem 1.15rem rgba(111,16,40,.28); transform: rotate(0deg) translateY(-.08rem); }
+.brand-mark:active .lahza-logo-symbol { transform: rotate(-2deg) scale(.95); }
+@media (prefers-reduced-motion: reduce) { .lahza-logo-symbol { transition: none; } }
+
 
 /* Category photo thumbnails keep the section tactile without replacing the category symbol. */
 .home-category-icon-photo { position: relative; overflow: hidden; border: 1px solid #f4d8cf; background: #fff1ec; }
