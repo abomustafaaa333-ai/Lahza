@@ -14,7 +14,7 @@ import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partn
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, restaurantTypeMeta, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
-import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPin, MessageCircle, Minus, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Route, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, Minus, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Route, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -119,22 +119,16 @@ function lineTotal(line: Pick<CartLine, "quantity" | "unitPrice" | "unit">) {
 
 function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => void; onCart: () => void; onSearch: () => void; cartCount: number }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 pt-9 backdrop-blur-xl">
-      <div className="app-shell flex h-[92px] items-center justify-between gap-3">
-        <div className="contact-stack" aria-label="تواصل مع لحظة">
-          <a className="contact-pill" href="tel:+963997311078" aria-label="اتصل بلحظة على الرقم +963997311078">
-            <span dir="ltr">+963 997 311 078</span><Phone className="h-3.5 w-3.5" />
-          </a>
-          <a className="contact-pill contact-whatsapp" href="https://wa.me/963997311078" target="_blank" rel="noreferrer" aria-label="راسل لحظة عبر واتساب على الرقم +963997311078">
-            <span dir="ltr">+963 997 311 078</span><MessageCircle className="h-3.5 w-3.5" />
-          </a>
-        </div>
+    <header className="sticky top-0 z-30 border-b border-rose-100 bg-[#fffaf5]/95 pt-3 backdrop-blur-xl">
+      <div className="app-shell flex h-[76px] items-center justify-between gap-3">
+        <button className="header-menu-button" onClick={onSecret} aria-label="فتح القائمة"><span /><span /><span /></button>
         <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك">
-          <span className="flex h-12 w-[138px] items-center justify-center rounded-xl bg-white"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-12 w-full object-contain" /></span>
-          <small>منبج بين يديك</small>
+          <span className="flex h-12 w-[138px] items-center justify-center rounded-xl bg-transparent"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-12 w-full object-contain" /></span>
+          <small>كل شيء في لحظة</small>
         </button>
-        <div className="flex items-center gap-2"><button className="grid h-11 w-11 place-items-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /></button><button className="relative grid h-12 w-12 place-items-center rounded-2xl bg-slate-50 text-slate-700 shadow-sm transition hover:bg-slate-100 active:scale-95" onClick={onCart} aria-label="عرض السلة"><ShoppingBasket className="h-6 w-6" />{cartCount > 0 ? <span className="cart-count">{cartCount}</span> : null}</button></div>
+        <button className="header-notification-button" onClick={onCart} aria-label="عرض السلة"><ShoppingBasket className="h-5 w-5" />{cartCount > 0 ? <span className="cart-count">{cartCount}</span> : null}</button>
       </div>
+      <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span>ابحث عن مطعم، منتج أو خدمة...</span><Search className="h-5 w-5" /></button></div>
     </header>
   );
 }
@@ -526,20 +520,20 @@ export default function Home() {
 
       {screen === "home" ? (
         <>
-          <section className="app-shell pt-7 pb-8">
+          <section className="app-shell home-hero-section pt-5 pb-6">
             <div className="hero-panel">
               <div className="hero-orb hero-orb-one" /><div className="hero-orb hero-orb-two" />
               <PartnerOfferGallery slides={partnerGallerySlides} onOpen={setSelectedGalleryOffer} />
-              <div className="relative z-10 max-w-[54%]">
-                <p className="section-eyebrow text-red-100">خدمات منبج على بُعد لحظة</p>
-                <h1 className="hero-title">كل ما تحتاجه،<br /><span>بخطوة واحدة.</span></h1>
-                <p className="hero-copy">توصيل الطلبات وحجز السيارة بسهولة وبواجهة مصمّمة للمدينة.</p>
-              </div>
-              <div className="hero-ticket"><MapPin className="h-4 w-4" /><span>منبج</span></div>
             </div>
+            <div className="home-welcome"><p className="section-eyebrow">أهلاً بك في لحظة</p><h1 className="home-welcome-title">كل ما تحتاجه، <span>بخطوة واحدة.</span></h1><p>تسوّق من متاجرك المفضلة، واكتشف العروض القريبة منك بسهولة.</p></div>
           </section>
           <section className="app-shell pb-10">
-            <div className="mb-5 flex items-end justify-between"><div><p className="section-eyebrow">اختر خدمتك</p><h2 className="section-title">كيف نساعدك اليوم؟</h2></div><CircleHelp className="mb-1 h-5 w-5 text-slate-300" /></div>
+            <div className="mb-5 flex items-end justify-between"><div><p className="section-eyebrow">تسوّق بسهولة</p><h2 className="section-title">استكشف الأقسام</h2></div><CircleHelp className="mb-1 h-5 w-5 text-slate-300" /></div>
+            <div className="home-category-row" aria-label="أقسام لحظة">
+              <button type="button" className="home-category-card home-category-all" onClick={() => setScreen("delivery")}><span className="home-category-icon"><LayoutDashboard /></span><span>الكل</span></button>
+              {deliveryCategories.slice(0, 6).map(item => { const Icon = item.custom ? Store : categoryIcons[item.category]; return <button key={item.key} type="button" className="home-category-card" onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }}><span className="home-category-icon"><Icon /></span><span>{item.title}</span></button>; })}
+            </div>
+            <div className="mb-5 mt-9 flex items-end justify-between"><div><p className="section-eyebrow">خدمات لحظة</p><h2 className="section-title">كيف نساعدك اليوم؟</h2></div><CircleHelp className="mb-1 h-5 w-5 text-slate-300" /></div>
             <div className="service-stack">
               <button className="service-card service-card-delivery" onClick={() => setScreen("delivery")}>
                 <span className="service-card-icon"><Truck /></span>
