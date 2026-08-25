@@ -8,6 +8,7 @@ import { catalogItems, customCategories, customerPresence, customerProfiles, int
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
+import { demoProductImages, demoProductTemplates, type DemoStoreCategory } from "./demoCatalog";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getDirections } from "./maps";
 import { cleanExpiredOffers } from "./expiredOffers";
@@ -323,36 +324,16 @@ async function ensureDemoStores(db: NonNullable<Awaited<ReturnType<typeof getDb>
   }
 }
 
-const demoProductTemplates: Record<(typeof customerDeliveryCategories)[number], { name: string; unit: "وحدة" | "جرام" | "ليتر" | "قنينة" | "طلب" }[]> = {
-  restaurants: [{ name: "وجبة شاورما دجاج", unit: "طلب" }, { name: "طبق كبة مقلية", unit: "طلب" }, { name: "صحن حمص باللحمة", unit: "طلب" }, { name: "وجبة مشاوي مشكلة", unit: "طلب" }, { name: "منقوشة زعتر", unit: "طلب" }],
-  groceries: [{ name: "برغل خشن", unit: "جرام" }, { name: "عدس أحمر", unit: "جرام" }, { name: "زيت زيتون بكر", unit: "قنينة" }, { name: "مربى مشمش", unit: "قنينة" }, { name: "لبنة بلدية", unit: "جرام" }],
-  household: [{ name: "سائل جلي", unit: "قنينة" }, { name: "مناديل ورقية", unit: "وحدة" }, { name: "مسحوق غسيل", unit: "وحدة" }, { name: "أكياس قمامة", unit: "وحدة" }, { name: "إسفنجة تنظيف", unit: "وحدة" }],
-  produce: [{ name: "بندورة طازجة", unit: "جرام" }, { name: "خيار بلدي", unit: "جرام" }, { name: "بطاطا", unit: "جرام" }, { name: "برتقال", unit: "جرام" }, { name: "نعنع أخضر", unit: "وحدة" }],
-  pharmacy: [{ name: "فيتامين سي", unit: "وحدة" }, { name: "ضماد طبي", unit: "وحدة" }, { name: "معقم يدين", unit: "قنينة" }, { name: "مسكن آلام", unit: "وحدة" }, { name: "كريم مرطب", unit: "وحدة" }],
-  bakery: [{ name: "خبز عربي", unit: "وحدة" }, { name: "كعك بالسمسم", unit: "وحدة" }, { name: "كرواسون سادة", unit: "وحدة" }, { name: "فطيرة جبنة", unit: "وحدة" }, { name: "خبز صاج", unit: "وحدة" }],
-  sweets: [{ name: "بقلاوة بالفستق", unit: "جرام" }, { name: "كنافة ناعمة", unit: "جرام" }, { name: "معمول تمر", unit: "جرام" }, { name: "راحة الحلقوم", unit: "جرام" }, { name: "شوكولا مشكلة", unit: "جرام" }],
-  butcher: [{ name: "لحم غنم طازج", unit: "جرام" }, { name: "لحم عجل مفروم", unit: "جرام" }, { name: "صدور دجاج", unit: "جرام" }, { name: "كفتة جاهزة", unit: "جرام" }, { name: "سجق بلدي", unit: "جرام" }],
-  baby: [{ name: "حفاضات أطفال", unit: "وحدة" }, { name: "مناديل مبللة", unit: "وحدة" }, { name: "حليب أطفال", unit: "قنينة" }, { name: "شامبو أطفال", unit: "قنينة" }, { name: "كريم حماية", unit: "وحدة" }],
-  school_stationery: [{ name: "دفتر سلك", unit: "وحدة" }, { name: "قلم حبر", unit: "وحدة" }, { name: "ألوان خشبية", unit: "وحدة" }, { name: "حقيبة مدرسية", unit: "وحدة" }, { name: "مسطرة وممحاة", unit: "وحدة" }],
-  beauty_personal_care: [{ name: "شامبو شعر", unit: "قنينة" }, { name: "صابون طبيعي", unit: "وحدة" }, { name: "عطر نسائي", unit: "قنينة" }, { name: "واقي شمس", unit: "وحدة" }, { name: "كريم عناية", unit: "وحدة" }],
-  mobile_accessories: [{ name: "شاحن سريع", unit: "وحدة" }, { name: "سماعات سلكية", unit: "وحدة" }, { name: "جراب هاتف", unit: "وحدة" }, { name: "لاصق حماية شاشة", unit: "وحدة" }, { name: "بطارية متنقلة", unit: "وحدة" }],
-  clothing: [{ name: "قميص قطني", unit: "وحدة" }, { name: "بنطال رياضي", unit: "وحدة" }, { name: "وشاح شتوي", unit: "وحدة" }, { name: "عباية منزلية", unit: "وحدة" }, { name: "جوارب قطنية", unit: "وحدة" }],
-  gas: [{ name: "أسطوانة غاز منزلية", unit: "وحدة" }, { name: "تعبئة غاز", unit: "طلب" }, { name: "منظم غاز", unit: "وحدة" }, { name: "خرطوم غاز آمن", unit: "وحدة" }, { name: "مشبك خرطوم", unit: "وحدة" }],
-};
-
-const demoProductImages: Record<(typeof customerDeliveryCategories)[number], string> = {
-  restaurants: "/assets/lahza-category-restaurants.jpg", groceries: "/assets/lahza-category-groceries.jpg", household: "/assets/lahza-category-household.jpg", produce: "/assets/lahza-category-produce.jpg", pharmacy: "/assets/lahza-category-pharmacy.jpg", bakery: "/assets/lahza-category-bakery.jpg", sweets: "/assets/lahza-category-bakery.jpg", butcher: "/assets/lahza-category-butcher.jpg", baby: "/assets/lahza-category-baby.jpg", school_stationery: "/assets/lahza-category-stationery.jpg", beauty_personal_care: "/assets/lahza-category-beauty.jpg", mobile_accessories: "/assets/lahza-category-mobile.jpg", clothing: "/assets/lahza-category-clothing.jpg", gas: "/assets/lahza-category-gas.jpg",
-};
-
 async function ensureDemoProducts(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   for (const category of customerDeliveryCategories) {
     const demoStores = await db.select({ id: stores.id }).from(stores).where(and(eq(stores.category, category), gte(stores.sortOrder, 900))).orderBy(stores.sortOrder, stores.id).limit(5);
     for (const store of demoStores) {
-      const templates = demoProductTemplates[category];
+      const templates = demoProductTemplates[category as DemoStoreCategory];
       for (let index = 0; index < templates.length; index += 1) {
         const product = templates[index];
         const code = `demo-${category}-${store.id}-${index + 1}`;
-        await db.insert(catalogItems).values({ code, name: product.name, category, unit: product.unit, unitPrice: 0, available: true, deleted: false, storeId: store.id, imageUrl: demoProductImages[category] }).onDuplicateKeyUpdate({ set: { code } });
+        const imageUrl = demoProductImages[category as DemoStoreCategory];
+        await db.insert(catalogItems).values({ code, name: product.name, category, unit: product.unit, unitPrice: 0, available: true, deleted: false, storeId: store.id, imageUrl }).onDuplicateKeyUpdate({ set: { name: product.name, category, unit: product.unit, unitPrice: 0, available: true, deleted: false, imageUrl } });
       }
     }
   }
