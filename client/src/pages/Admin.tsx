@@ -46,14 +46,14 @@ const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: bo
 export default function Admin() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
-  const [tab, setTab] = useState<Tab>("orders");
+  const [tab, setTab] = useState<Tab>("home");
   const [menuOpen, setMenuOpen] = useState(false);
   const sessionQuery = trpc.lahza.admin.session.useQuery(undefined, { refetchOnMount: "always" });
   const session = sessionQuery.data;
   const logout = trpc.lahza.admin.logout.useMutation({ onSuccess: () => { utils.lahza.admin.session.setData(undefined, null); toast.success("تم تسجيل الخروج من لوحة التحكم"); setLocation("/"); } });
   const isOwner = session?.role === "owner";
   const availableTabs = tabs.filter(item => !item.ownerOnly || isOwner);
-  useEffect(() => { if (isOwner && tab === "orders") setTab("home"); }, [isOwner, tab]);
+  useEffect(() => { if (!sessionQuery.isLoading && session && !isOwner && tab === "home") setTab("orders"); }, [sessionQuery.isLoading, session, isOwner, tab]);
   const ownerQuickTabs = availableTabs;
 
   if (sessionQuery.isLoading || (sessionQuery.isFetching && !session)) return <div dir="rtl" className="admin-loading"><Loader2 className="h-7 w-7 animate-spin text-red-600" /><span>جارٍ التحقق من الصلاحيات...</span></div>;
