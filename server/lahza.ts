@@ -1459,6 +1459,47 @@ export const lahzaRouter = router({
       }),
     }),
     offers: router({
+      active: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await cleanExpiredOffers();
+        const now = new Date();
+        const rows = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)))).orderBy(desc(partnerOffers.createdAt));
+        const [storeRows, partnerRows, productRows] = await Promise.all([
+          db.select({ id: stores.id, name: stores.name }).from(stores),
+          db.select({ id: partners.id, name: partners.name }).from(partners),
+          db.select({ id: catalogItems.id, name: catalogItems.name, available: catalogItems.available, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl }).from(catalogItems).where(eq(catalogItems.deleted, false)),
+        ]);
+        const storeById = new Map(storeRows.map(store => [store.id, store.name]));
+        const partnerById = new Map(partnerRows.map(partner => [partner.id, partner.name]));
+        const productById = new Map(productRows.map(product => [product.id, product]));
+        return rows.map(offer => ({ ...offer, storeName: offer.storeId ? storeById.get(offer.storeId) ?? "متجر غير محدد" : "متجر غير محدد", partnerName: partnerById.get(offer.partnerId) ?? "شريك غير محدد", product: offer.catalogItemId ? productById.get(offer.catalogItemId) ?? null : null }));
+      }),
+      updateActive: publicProcedure.input(z.object({ id: z.number().int().positive(), text: z.string().trim().min(3).max(180), offerPrice: z.number().int().positive(), durationDays: z.number().int().min(1).max(365), active: z.boolean() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const found = await db.select({ id: partnerOffers.id, catalogItemId: partnerOffers.catalogItemId }).from(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.active, true))).limit(1);
+        if (!found[0] || !found[0].catalogItemId) throw new Error("العرض النشط غير موجود أو لا يرتبط بمنتج");
+        const product = await db.select({ unitPrice: catalogItems.unitPrice }).from(catalogItems).where(and(eq(catalogItems.id, found[0].catalogItemId), eq(catalogItems.deleted, false))).limit(1);
+        if (!product[0] || !product[0].unitPrice) throw new Error("المنتج المرتبط بالعرض غير متاح");
+        const offerPrice = toLegacySyp(input.offerPrice);
+        if (offerPrice >= product[0].unitPrice) throw new Error("يجب أن يكون سعر العرض أقل من السعر الأصلي");
+        const discountPercent = Math.round((product[0].unitPrice - offerPrice) * 100 / product[0].unitPrice);
+        if (discountPercent < 1 || discountPercent > 90) throw new Error("يجب أن تكون نسبة الخصم بين 1% و90%");
+        await db.update(partnerOffers).set({ text: input.text, offerPrice, discountPercent, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active, deletedAt: input.active ? null : new Date() }).where(eq(partnerOffers.id, input.id));
+        return { success: true };
+      }),
+      removeActive: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const found = await db.select({ id: partnerOffers.id }).from(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.active, true))).limit(1);
+        if (!found[0]) throw new Error("العرض النشط غير موجود");
+        await db.update(partnerOffers).set({ active: false, deletedAt: new Date(), imageDeletePending: true }).where(eq(partnerOffers.id, input.id));
+        return { success: true };
+      }),
       featuredRequests: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
