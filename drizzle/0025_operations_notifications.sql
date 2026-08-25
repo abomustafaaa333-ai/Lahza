@@ -11,6 +11,7 @@ CREATE TABLE `drivers` (
   CONSTRAINT `drivers_id` PRIMARY KEY(`id`),
   CONSTRAINT `drivers_phone_unique` UNIQUE(`phone`)
 );
+--> statement-breakpoint
 
 CREATE TABLE `order_assignments` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -27,6 +28,7 @@ CREATE TABLE `order_assignments` (
   CONSTRAINT `order_assignments_order_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE CASCADE,
   CONSTRAINT `order_assignments_driver_fk` FOREIGN KEY (`driverId`) REFERENCES `drivers`(`id`) ON DELETE RESTRICT
 );
+--> statement-breakpoint
 
 CREATE TABLE `inventory_movements` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -40,6 +42,7 @@ CREATE TABLE `inventory_movements` (
   CONSTRAINT `inventory_movements_catalog_fk` FOREIGN KEY (`catalogItemId`) REFERENCES `catalog_items`(`id`) ON DELETE CASCADE,
   CONSTRAINT `inventory_movements_order_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE SET NULL
 );
+--> statement-breakpoint
 
 CREATE TABLE `finance_entries` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -54,6 +57,7 @@ CREATE TABLE `finance_entries` (
   CONSTRAINT `finance_entries_id` PRIMARY KEY(`id`),
   CONSTRAINT `finance_entries_order_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE SET NULL
 );
+--> statement-breakpoint
 
 CREATE TABLE `notification_campaigns` (
   `id` int AUTO_INCREMENT NOT NULL,
@@ -68,6 +72,7 @@ CREATE TABLE `notification_campaigns` (
   `updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT `notification_campaigns_id` PRIMARY KEY(`id`)
 );
+--> statement-breakpoint
 
 CREATE TABLE `customer_notifications` (
   `id` int AUTO_INCREMENT NOT NULL,
