@@ -998,6 +998,39 @@ export const lahzaRouter = router({
     }),
   }),
   orders: router({
+    previewPromotion: publicProcedure.input(z.object({
+      code: z.string().trim().min(2).max(40),
+      kind: z.enum(["discount", "referral"]),
+      customerPhone: z.string().regex(/^\+9639\d{8}$/).optional(),
+      lines: z.array(lineInput).min(1).max(30),
+    })).mutation(async ({ input }) => {
+      const db = await ensureCatalogSeed();
+      const code = input.code.toUpperCase();
+      const ids = input.lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
+      const products = ids.length ? await db.select().from(catalogItems).where(inArray(catalogItems.id, ids)) : [];
+      const productMap = new Map(products.map(product => [product.id, product]));
+      const itemsTotal = input.lines.reduce((sum, line) => {
+        const product = line.catalogItemId ? productMap.get(line.catalogItemId) : undefined;
+        const unitPrice = line.category === "pharmacy" || !product?.available || product.deleted ? 0 : product.unitPrice;
+        return sum + calculateLineTotal(line.quantity, unitPrice, line.unit);
+      }, 0);
+      if (input.kind === "discount") {
+        const discount = (await db.select().from(discountCodes).where(and(eq(discountCodes.code, code), eq(discountCodes.active, true))).limit(1))[0];
+        if (!discount) throw new Error("رمز الخصم غير صالح");
+        if (discount.expiresAt && discount.expiresAt.getTime() <= Date.now()) throw new Error("انتهت صلاحية رمز الخصم");
+        if (discount.maxUses !== null && discount.maxUses !== undefined && discount.usedCount >= discount.maxUses) throw new Error("اكتمل عدد مرات استخدام رمز الخصم");
+        const discountAmount = Math.min(itemsTotal, Math.max(0, Math.floor(itemsTotal * discount.discountPercent / 100)));
+        return { code: discount.code, kind: "discount" as const, percent: discount.discountPercent, discountAmount, itemsTotal };
+      }
+      const referral = (await db.select().from(customerReferrals).where(eq(customerReferrals.code, code)).limit(1))[0];
+      if (!referral) throw new Error("رمز الإحالة غير صالح");
+      if (input.customerPhone && (referral.ownerPhone === input.customerPhone || referral.referredPhone)) throw new Error("لا يمكن استخدام رمز الإحالة لهذا العميل");
+      const referralSetting = (await db.select({ discountPercent: discountCodes.discountPercent }).from(discountCodes).where(and(eq(discountCodes.active, true), eq(discountCodes.code, "REFERRAL"))).limit(1))[0];
+      const percent = referralSetting?.discountPercent ?? 0;
+      if (percent < 1) throw new Error("رمز الإحالة غير مفعّل حالياً");
+      const discountAmount = Math.min(itemsTotal, Math.max(0, Math.floor(itemsTotal * percent / 100)));
+      return { code: referral.code, kind: "referral" as const, percent, discountAmount, itemsTotal };
+    }),
     create: publicProcedure.input(orderInputSchema).mutation(async ({ input }) => {
       const db = await ensureCatalogSeed();
       const ids = input.lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
