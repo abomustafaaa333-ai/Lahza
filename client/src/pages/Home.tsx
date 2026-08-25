@@ -40,10 +40,9 @@ type ProductSearchResult = { id: number; name: string; unit: string; price: numb
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 const demoAssetPrefix = isStaticDemo ? "." : "";
 const demoGalleryImages = [
-  `${demoAssetPrefix}/assets/lahza-legumes.webp`,
-  `${demoAssetPrefix}/assets/lahza-butcher.webp`,
-  `${demoAssetPrefix}/assets/lahza-chicken.webp`,
-  `${demoAssetPrefix}/assets/lahza-pharmacy.webp`,
+  `${demoAssetPrefix}/assets/lahza-offer-bakery.jpg`,
+  `${demoAssetPrefix}/assets/lahza-offer-grocery.jpg`,
+  `${demoAssetPrefix}/assets/lahza-offer-restaurant.jpg`,
 ];
 const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
 const minimumDeliveryOrderSyp = MINIMUM_DELIVERY_ORDER_NEW_SYP;
@@ -319,9 +318,18 @@ export default function Home() {
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة", storeName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", featuredStatus: "approved" as const })) : partnerOffersQuery.data ?? [];
   const allOffers = isStaticDemo ? partnerOffers : allOffersQuery.data ?? [];
+  const generatedOfferSlides = demoGalleryImages.map((imageUrl, index) => ({
+    id: 1004 + index,
+    imageUrl,
+    name: ["خصم 25% على المخبوزات", "سلة البيت الطازجة", "وجبة العائلة بسعر خاص"][index],
+    partnerName: ["مخبز الصباح", "سوق البيت", "مطعم مذاق الشام"][index],
+    storeId: -1,
+    storeCategory: "offers",
+    unitPrice: 0,
+  }));
   const partnerGallerySlides = isStaticDemo
-    ? demoGalleryImages.map((imageUrl, index) => ({ id: 1004 + index, imageUrl, name: index === 0 ? "عرض طعميني — صحن حلويات" : "عرض متجر لحظة التجريبي", partnerName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", unitPrice: 0 }))
-    : buildPartnerGallerySlides(partnerOffersQuery.data ?? []);
+    ? generatedOfferSlides
+    : (buildPartnerGallerySlides(partnerOffersQuery.data ?? []).length ? buildPartnerGallerySlides(partnerOffersQuery.data ?? []) : generatedOfferSlides);
   const homeShortcut = !isStaticDemo && partnerSessionQuery.isLoading
     ? null
     : getHomeShortcut({ adminRole: adminSessionQuery.data?.role, partnerActive: Boolean(partnerSessionQuery.data) });
