@@ -134,13 +134,13 @@ html, body { background: #fffaf5; }
 .category-card-copy small { color: #9a8589; }
 
 /* Shared fixed navigation and offer strip across the main app screens */
-.global-offer-bar { position: sticky; top: 9.35rem; z-index: 28; width: min(100%, 760px); margin-inline: auto; padding: .45rem 1.1rem .65rem; background: rgba(255,250,245,.96); border-bottom: 1px solid #f1e5e4; box-shadow: 0 10px 22px -24px rgba(89,20,43,.6); backdrop-filter: blur(14px); }
+.global-offer-bar { position: sticky; top: calc(9.35rem + .5cm); z-index: 28; width: min(100%, 760px); margin-inline: auto; padding: .45rem 1.1rem .65rem; background: rgba(255,250,245,.96); border-bottom: 1px solid #f1e5e4; box-shadow: 0 10px 22px -24px rgba(89,20,43,.6); backdrop-filter: blur(14px); }
 .global-offer-bar .hero-image-frame { position: relative; inset: auto; width: 100%; height: clamp(9.75rem, 38vw, 15rem); border-radius: 1.35rem; }
 .global-offer-bar .hero-offer-image { object-fit: cover; }
-.home-bottom-nav { position: fixed; right: 50%; bottom: .7rem; z-index: 40; transform: translateX(50%); }
-main { padding-bottom: 5.4rem; }
-.bottom-cta { bottom: 5.35rem; z-index: 35; }
-@media (max-width: 640px) { .global-offer-bar { top: 9.25rem; } }
+.home-bottom-nav { position: fixed; right: 50%; bottom: calc(.7rem + .5cm); z-index: 40; transform: translateX(50%); }
+main { padding-bottom: calc(5.4rem + .5cm); }
+.bottom-cta { bottom: calc(5.35rem + .5cm); z-index: 35; }
+@media (max-width: 640px) { .global-offer-bar { top: calc(9.25rem + .5cm); } }
 
 .product-image-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; }
 .product-image-card { position: relative; display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid #f0e4e1; border-radius: 1.25rem; padding: .45rem; text-align: right; background: #fffdf9; box-shadow: 0 12px 28px -25px rgba(89,20,43,.42); transition: transform .18s ease, box-shadow .18s ease; }
@@ -501,9 +501,10 @@ body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323
 
 
 /* Refined header alignment after removing the dashboard trigger. */
-.brand-mark { transform: translate(50%, .32rem); }
-.header-cart-button { transform: translateY(.32rem); }
-.header-cart-button:hover { transform: translateY(.14rem); }
+.brand-mark { transform: translate(50%, calc(.32rem + .5cm)); }
+.header-cart-button { transform: translateY(calc(.32rem + .5cm)); }
+.header-cart-button:hover { transform: translateY(calc(.14rem + .5cm)); }
+.header-search-wrap { margin-top: .5cm; }
 
 /* Lahza logo: a compact location-moment symbol paired with a clear Arabic wordmark. */
 .brand-mark { gap: .14rem; min-width: 8.9rem; padding: .18rem .28rem; font-family: "Cairo", sans-serif; letter-spacing: 0; }
