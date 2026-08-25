@@ -333,7 +333,8 @@ async function ensureDemoProducts(db: NonNullable<Awaited<ReturnType<typeof getD
         const product = templates[index];
         const code = `demo-${category}-${store.id}-${index + 1}`;
         const imageUrl = demoProductImages[category as DemoStoreCategory];
-        await db.insert(catalogItems).values({ code, name: product.name, category, unit: product.unit, unitPrice: 0, available: true, deleted: false, storeId: store.id, imageUrl }).onDuplicateKeyUpdate({ set: { name: product.name, category, unit: product.unit, unitPrice: 0, available: true, deleted: false, imageUrl } });
+        const estimatedUnitPrice = toLegacySyp(product.estimatedPrice);
+        await db.insert(catalogItems).values({ code, name: product.name, category, unit: product.unit, unitPrice: estimatedUnitPrice, available: true, deleted: false, storeId: store.id, imageUrl }).onDuplicateKeyUpdate({ set: { name: product.name, category, unit: product.unit, unitPrice: sql`IF(${catalogItems.unitPrice} = 0, ${estimatedUnitPrice}, ${catalogItems.unitPrice})`, available: true, deleted: false, imageUrl } });
       }
     }
   }
@@ -1011,7 +1012,7 @@ export const lahzaRouter = router({
       const productMap = new Map(products.map(product => [product.id, product]));
       const itemsTotal = input.lines.reduce((sum, line) => {
         const product = line.catalogItemId ? productMap.get(line.catalogItemId) : undefined;
-        const unitPrice = line.category === "pharmacy" || !product?.available || product.deleted ? 0 : product.unitPrice;
+        const unitPrice = !product?.available || product.deleted ? 0 : product.unitPrice;
         return sum + calculateLineTotal(line.quantity, unitPrice, line.unit);
       }, 0);
       if (input.kind === "discount") {
@@ -1047,11 +1048,10 @@ export const lahzaRouter = router({
       let totalAmount = 0;
       const resolvedLines = input.lines.map(line => {
         const product = line.catalogItemId ? productMap.get(line.catalogItemId) : undefined;
-        const isPharmacy = line.category === "pharmacy";
-        const unitPrice = !isPharmacy && product?.available && !product.deleted ? product.unitPrice : 0;
+        const unitPrice = product?.available && !product.deleted ? product.unitPrice : 0;
         const lineTotal = calculateLineTotal(line.quantity, unitPrice, line.unit);
         totalAmount += lineTotal;
-        return { ...line, unitPrice, lineTotal, priceKnown: !isPharmacy && Boolean(product && !product.deleted) };
+        return { ...line, unitPrice, lineTotal, priceKnown: Boolean(product && !product.deleted && product.unitPrice > 0) };
       });
       const itemsTotal = totalAmount;
       let discountAmount = 0;

@@ -36,7 +36,7 @@ export const categoryMeta: Record<LahzaCategory, { title: string; subtitle: stri
   bakery: { title: "مخابز وأفران", subtitle: "خبز ومعجنات يومية", unit: "وحدة", priced: true },
   butcher: { title: "الملحمة ولحوم ودواجن", subtitle: "الكمية بالجرام", unit: "جرام", priced: true },
   gas: { title: "الغاز المنزلي", subtitle: "قناني غاز من مورد معتمد", unit: "قنينة", priced: true },
-  pharmacy: { title: "صيدليات واحتياجات صحية", subtitle: "احتياجات صحية وعناية شخصية", unit: "طلب", priced: false },
+  pharmacy: { title: "صيدليات واحتياجات صحية", subtitle: "احتياجات صحية وعناية شخصية", unit: "طلب", priced: true },
   sweets: { title: "الحلويات والمعجنات", subtitle: "حلويات، كيك ومعجنات طازجة", unit: "وحدة", priced: true },
   clothing: { title: "الألبسة", subtitle: "ملابس وإكسسوارات متنوعة", unit: "وحدة", priced: true },
   mobile_accessories: { title: "موبايلات وإلكترونيات خفيفة", subtitle: "شواحن وسماعات وملحقات", unit: "وحدة", priced: true },

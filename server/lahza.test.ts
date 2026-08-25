@@ -4,6 +4,15 @@ import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortc
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, canShowFeaturedOffer, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, initialCustomerOrderStatus, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
+import { demoProductTemplates } from "./demoCatalog";
+
+describe("الأسعار التقديرية للكتالوج", () => {
+  it("يمنح كل قالب منتج سعراً تقديرياً موجباً", () => {
+    Object.values(demoProductTemplates).flat().forEach(product => {
+      expect(product.estimatedPrice).toBeGreaterThan(0);
+    });
+  });
+});
 
 describe("بحث المنتجات", () => {
   it("ينقي عبارة البحث من المسافات والرموز الخاصة بالمطابقة", () => {
