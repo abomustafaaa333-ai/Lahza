@@ -113,3 +113,6 @@ html, body { background: #fffaf5; }
 .partner-offer-ticker { color: #78350f; background: #fff6e8; }
 .cart-count { background: #ed665e; }
 @media (min-width: 700px) { .home-category-row { justify-content: center; } }
+
+.hero-gallery-cta { margin-top: .45rem; align-self: center; border: 0; border-radius: 999px; padding: .55rem 1.1rem; color: #6f1028; background: #fff; font-size: .68rem; font-weight: 900; box-shadow: 0 8px 18px -12px #1f2937; transition: transform .18s ease, background .18s ease; }
+.hero-gallery-cta:hover { background: #fff1ec; transform: translateY(-1px); }

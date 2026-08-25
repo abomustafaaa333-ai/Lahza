@@ -11,7 +11,7 @@ import { isNativeLahzaApp } from "@/lib/nativeRuntime";
 import { QRCodeSVG } from "qrcode.react";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
-import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, restaurantTypeMeta, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, formatNewSyp, formatSyp, restaurantTypeMeta, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
 import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, Minus, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Route, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
@@ -123,7 +123,7 @@ function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => voi
       <div className="app-shell flex h-[76px] items-center justify-between gap-3">
         <button className="header-menu-button" onClick={onSecret} aria-label="فتح القائمة"><span /><span /><span /></button>
         <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك">
-          <span className="flex h-12 w-[138px] items-center justify-center rounded-xl bg-transparent"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-12 w-full object-contain" /></span>
+          <span className="flex h-12 w-[138px] items-center justify-center rounded-xl bg-transparent"><img src={lahzaWordmarkUrl} alt="لحظة" onError={event => { event.currentTarget.style.display = "none"; }} className="h-12 w-full object-contain" /></span>
           <small>كل شيء في لحظة</small>
         </button>
         <button className="header-notification-button" onClick={onCart} aria-label="عرض السلة"><ShoppingBasket className="h-5 w-5" />{cartCount > 0 ? <span className="cart-count">{cartCount}</span> : null}</button>
@@ -153,7 +153,7 @@ function PartnerOfferGallery({ slides, onOpen }: { slides: PartnerGallerySlide[]
     return () => window.clearInterval(timer);
   }, [slides.length]);
   const activeSlide = slides[activeIndex] ?? null;
-  return <div className="hero-image-frame" aria-label="عروض مصورة من متاجر لحظة">{activeSlide ? <><button type="button" onClick={() => onOpen(activeSlide)} className="block w-full cursor-zoom-in text-right" aria-label={`فتح عرض ${activeSlide.name}`}><img key={activeSlide.id} src={activeSlide.imageUrl} alt={`عرض ${activeSlide.name} من ${activeSlide.partnerName}`} className="hero-offer-image" /><div className="hero-offer-caption"><strong>{activeSlide.name}</strong><span>{activeSlide.partnerName}{activeSlide.unitPrice ? ` · ${formatSyp(activeSlide.unitPrice)}` : ""}</span></div></button>{slides.length > 1 ? <div className="hero-gallery-dots" aria-label="صور العروض">{slides.map((slide, index) => <button key={slide.id} type="button" onClick={() => setActiveIndex(index)} aria-label={`عرض الصورة ${index + 1}`} aria-current={index === activeIndex} className={index === activeIndex ? "hero-gallery-dot-active" : ""} />)}</div> : null}</> : <div className="hero-gallery-empty"><BadgePercent className="h-7 w-7" /><strong>عروض المتاجر</strong><span>ستظهر صور العروض النشطة هنا فور إضافتها.</span></div>}</div>;
+  return <div className="hero-image-frame" aria-label="عروض مصورة من متاجر لحظة">{activeSlide ? <><button type="button" onClick={() => onOpen(activeSlide)} className="block w-full cursor-zoom-in text-right" aria-label={`فتح عرض ${activeSlide.name}`}><img key={activeSlide.id} src={activeSlide.imageUrl} alt={`عرض ${activeSlide.name} من ${activeSlide.partnerName}`} onError={event => { event.currentTarget.style.display = "none"; }} className="hero-offer-image" /><div className="hero-offer-caption"><strong>{activeSlide.name}</strong><span>{activeSlide.partnerName}{activeSlide.unitPrice ? ` · ${formatSyp(activeSlide.unitPrice)}` : ""}</span></div></button>{slides.length > 1 ? <div className="hero-gallery-dots" aria-label="صور العروض">{slides.map((slide, index) => <button key={slide.id} type="button" onClick={() => setActiveIndex(index)} aria-label={`عرض الصورة ${index + 1}`} aria-current={index === activeIndex} className={index === activeIndex ? "hero-gallery-dot-active" : ""} />)}</div> : null}</> : <div className="hero-gallery-empty"><BadgePercent className="h-9 w-9" /><strong>عروض لحظة</strong><span>ترقّبوا أحدث العروض من متاجركم المفضلة</span><button type="button" onClick={() => onOpen({ id: -1, imageUrl: "", name: "العروض المميزة", partnerName: "لحظة", storeId: null, storeCategory: "offers", unitPrice: 0 })} className="hero-gallery-cta">اكتشف العروض</button></div>}</div>;
 }
 
 export default function Home() {
@@ -204,7 +204,6 @@ export default function Home() {
   const [sharedStoreId] = useState(() => parseSharedStoreId(window.location.search));
 
   const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
-  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false, refetchOnMount: "always", refetchOnWindowFocus: true });
   const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerOffersQuery = trpc.lahza.intercity.offers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const allOffersQuery = trpc.lahza.intercity.offers.useQuery({ includeRegular: true }, { enabled: !isStaticDemo, retry: false });
@@ -252,8 +251,6 @@ export default function Home() {
     setSelectedStore({ id: sharedStore.id, name: sharedStore.name, category: sharedStore.category as LahzaCategory, storeOpen: sharedStore.storeOpen });
     setScreen("store");
   }, [sharedStoreQuery.data, selectedStore?.id]);
-  const tickerPrimary = normalizeTickerText(interfaceSettingsQuery.data?.tickerPrimary, DEFAULT_TICKER_PRIMARY);
-  const tickerSecondary = normalizeTickerText(interfaceSettingsQuery.data?.tickerSecondary, DEFAULT_TICKER_SECONDARY);
   const adminLogin = trpc.lahza.admin.login.useMutation({
     onSuccess: result => {
       utils.lahza.admin.session.setData(undefined, { role: result.role });
@@ -322,7 +319,6 @@ export default function Home() {
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة", storeName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", featuredStatus: "approved" as const })) : partnerOffersQuery.data ?? [];
   const allOffers = isStaticDemo ? partnerOffers : allOffersQuery.data ?? [];
-  const tickerOffers: CustomerOffer[] = partnerOffers.length ? partnerOffers : [{ id: -1, text: "عروض متاجر لحظة — سيظهر أول عرض هنا فور نشره من المتجر", partnerName: "لحظة", imageUrl: null }];
   const partnerGallerySlides = isStaticDemo
     ? demoGalleryImages.map((imageUrl, index) => ({ id: 1004 + index, imageUrl, name: index === 0 ? "عرض طعميني — صحن حلويات" : "عرض متجر لحظة التجريبي", partnerName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", unitPrice: 0 }))
     : buildPartnerGallerySlides(partnerOffersQuery.data ?? []);
@@ -511,8 +507,6 @@ export default function Home() {
   return (
     <main dir="rtl" className="min-h-screen bg-white text-slate-950">
       <Header onSecret={() => setSecretOpen(true)} onCart={openDeliveryCheckout} onSearch={() => setSearchOpen(true)} cartCount={cart.length} />
-      <div className="reward-ticker" aria-label="رسائل لحظة"><div className="reward-ticker-track"><span>{tickerPrimary}<b aria-hidden="true">★</b>{tickerSecondary}</span><span aria-hidden="true">{tickerPrimary}<b>★</b>{tickerSecondary}</span></div></div>
-      <div className="partner-offer-ticker" aria-label="عروض المتاجر"><div className="partner-offer-label"><BadgePercent className="h-3.5 w-3.5" /> العروض المميزة</div><div className="partner-offer-ticker-window"><div className="partner-offer-ticker-track">{[...tickerOffers, ...tickerOffers].map((offer, index) => <span key={`${offer.id}-${index}`}><button type="button" onClick={() => offer.id > 0 && setSelectedGalleryOffer({ id: offer.id, imageUrl: offer.imageUrl ?? "", name: offer.text, partnerName: offer.partnerName, storeId: offer.storeId ?? null, storeCategory: offer.storeCategory ?? null, unitPrice: offer.productPrice ?? 0, storeOpen: offer.storeOpen })} className="cursor-pointer text-right transition hover:text-red-700" aria-label={`فتح عرض ${offer.text}`}>{offer.partnerName} — {offer.text}</button><b aria-hidden="true">★</b></span>)}</div></div></div>
 
       <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <><DialogClose aria-label="إغلاق العرض" className="absolute right-4 top-4 z-10 grid h-12 w-12 place-items-center rounded-full border border-white/70 bg-slate-950/50 text-white shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-slate-950/70 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"><X className="h-7 w-7" strokeWidth={3} /><span className="sr-only">إغلاق العرض</span></DialogClose>{selectedGalleryOffer.imageUrl ? <img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /> : <div className="grid h-52 place-items-center bg-gradient-to-br from-red-600 to-orange-500 text-white"><BadgePercent className="h-14 w-14" /></div>}<div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-blue-950">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={() => openOfferLocation(selectedGalleryOffer)} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
 
