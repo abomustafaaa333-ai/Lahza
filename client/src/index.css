@@ -504,3 +504,11 @@ body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323
 .brand-mark { transform: translate(50%, .32rem); }
 .header-cart-button { transform: translateY(.32rem); }
 .header-cart-button:hover { transform: translateY(.14rem); }
+
+
+/* Category photo thumbnails keep the section tactile without replacing the category symbol. */
+.home-category-icon-photo { position: relative; overflow: hidden; border: 1px solid #f4d8cf; background: #fff1ec; }
+.home-category-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.08); }
+.home-category-icon-photo::after { position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,250,245,.2), rgba(84,22,42,.28)); content: ""; }
+.home-category-icon-overlay { position: relative; z-index: 1; display: grid; width: 1.45rem; height: 1.45rem; place-items: center; border: 1px solid rgba(255,255,255,.82); border-radius: .58rem; color: #6f1028; background: rgba(255,253,251,.92); box-shadow: 0 4px 10px rgba(84,22,42,.2); }
+.home-category-icon-overlay svg { width: .88rem; height: .88rem; stroke-width: 2.6; }
