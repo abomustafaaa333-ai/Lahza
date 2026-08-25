@@ -424,7 +424,7 @@ export const partnerOfferInput = z.object({
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
   imageStorageKey: z.string().trim().min(1).max(500).optional().or(z.literal("")),
   durationDays: z.number().int().min(1, "اختر مدة عرض لا تقل عن يوم واحد").max(365, "الحد الأقصى لمدة العرض سنة واحدة"),
-  discountPercent: z.number().int().min(1, "أدخل نسبة خصم من 1% على الأقل").max(90, "الحد الأقصى للخصم 90%"),
+  offerPrice: newSypMoneyInput.min(1, "أدخل سعر العرض الجديد"),
   active: z.boolean().default(true),
 });
 
@@ -951,8 +951,11 @@ export const lahzaRouter = router({
         await cleanExpiredOffers();
         const product = await db.select({ id: catalogItems.id, unitPrice: catalogItems.unitPrice }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
         if (!product[0]) throw new Error("اختر صنفاً متاحاً من منتجات متجرك لهذا العرض");
-        const offerPrice = Math.max(1, Math.floor(product[0].unitPrice * (100 - input.discountPercent) / 100));
-        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, catalogItemId: product[0].id, text: input.text, discountPercent: input.discountPercent, offerPrice, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active, featuredStatus: "none" });
+        const offerPrice = toLegacySyp(input.offerPrice);
+        if (offerPrice >= product[0].unitPrice) throw new Error("يجب أن يكون سعر العرض أقل من سعر المنتج الأصلي");
+        const discountPercent = Math.round((product[0].unitPrice - offerPrice) * 100 / product[0].unitPrice);
+        if (discountPercent < 1 || discountPercent > 90) throw new Error("اجعل سعر العرض يحقق خصماً بين 1% و90%");
+        await db.insert(partnerOffers).values({ partnerId: partner.id, storeId: store.id, catalogItemId: product[0].id, text: input.text, discountPercent, offerPrice, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), active: input.active, featuredStatus: "none" });
         return { success: true };
       }),
       update: publicProcedure.input(partnerOfferInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -960,8 +963,11 @@ export const lahzaRouter = router({
         await cleanExpiredOffers();
         const product = await db.select({ id: catalogItems.id, unitPrice: catalogItems.unitPrice }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
         if (!product[0]) throw new Error("اختر صنفاً متاحاً من منتجات متجرك لهذا العرض");
-        const offerPrice = Math.max(1, Math.floor(product[0].unitPrice * (100 - input.discountPercent) / 100));
-        await db.update(partnerOffers).set({ catalogItemId: product[0].id, text: input.text, discountPercent: input.discountPercent, offerPrice, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active, featuredStatus: "none", featuredRequestedAt: null, featuredReviewedAt: null, featuredReviewNote: null }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
+        const offerPrice = toLegacySyp(input.offerPrice);
+        if (offerPrice >= product[0].unitPrice) throw new Error("يجب أن يكون سعر العرض أقل من سعر المنتج الأصلي");
+        const discountPercent = Math.round((product[0].unitPrice - offerPrice) * 100 / product[0].unitPrice);
+        if (discountPercent < 1 || discountPercent > 90) throw new Error("اجعل سعر العرض يحقق خصماً بين 1% و90%");
+        await db.update(partnerOffers).set({ catalogItemId: product[0].id, text: input.text, discountPercent, offerPrice, imageUrl: input.imageUrl || null, imageStorageKey: input.imageStorageKey || null, imageDeletePending: false, durationDays: input.durationDays, expiresAt: calculateOfferExpiry(input.durationDays), deletedAt: null, active: input.active, featuredStatus: "none", featuredRequestedAt: null, featuredReviewedAt: null, featuredReviewNote: null }).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id)));
         return { success: true };
       }),
       requestFeatured: publicProcedure.input(z.object({ id: z.number().int().positive(), storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -969,7 +975,7 @@ export const lahzaRouter = router({
         await cleanExpiredOffers();
         const offer = await db.select({ id: partnerOffers.id, active: partnerOffers.active, expiresAt: partnerOffers.expiresAt, catalogItemId: partnerOffers.catalogItemId, discountPercent: partnerOffers.discountPercent, offerPrice: partnerOffers.offerPrice }).from(partnerOffers).where(and(eq(partnerOffers.id, input.id), eq(partnerOffers.partnerId, partner.id), eq(partnerOffers.storeId, store.id))).limit(1);
         const found = offer[0];
-        if (!found?.active || (found.expiresAt && found.expiresAt <= new Date()) || !found.catalogItemId || found.discountPercent < 1 || found.offerPrice < 1) throw new Error("اختر نسبة خصم صالحة قبل طلب اعتماد العرض المميز");
+        if (!found?.active || (found.expiresAt && found.expiresAt <= new Date()) || !found.catalogItemId || found.discountPercent < 1 || found.offerPrice < 1) throw new Error("أدخل سعر عرض صالحاً قبل طلب اعتماد العرض المميز");
         const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, found.catalogItemId), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
         if (!product[0]) throw new Error("صنف العرض غير متاح حالياً؛ حدّث العرض قبل طلب تمييزه");
         await db.update(partnerOffers).set({ featuredStatus: "pending", featuredRequestedAt: new Date(), featuredReviewedAt: null, featuredReviewNote: null }).where(eq(partnerOffers.id, found.id));
@@ -1397,7 +1403,7 @@ export const lahzaRouter = router({
         const offer = found[0];
         if (!offer || offer.featuredStatus !== "pending") throw new Error("طلب العرض المميز غير متاح للمراجعة");
         if (input.decision === "approved") {
-          if (!offer.active || (offer.expiresAt && offer.expiresAt <= new Date()) || !offer.catalogItemId || offer.discountPercent < 1 || offer.offerPrice < 1) throw new Error("لا يمكن اعتماد عرض من دون نسبة خصم وسعر عرض صالحين");
+          if (!offer.active || (offer.expiresAt && offer.expiresAt <= new Date()) || !offer.catalogItemId || offer.discountPercent < 1 || offer.offerPrice < 1) throw new Error("لا يمكن اعتماد عرض من دون سعر عرض وخصم محسوب صالحين");
           const product = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, offer.catalogItemId), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).limit(1);
           if (!product[0]) throw new Error("لا يمكن اعتماد عرض لصنف غير متاح");
         }
