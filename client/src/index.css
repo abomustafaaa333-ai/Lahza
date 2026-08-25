@@ -570,3 +570,23 @@ header.sticky { box-shadow: 0 .8rem 1.8rem -1.65rem rgba(84,22,42,.52); }
 .home-bottom-nav button:hover { color: #e85f22; background: #fff0df; }
 .home-bottom-nav { border-color: #f4dcc8; background: rgba(255, 253, 249, .95); box-shadow: 0 1rem 2.2rem -1.2rem rgba(99, 48, 27, .28), 0 0 0 .12rem rgba(255, 116, 45, .08); }
 .home-bottom-nav::before { background: linear-gradient(120deg, rgba(255, 116, 45, .24), transparent 36%, rgba(99, 48, 27, .13)); }
+
+/* موشن عبارة منبج وريفها: ظهور كلمةً كلمة ثم توهج هادئ متكرر. */
+.brand-location-label { gap: .2rem; animation: brand-location-glow 3.2s ease-in-out 6.4s infinite; }
+.brand-location-label > span { display: inline-block; opacity: 0; animation: brand-location-word .62s cubic-bezier(.23,1,.32,1) forwards; }
+.brand-location-label > span:nth-child(1) { animation-delay: .3s; }
+.brand-location-label > span:nth-child(2) { animation-delay: .72s; }
+.brand-location-label > span:nth-child(3) { animation-delay: 1.14s; }
+.brand-location-label > span:nth-child(4) { animation-delay: 1.56s; }
+@keyframes brand-location-word {
+  from { opacity: 0; filter: blur(.18rem); transform: translateY(.32rem); }
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+@keyframes brand-location-glow {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(255, 248, 241, 0)); text-shadow: none; }
+  50% { filter: drop-shadow(0 0 .28rem rgba(255, 248, 241, .48)); text-shadow: 0 0 .42rem rgba(255, 248, 241, .35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-location-label, .brand-location-label > span { animation: none !important; }
+  .brand-location-label > span { opacity: 1; filter: none; transform: none; }
+}
