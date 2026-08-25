@@ -170,7 +170,7 @@ export async function buildOrderImage(order: ShareableOrder) {
   context.fillRect(0, 0, width, height);
   context.fillStyle = "#1e3a8a";
   context.fillRect(0, 0, width, 165);
-  context.fillStyle = "#dc2626";
+  context.fillStyle = "#ff742d";
   context.fillRect(0, 165, width, 13);
 
   context.textAlign = "right";
@@ -184,7 +184,7 @@ export async function buildOrderImage(order: ShareableOrder) {
   context.fillStyle = "#ffffff";
   roundedRect(context, padding, 212, width - padding * 2, height - 260, 26);
   context.fill();
-  context.fillStyle = "#dc2626";
+  context.fillStyle = "#ff742d";
   context.font = "800 34px sans-serif";
   context.fillText(`الطلب #${order.id}`, width - padding - 36, 270);
   context.fillStyle = "#64748b";
