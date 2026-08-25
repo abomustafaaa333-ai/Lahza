@@ -516,6 +516,9 @@ body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323
 .brand-mark small { margin-top: 0; color: #c5524f; font-family: "Cairo", sans-serif; font-size: .46rem; font-weight: 800; letter-spacing: .015em; line-height: 1.1; }
 .brand-mark:hover .lahza-logo-symbol { box-shadow: 0 .58rem 1.15rem rgba(111,16,40,.28); transform: rotate(0deg) translateY(-.08rem); }
 .brand-mark:active .lahza-logo-symbol { transform: rotate(-2deg) scale(.95); }
+.brand-location-label { position: absolute; top: 50%; left: calc(100% + .34rem); display: inline-flex; align-items: center; white-space: nowrap; color: #8d4252; font-family: "Cairo", sans-serif; font-size: .5rem; font-weight: 800; letter-spacing: -.015em; transform: translateY(-50%); }
+.brand-location-label::before { width: .3rem; height: .3rem; margin-left: .24rem; border-radius: 99px; background: #ed665e; box-shadow: 0 0 0 .11rem rgba(237,102,94,.14); content: ""; }
+@media (max-width: 430px) { .brand-location-label { display: none; } }
 @media (prefers-reduced-motion: reduce) { .lahza-logo-symbol { transition: none; } }
 
 

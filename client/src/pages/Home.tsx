@@ -156,7 +156,7 @@ function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => voi
   return (
     <header className="sticky top-0 z-30 border-b border-rose-100 bg-[#fffaf5]/95 pt-3 backdrop-blur-xl">
       <div className="app-shell flex h-[76px] items-center justify-end gap-3">
-        <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك" aria-label="لحظة — كل شيء في لحظة"><span className="lahza-logo-lockup"><span className="lahza-logo-symbol" aria-hidden="true"><i /></span><span className="lahza-logo-word">لحظة</span></span><small>كل شيء في لحظة</small></button>
+        <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك" aria-label="لحظة — خدمات توصيل منبج"><span className="lahza-logo-lockup"><span className="lahza-logo-symbol" aria-hidden="true"><i /></span><span className="lahza-logo-word">لحظة</span></span><small>كل شيء في لحظة</small><span className="brand-location-label">خدمات توصيل منبج</span></button>
         <button className="header-cart-button" onClick={onCart} aria-label="فتح سلة التسوق"><ShoppingBasket className="h-5 w-5" /><span>السلة</span>{cartCount > 0 ? <b className="cart-count">{cartCount}</b> : null}</button>
       </div>
       <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span>ابحث عن مطعم، منتج أو خدمة...</span><Search className="h-5 w-5" /></button></div>
