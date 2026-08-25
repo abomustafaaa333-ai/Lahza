@@ -214,6 +214,8 @@ export default function Home() {
   const [useManualLocation, setUseManualLocation] = useState(false);
   const [locating, setLocating] = useState(false);
   const [notes, setNotes] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [unavailablePreference, setUnavailablePreference] = useState<"cancel" | "replace" | "call">("call");
   const [payment, setPayment] = useState<"sham_cash" | "cash">("cash");
   const [taxiType, setTaxiType] = useState<"standard" | "van">("standard");
   const [pickup, setPickup] = useState("");
@@ -340,6 +342,9 @@ export default function Home() {
   const deliveryFeeNewSyp = checkoutMode === "delivery" ? calculatePercentageDeliveryFeeNewSyp(total, deliveryPercent) : 0;
   const grandTotalNewSyp = toNewSyp(total) + deliveryFeeNewSyp;
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
+  const cartDeliveryFeeNewSyp = calculatePercentageDeliveryFeeNewSyp(total, deliveryPercent);
+  const cartGrandTotalNewSyp = toNewSyp(total) + cartDeliveryFeeNewSyp;
+  const deliveryEta = cart.length >= 6 ? "40–55 دقيقة" : cart.length >= 3 ? "35–50 دقيقة" : "30–45 دقيقة";
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة", storeName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", featuredStatus: "approved" as const })) : partnerOffersQuery.data ?? [];
   const allOffers = isStaticDemo ? partnerOffers : allOffersQuery.data ?? [];
   const generatedOfferSlides = demoGalleryImages.map((imageUrl, index) => ({
@@ -435,10 +440,18 @@ export default function Home() {
       toast.error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumDeliveryOrderSyp)}`);
       return;
     }
-    const hasManualLocation = useManualLocation && customerLocation.trim().length >= 3;
+    const hasAddress = deliveryAddress.trim().length >= 3;
     const hasGpsLocation = locationVerified && Boolean(customerLocationUrl) && customerLat !== null && customerLng !== null;
-    if (!checkoutName.trim() || (!hasManualLocation && !hasGpsLocation)) {
-      toast.error(useManualLocation ? "اكتب وصفاً واضحاً لموقعك قبل إرسال الطلب" : "اضغط تحديد موقعي أولاً أو اختر كتابة موقعك يدوياً");
+    if (!checkoutName.trim()) {
+      toast.error("اكتب اسم المستلم قبل إرسال الطلب");
+      return;
+    }
+    if (!isTaxi && !hasAddress) {
+      toast.error("اكتب عنواناً واضحاً لتوصيل الطلب");
+      return;
+    }
+    if (!isTaxi && !hasGpsLocation) {
+      toast.error("اضغط «تحديد موقعي» لتأكيد موقع التوصيل قبل الإرسال");
       return;
     }
     if (!/^9\d{8}$/.test(checkoutPhone)) {
@@ -462,16 +475,16 @@ export default function Home() {
       orderType: isTaxi ? "taxi" : "delivery",
       customerName: checkoutName.trim(),
       customerPhone: `+963${checkoutPhone}`,
-      locationMode: hasManualLocation ? "manual" : "gps",
-      locationText: hasManualLocation ? customerLocation.trim() : undefined,
-      locationUrl: hasManualLocation ? undefined : customerLocationUrl,
-      locationLat: hasManualLocation ? undefined : customerLat ?? undefined,
-      locationLng: hasManualLocation ? undefined : customerLng ?? undefined,
+      locationMode: isTaxi && !hasGpsLocation ? "manual" : "gps",
+      locationText: isTaxi ? (customerLocation.trim() || pickup.trim()) : deliveryAddress.trim(),
+      locationUrl: hasGpsLocation ? customerLocationUrl : undefined,
+      locationLat: hasGpsLocation ? customerLat ?? undefined : undefined,
+      locationLng: hasGpsLocation ? customerLng ?? undefined : undefined,
       paymentMethod: payment,
       discountCode: discountCode.trim() || undefined,
       referralCode: referralCode.trim() || undefined,
       usePointsReward: usePointsReward && checkoutMode === "delivery",
-      notes: [notes.trim(), `الموقع: ${customerLocation.trim()}`, !hasManualLocation && customerLocationUrl ? `رابط الخريطة: ${customerLocationUrl}` : ""].filter(Boolean).join("\n") || undefined,
+      notes: [notes.trim(), !isTaxi ? `العنوان: ${deliveryAddress.trim()}` : "", !isTaxi ? `تفضيل عدم التوفر: ${unavailablePreference === "cancel" ? "إلغاء الصنف والمتابعة من دونه" : unavailablePreference === "replace" ? "استبدال الصنف ببديل مشابه" : "التواصل مع العميل أولاً"}` : "", hasGpsLocation && customerLocationUrl ? `رابط الخريطة: ${customerLocationUrl}` : ""].filter(Boolean).join("\n") || undefined,
       taxiType: isTaxi ? taxiType : undefined,
       pickupLocation: isTaxi ? pickup : undefined,
       destination: isTaxi ? destination : undefined,
@@ -581,7 +594,6 @@ export default function Home() {
             </div>
             <button type="button" onClick={() => setMissingProductOpen(true)} className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-dashed border-blue-300 bg-blue-50/70 px-4 py-4 text-right text-blue-950 transition hover:bg-blue-100"><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white"><CircleHelp className="h-5 w-5" /></span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">لم تجد ما تريد؟</strong><small className="text-xs font-medium text-slate-600">اطلب منتجاً غير موجود وسنبحث عن متجر يوفره.</small></span><ChevronLeft className="h-5 w-5" /></button>
           </section>
-          {cart.length > 0 ? <div className="bottom-cta"><div><span>السلة</span><strong>{`${cart.length} أصناف`}</strong></div><Button onClick={openDeliveryCheckout} className="rounded-2xl bg-red-600 px-6 text-white hover:bg-red-700">متابعة <ChevronLeft className="mr-1 h-4 w-4" /></Button></div> : null}
         </>
       ) : null}
 
@@ -618,24 +630,26 @@ export default function Home() {
 
       {screen === "checkout" ? (
         <>
-          <PageHeading eyebrow="تأكيد الطلب" title={checkoutMode === "delivery" ? "راجع طلبك" : "تأكيد رحلتك"} detail="أدخل بيانات التواصل وحدد موقعك أو اكتبه يدوياً، ثم أرسل طلبك." onBack={() => setScreen(checkoutMode === "delivery" ? "delivery" : "taxi")} />
+          <PageHeading eyebrow="تأكيد الطلب" title={checkoutMode === "delivery" ? "سلتك" : "تأكيد رحلتك"} detail={checkoutMode === "delivery" ? "راجع اختياراتك وأضف بيانات التوصيل، ثم أرسل طلبك بثقة." : "أدخل بيانات التواصل وحدد موقعك أو اكتبه يدوياً، ثم أرسل طلبك."} onBack={() => setScreen(checkoutMode === "delivery" ? "delivery" : "taxi")} />
+          {checkoutMode === "delivery" ? <section className="app-shell pb-1"><div className="checkout-flow" aria-label="مراحل تأكيد الطلب"><span className="checkout-flow-active"><b>1</b> السلة</span><span><b>2</b> التوصيل</span><span><b>3</b> التأكيد</span></div></section> : null}
           <section className="app-shell space-y-5 pb-10">
-            <div className="checkout-card">
+            <div className="checkout-card checkout-cart-card">
               <div className="checkout-card-title"><ClipboardList className="h-5 w-5 text-red-600" /><span>{checkoutMode === "delivery" ? "ملخص الطلب" : "تفاصيل الرحلة"}</span></div>
-              {checkoutMode === "delivery" ? <CartPreview cart={cart} removeLine={removeLine} total={total} hasPharmacy={hasPharmacy} deliveryFeeNewSyp={deliveryFeeNewSyp} deliveryPercent={deliveryPercent} deliveryArea="منبج" grandTotalNewSyp={grandTotalNewSyp} /> : <div className="taxi-summary"><CarFront className="h-9 w-9 text-blue-900" /><div><strong>{taxiType === "van" ? "سيارة فان" : "تاكسي عادي"}</strong><span>{pickup || "موقع الانطلاق"} <ChevronLeft className="inline h-3 w-3" /> {destination || "الوجهة"}</span></div></div>}
+              {checkoutMode === "delivery" ? <CartPreview cart={cart} removeLine={removeLine} total={total} hasPharmacy={hasPharmacy} deliveryFeeNewSyp={deliveryFeeNewSyp} deliveryPercent={deliveryPercent} deliveryArea="منبج" grandTotalNewSyp={grandTotalNewSyp} onContinueShopping={() => setScreen("delivery")} /> : <div className="taxi-summary"><CarFront className="h-9 w-9 text-blue-900" /><div><strong>{taxiType === "van" ? "سيارة فان" : "تاكسي عادي"}</strong><span>{pickup || "موقع الانطلاق"} <ChevronLeft className="inline h-3 w-3" /> {destination || "الوجهة"}</span></div></div>}
             </div>
+            {checkoutMode === "delivery" ? <div className="delivery-estimate-card"><span className="delivery-estimate-icon"><Bike className="h-5 w-5" /></span><div><strong>وقت وصول تقديري</strong><p>يصل طلبك عادة خلال <b>{deliveryEta}</b> بعد تأكيد المتجر والموقع.</p></div><span className="delivery-estimate-status">توصيل لحظة</span></div> : null}
             <div className="checkout-card space-y-4">
               <div className="checkout-card-title"><UserRound className="h-5 w-5 text-red-600" /><span>بيانات التواصل وموقع الطلب</span></div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><Label htmlFor="customerName">الاسم</Label><Input id="customerName" value={checkoutName} onChange={e => setCheckoutName(e.target.value)} placeholder="اكتب الاسم" /></div><div><Label htmlFor="customerPhone">رقم الهاتف السوري</Label><div className="phone-entry" dir="ltr"><span>+963</span><Input id="customerPhone" inputMode="numeric" value={checkoutPhone} onChange={e => setCheckoutPhone(e.target.value.replace(/\D/g, "").slice(0, 9))} placeholder="9XXXXXXXX" /></div><small className="phone-help">اكتب الرقم ابتداءً من 9، من دون الصفر الأول.</small></div></div><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><div><Label htmlFor="discountCode">رمز الخصم (اختياري)</Label><Input id="discountCode" value={discountCode} onChange={e => setDiscountCode(e.target.value.toUpperCase())} placeholder="مثال: LAHZA10" dir="ltr" /></div><div><Label htmlFor="referralCode">رمز الإحالة (اختياري)</Label><Input id="referralCode" value={referralCode} onChange={e => setReferralCode(e.target.value.toUpperCase())} placeholder="أدخل رمز صديقك" dir="ltr" /></div></div><div className="rounded-2xl border border-amber-100 bg-amber-50 p-3"><div className="flex items-center justify-between gap-2"><div><strong className="text-sm text-amber-950">نقاطك</strong><p className="mt-1 text-xs text-amber-800">نقطة لكل طلب مكتمل وإحالة مكتملة.</p></div><strong className="text-xl text-amber-900">{pointsQuery.data?.balance ?? 0}</strong></div>{(pointsQuery.data?.balance ?? 0) >= 10 && pointsQuery.data?.rewardPercent ? <div className="mt-2 flex items-center justify-between gap-2"><p className="text-xs font-bold text-emerald-700">مكافأة متاحة: خصم {pointsQuery.data.rewardPercent}% مقابل 10 نقاط.</p><Button type="button" variant="outline" onClick={() => setUsePointsReward(value => !value)} className={usePointsReward ? "rounded-xl border-emerald-300 bg-emerald-100 text-emerald-800" : "rounded-xl border-amber-200 bg-white text-amber-900"}>{usePointsReward ? "تم اختيار المكافأة" : "استخدمها"}</Button></div> : null}</div><div className="rounded-2xl border border-blue-100 bg-blue-50 p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><strong className="text-sm text-blue-950">رمز إحالتك</strong><p className="mt-1 text-xs text-slate-600">شاركه مع صديق، ويحصل على نسبة الخصم عند أول طلب.</p></div><Button type="button" variant="outline" disabled={!/^9\d{8}$/.test(checkoutPhone) || createReferralCode.isPending} onClick={() => createReferralCode.mutate({ phone: `+963${checkoutPhone}` })} className="rounded-xl border-blue-200 bg-white text-blue-900">{myReferralCode || "إنشاء الرمز"}</Button></div></div>
-                <div><Label htmlFor="customerLocation">موقعك</Label>{useManualLocation ? <Textarea id="customerLocation" value={customerLocation} onChange={event => setCustomerLocation(event.target.value)} placeholder="مثال: منبج، قرب دوار الساعة، بجانب الصيدلية" /> : <Input id="customerLocation" value={customerLocation} readOnly placeholder="استخدم زر تحديد موقعي" />}<div className="location-actions"><button onClick={locateCustomer} disabled={locating}><LocateFixed className="h-4 w-4" />{locating ? "جارٍ التحديد..." : "تحديد موقعي"}</button><button type="button" onClick={() => { const next = !useManualLocation; setUseManualLocation(next); setCustomerLocation(""); setCustomerLocationUrl(""); setCustomerLat(null); setCustomerLng(null); setLocationVerified(false); }} className="border border-blue-200 bg-blue-50 text-blue-900"><Pencil className="h-4 w-4" />{useManualLocation ? "استخدم GPS بدلاً من ذلك" : "سأكتب موقعي يدوياً"}</button></div>{useManualLocation ? <p className="verified-location">اكتب اسم الحي أو أقرب معلم ومعلومات تسهّل الوصول إليك.</p> : locationVerified ? <p className="verified-location">تم التحقق من الموقع عبر GPS</p> : <p className="location-required-note">اضغط تحديد موقعي أو اختر كتابة الموقع يدوياً لتأكيد طلبك.</p>}</div>
-                <div><Label htmlFor="notes">ملاحظات إضافية <span className="text-slate-400">(اختياري)</span></Label><Textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="أي تفاصيل مفيدة للطلب أو للمندوب" /></div>
-            </div>
+                <div className="delivery-location-card"><div className="delivery-field-heading"><span><LocateFixed className="h-4 w-4" /> العنوان وموقع التوصيل</span><small>مطلوبان لإرسال الطلب</small></div><Label htmlFor="deliveryAddress">العنوان التفصيلي</Label><Textarea id="deliveryAddress" value={deliveryAddress} onChange={event => setDeliveryAddress(event.target.value)} placeholder="مثال: منبج، حي السرب، قرب دوار الساعة، بناء 12" /><div className="location-actions"><button type="button" onClick={locateCustomer} disabled={locating}><LocateFixed className="h-4 w-4" />{locating ? "جارٍ تحديد الموقع..." : locationVerified ? "تم تأكيد موقعك" : "تحديد موقعي الآن"}</button></div>{locationVerified ? <p className="verified-location">تم تأكيد موقعك عبر GPS، ويمكنك الآن إرسال الطلب بعد إكمال البيانات.</p> : <p className="location-required-note">لإتمام الطلب، اضغط زر تحديد موقعي واسمح للتطبيق بالوصول إلى الموقع.</p>}</div><div><Label htmlFor="notes">ملاحظات إضافية <span className="text-slate-400">(اختياري)</span></Label><Textarea id="notes" value={notes} onChange={e => setNotes(e.target.value)} placeholder="أي تفاصيل مفيدة للطلب أو للمندوب" /></div><div className="unavailable-preferences"><div className="delivery-field-heading"><span><PackagePlus className="h-4 w-4" /> عند عدم توفر أحد المنتجات</span><small>اختر ما يناسبك</small></div><p>سنلتزم بخيارك عند تعذر توفير أي صنف من الطلب.</p><div className="unavailable-choice-grid"><button type="button" onClick={() => setUnavailablePreference("cancel")} className={unavailablePreference === "cancel" ? "unavailable-choice-active" : ""}><span>ألغِ الصنف</span><small>وأكمل الطلب</small></button><button type="button" onClick={() => setUnavailablePreference("replace")} className={unavailablePreference === "replace" ? "unavailable-choice-active" : ""}><span>بديل مشابه</span><small>بنفس الاحتياج</small></button><button type="button" onClick={() => setUnavailablePreference("call")} className={unavailablePreference === "call" ? "unavailable-choice-active" : ""}><span>تواصل معي</span><small>قبل أي تغيير</small></button></div></div></div>
             <div className="checkout-card"><div className="checkout-card-title"><CreditCard className="h-5 w-5 text-red-600" /><span>طريقة الدفع</span></div><div className="payment-grid"><button onClick={() => setPayment("sham_cash")} className={payment === "sham_cash" ? "payment-active" : ""}><span className="payment-icon payment-icon-blue">ش</span><span>شام كاش</span></button><button onClick={() => setPayment("cash")} className={payment === "cash" ? "payment-active" : ""}><HandCoins className="h-5 w-5" /><span>نقداً عند الاستلام</span></button></div></div>
             {checkoutMode === "delivery" && remainingDeliveryAmountNewSyp(total) > 0 ? <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-bold leading-6 text-amber-900">الحد الأدنى لمجموع الطلب هو {formatNewSyp(minimumDeliveryOrderSyp)}. أضف منتجات بقيمة {formatNewSyp(remainingDeliveryAmountNewSyp(total))} أو أكثر لتأكيد الطلب.</p> : null}
-            <button disabled={createOrder.isPending || (checkoutMode === "delivery" && remainingDeliveryAmountNewSyp(total) > 0)} onClick={submitCheckout} className="primary-full-button">{createOrder.isPending ? "جارٍ إرسال الطلب..." : "تأكيد وإرسال الطلب"}<ChevronLeft className="h-5 w-5" /></button>
+            <button disabled={createOrder.isPending || (checkoutMode === "delivery" && (remainingDeliveryAmountNewSyp(total) > 0 || !checkoutName.trim() || !/^9\d{8}$/.test(checkoutPhone) || deliveryAddress.trim().length < 3 || !locationVerified))} onClick={submitCheckout} className="primary-full-button">{createOrder.isPending ? "جارٍ إرسال الطلب..." : "تأكيد وإرسال الطلب"}<ChevronLeft className="h-5 w-5" /></button>
           </section>
         </>
       ) : null}
+
+      {screen !== "checkout" && cart.length > 0 && ["delivery", "stores", "store", "storeOffers", "offers"].includes(screen) ? <div className="cart-continue-bar"><button type="button" onClick={openDeliveryCheckout} className="cart-continue-bar-inner"><span className="cart-continue-count">{cart.length}</span><span className="cart-continue-copy"><strong>متابعة السلة</strong><small>{cart.length === 1 ? "صنف واحد مضاف" : `${cart.length} أصناف مضافة`}</small></span><strong className="cart-continue-total">{formatNewSyp(cartGrandTotalNewSyp)}</strong><ChevronLeft className="h-5 w-5" /></button></div> : null}
 
       {screen !== "checkout" ? <nav className="home-bottom-nav" aria-label="التنقل الرئيسي"><button type="button" className={screen === "home" ? "home-bottom-nav-active" : ""} onClick={goHome}><LayoutDashboard className="h-5 w-5" /><span>الرئيسية</span></button><button type="button" className={screen === "delivery" || screen === "stores" || screen === "store" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("delivery")}><Store className="h-5 w-5" /><span>المتاجر</span></button><button type="button" className={screen === "offers" || screen === "storeOffers" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("offers")}><BadgePercent className="h-5 w-5" /><span>العروض</span></button><button type="button" className={screen === "taxi" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("taxi")}><CarFront className="h-5 w-5" /><span>أجرة</span></button></nav> : null}
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
@@ -703,8 +717,8 @@ function OfferQuantityScreen({ offer, onBack, onAdd }: { offer: CustomerOffer; o
 
 function EmptyStoreList({ categoryTitle }: { categoryTitle: string }) { return <div className="rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center"><Store className="mx-auto h-7 w-7 text-slate-400" /><strong className="mt-3 block text-blue-950">لا توجد متاجر مضافة بعد</strong><p className="mt-2 text-sm leading-6 text-slate-500">سيظهر أي متجر يضيفه المالك إلى قسم {categoryTitle} هنا.</p></div>; }
 
-function CartPreview({ cart, removeLine, total, hasPharmacy, deliveryFeeNewSyp, deliveryPercent, deliveryArea, grandTotalNewSyp }: { cart: CartLine[]; removeLine: (id: string) => void; total: number; hasPharmacy: boolean; deliveryFeeNewSyp: number; deliveryPercent: number; deliveryArea: "منبج" | "جرابلس"; grandTotalNewSyp: number }) {
-  return <div className="mt-3"><div className="divide-y divide-slate-100">{cart.map(item => <div key={item.id} className="cart-line"><div><strong>{item.itemName}</strong><span>{item.quantity} {item.unit}</span></div><div className="flex items-center gap-3">{item.priceKnown ? <strong className="text-sm text-blue-900">{formatSyp(lineTotal(item))}</strong> : <small className="text-slate-400">السعر عند التأكيد</small>}<button onClick={() => removeLine(item.id)} aria-label="حذف"><Trash2 className="h-4 w-4 text-red-400" /></button></div></div>)}</div>{hasPharmacy ? <p className="pharmacy-note"><Pill className="h-4 w-4" />الأدوية لا تدخل في المجموع، ويؤكد سعرها المندوب.</p> : null}<p className="mt-3 text-center text-[11px] leading-5 text-slate-400">يُحسب الحد الأدنى 300 ل.س جديدة من قيمة المنتجات فقط، قبل رسوم التوصيل.</p><div className="total-row"><span>إجمالي المنتجات</span><strong>{formatSyp(total)}</strong></div><div className="total-row"><span>رسوم توصيل {deliveryArea} ({deliveryPercent}%)</span><strong>{formatNewSyp(deliveryFeeNewSyp)}</strong></div><div className="total-row border-t-2 border-blue-100 pt-3 text-base"><span>الإجمالي النهائي</span><strong>{formatNewSyp(grandTotalNewSyp)}</strong></div></div>;
+function CartPreview({ cart, removeLine, total, hasPharmacy, deliveryFeeNewSyp, deliveryPercent, deliveryArea, grandTotalNewSyp, onContinueShopping }: { cart: CartLine[]; removeLine: (id: string) => void; total: number; hasPharmacy: boolean; deliveryFeeNewSyp: number; deliveryPercent: number; deliveryArea: "منبج" | "جرابلس"; grandTotalNewSyp: number; onContinueShopping: () => void }) {
+  return <div className="cart-preview"><div className="cart-preview-intro"><span className="cart-preview-icon"><ShoppingBasket className="h-5 w-5" /></span><div><strong>اختياراتك في لحظة</strong><p>{cart.length} {cart.length === 1 ? "صنف مضاف" : "أصناف مضافة"} إلى السلة</p></div><button type="button" onClick={onContinueShopping}>إضافة منتجات</button></div><div className="cart-lines">{cart.map(item => <div key={item.id} className="cart-line"><span className="cart-line-category" aria-hidden="true">{homeCategoryEmoji[item.category] ?? "🛍️"}</span><div className="cart-line-copy"><strong>{item.itemName}</strong><span>{item.quantity} {item.unit}</span></div><div className="cart-line-actions">{item.priceKnown ? <strong>{formatSyp(lineTotal(item))}</strong> : <small>السعر عند التأكيد</small>}<button type="button" onClick={() => removeLine(item.id)} aria-label={`حذف ${item.itemName}`}><Trash2 className="h-4 w-4" /></button></div></div>)}</div>{hasPharmacy ? <p className="pharmacy-note"><Pill className="h-4 w-4" />الأدوية لا تدخل في المجموع، ويؤكد سعرها المندوب.</p> : null}<div className="cart-totals"><div className="total-row"><span>إجمالي المنتجات</span><strong>{formatSyp(total)}</strong></div><div className="total-row"><span>رسوم توصيل {deliveryArea} ({deliveryPercent}%)</span><strong>{formatNewSyp(deliveryFeeNewSyp)}</strong></div><div className="total-row total-row-grand"><span>الإجمالي النهائي</span><strong>{formatNewSyp(grandTotalNewSyp)}</strong></div></div><p className="cart-minimum-note">يُحسب الحد الأدنى 300 ل.س جديدة من قيمة المنتجات فقط، قبل رسوم التوصيل.</p></div>;
 }
 
 function OfferDestinationScreen({ offers, loading, onBack, focusedOfferId, onChoose }: { offers: CustomerOffer[]; loading: boolean; onBack: () => void; focusedOfferId: number | null; onChoose: (offer: CustomerOffer) => void }) {
