@@ -122,3 +122,13 @@ html, body { background: #fffaf5; }
 .home-bottom-nav button:hover { color: #7a1430; background: #fff1ec; transform: translateY(-1px); }
 .home-bottom-nav button.home-bottom-nav-active { color: #fff; background: #79122f; box-shadow: 0 8px 18px -12px #79122f; }
 .home-bottom-nav button.home-bottom-nav-active:hover { color: #fff; background: #79122f; }
+
+.stores-page-gallery { margin: -0.2rem 0 1.35rem; overflow: hidden; border-radius: 1.65rem; }
+.stores-page-heading { margin: 0 0 1.1rem; text-align: right; }
+.stores-page-heading > p:last-child { margin-top: .35rem; color: #8f7b80; font-size: .82rem; line-height: 1.7; }
+.category-card { position: relative; overflow: hidden; display: grid; grid-template-columns: 4.2rem minmax(0,1fr) auto; align-items: center; gap: .75rem; min-height: 7.2rem; padding: .65rem .75rem; border: 1px solid #f0e2df; border-radius: 1.45rem; background: #fffaf5; box-shadow: 0 12px 25px -22px rgba(97, 18, 43, .55); }
+.category-card-image { grid-column: 1 / -1; display: block; height: 5.2rem; overflow: hidden; border-radius: 1.05rem; background: #fff0e9; }
+.category-card-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.category-card .category-icon { width: 3.3rem; height: 3.3rem; border-radius: 1.05rem; display: grid; place-items: center; border: 1px solid rgba(121,18,47,.08); color: #79122f; background: linear-gradient(135deg,#fff0e9,#f7d7cf); }
+.category-card-copy span { color: #54162a; font-weight: 900; }
+.category-card-copy small { color: #9a8589; }

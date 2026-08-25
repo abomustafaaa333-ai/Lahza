@@ -44,6 +44,16 @@ const demoGalleryImages = [
   `${demoAssetPrefix}/assets/lahza-offer-restaurant.jpg`,
 ];
 const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
+const categoryImageByKey: Partial<Record<LahzaCategory, string>> = {
+  restaurants: `${demoAssetPrefix}/assets/lahza-category-restaurants.jpg`,
+  groceries: `${demoAssetPrefix}/assets/lahza-category-groceries.jpg`,
+  produce: `${demoAssetPrefix}/assets/lahza-category-groceries.jpg`,
+  household: `${demoAssetPrefix}/assets/lahza-category-household.jpg`,
+  pharmacy: `${demoAssetPrefix}/assets/lahza-category-pharmacy.jpg`,
+  bakery: `${demoAssetPrefix}/assets/lahza-category-bakery.jpg`,
+  sweets: `${demoAssetPrefix}/assets/lahza-category-bakery.jpg`,
+  butcher: `${demoAssetPrefix}/assets/lahza-category-restaurants.jpg`,
+};
 const minimumDeliveryOrderSyp = MINIMUM_DELIVERY_ORDER_NEW_SYP;
 
 const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
@@ -540,12 +550,16 @@ export default function Home() {
         <>
           <PageHeading eyebrow="التسوق" title="اختر احتياجك" detail="أضف المنتجات من القسم المناسب، ثم راجع طلبك قبل الإرسال." onBack={goHome} />
           <section className="app-shell pb-32">
+            <div className="stores-page-gallery"><PartnerOfferGallery slides={partnerGallerySlides} onOpen={setSelectedGalleryOffer} /></div>
+            <div className="stores-page-heading"><p className="section-eyebrow">متاجر لحظة</p><h2 className="section-title">اختر متجرك المفضل</h2><p>تصفح الأقسام واكتشف المتاجر والعروض القريبة منك.</p></div>
             <div className="category-grid">
               {deliveryCategories.map(item => {
                 const Icon = item.custom ? Store : categoryIcons[item.category];
                 const count = cart.filter(line => line.category === item.category).length;
                 const color = item.custom ? "from-slate-100 to-blue-50 text-blue-800" : categoryColors[item.category];
+                const image = categoryImageByKey[item.category];
                 return <button key={item.key} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }} className="category-card">
+                  {image ? <span className="category-card-image"><img src={image} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = "none"; }} /></span> : null}
                   <span className={`category-icon bg-gradient-to-br ${color}`}><Icon className="h-5 w-5" /></span>
                   <span className="category-card-copy"><span>{item.title}</span><small>{item.subtitle}</small></span>
                   {count > 0 ? <span className="category-badge">{count}</span> : <Plus className="h-4 w-4 text-slate-300" />}
@@ -610,7 +624,7 @@ export default function Home() {
         </>
       ) : null}
 
-      {screen === "home" ? <nav className="home-bottom-nav" aria-label="التنقل الرئيسي"><button type="button" className="home-bottom-nav-active" onClick={goHome}><LayoutDashboard className="h-5 w-5" /><span>الرئيسية</span></button><button type="button" onClick={() => setScreen("delivery")}><ShoppingBasket className="h-5 w-5" /><span>الأقسام</span></button><button type="button" onClick={() => setScreen("offers")}><BadgePercent className="h-5 w-5" /><span>العروض</span></button><button type="button" onClick={() => setScreen("taxi")}><CarFront className="h-5 w-5" /><span>أجرة</span></button></nav> : null}
+      {screen === "home" ? <nav className="home-bottom-nav" aria-label="التنقل الرئيسي"><button type="button" className="home-bottom-nav-active" onClick={goHome}><LayoutDashboard className="h-5 w-5" /><span>الرئيسية</span></button><button type="button" onClick={() => setScreen("delivery")}><Store className="h-5 w-5" /><span>المتاجر</span></button><button type="button" onClick={() => setScreen("offers")}><BadgePercent className="h-5 w-5" /><span>العروض</span></button><button type="button" onClick={() => setScreen("taxi")}><CarFront className="h-5 w-5" /><span>أجرة</span></button></nav> : null}
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
       <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">اختر نوع الدخول</DialogTitle><DialogDescription className="text-center">اختر حسابك ثم أدخل بياناته في المكان الصحيح.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button><button onClick={() => setSecretRole("partner")} className={secretRole === "partner" ? "role-selected" : ""}>شريك</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN للمالك</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : <><div><Label htmlFor="username">اسم المستخدم {secretRole === "partner" ? "للشريك" : "للمشرف"}</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة المرور {secretRole === "partner" ? "للشريك" : "للمشرف"}</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></>}<Button disabled={secretRole === "partner" ? partnerLogin.isPending || !username.trim() || !password : !isStaticDemo && (adminLogin.isPending || (secretRole === "owner" ? !pin : !username.trim() || !password))} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{secretRole === "partner" ? partnerLogin.isPending ? "جارٍ فتح حساب الشريك..." : "دخول الشريك" : !isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
     </main>
