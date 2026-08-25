@@ -498,3 +498,9 @@ body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323
 .home-product-favorite svg { stroke-width: 2.5; }
 .cart-line-category { color: #6f1028; }
 .cart-line-category svg { stroke-width: 2.2; }
+
+
+/* Refined header alignment after removing the dashboard trigger. */
+.brand-mark { transform: translate(50%, .32rem); }
+.header-cart-button { transform: translateY(.32rem); }
+.header-cart-button:hover { transform: translateY(.14rem); }

@@ -155,8 +155,7 @@ function lineTotal(line: Pick<CartLine, "quantity" | "unitPrice" | "unit">) {
 function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => void; onCart: () => void; onSearch: () => void; cartCount: number }) {
   return (
     <header className="sticky top-0 z-30 border-b border-rose-100 bg-[#fffaf5]/95 pt-3 backdrop-blur-xl">
-      <div className="app-shell flex h-[76px] items-center justify-between gap-3">
-        <button className="header-menu-button" onClick={onSecret} aria-label="فتح القائمة"><span /><span /><span /></button>
+      <div className="app-shell flex h-[76px] items-center justify-end gap-3">
         <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك"><span className="lahza-text-logo"><b>ل</b>حظة</span><small>كل شيء في لحظة</small></button>
         <button className="header-cart-button" onClick={onCart} aria-label="فتح سلة التسوق"><ShoppingBasket className="h-5 w-5" /><span>السلة</span>{cartCount > 0 ? <b className="cart-count">{cartCount}</b> : null}</button>
       </div>
