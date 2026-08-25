@@ -590,3 +590,10 @@ header.sticky { box-shadow: 0 .8rem 1.8rem -1.65rem rgba(84,22,42,.52); }
   .brand-location-label, .brand-location-label > span { animation: none !important; }
   .brand-location-label > span { opacity: 1; filter: none; transform: none; }
 }
+
+/* إبقاء عبارة نطاق الخدمة ظاهرة في الهاتف أيضاً. */
+@media (max-width: 430px) {
+  .brand-mark { min-width: 7.2rem; padding-inline: .12rem; }
+  .brand-location-label { display: inline-flex; left: calc(100% + .1rem); gap: .1rem; font-size: .38rem; letter-spacing: -.025em; }
+  .brand-location-label::before { width: .24rem; height: .24rem; margin-left: .12rem; }
+}
