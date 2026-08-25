@@ -526,3 +526,26 @@ body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323
 /* Category photo thumbnails keep the section tactile without replacing the category symbol. */
 .home-category-icon-photo { position: relative; overflow: hidden; border: 1px solid #f4d8cf; background: #fff1ec; }
 .home-category-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+/* Lahza vitality layer: warm brand glow, soft sheen, and measured motion. */
+.lahza-app-shell { background: radial-gradient(circle at 88% 12%, rgba(237,102,94,.12), transparent 24rem), radial-gradient(circle at 12% 40%, rgba(111,16,40,.065), transparent 22rem), #fffaf5; background-attachment: fixed; }
+header.sticky { box-shadow: 0 .8rem 1.8rem -1.65rem rgba(84,22,42,.52); }
+.lahza-logo-symbol { animation: lahza-logo-glow 3.8s ease-in-out infinite; }
+.header-cart-button { box-shadow: 0 .55rem 1.35rem -1rem rgba(111,16,40,.32); }
+.header-cart-button:hover { box-shadow: 0 .72rem 1.55rem -1rem rgba(237,102,94,.5); }
+.header-search-button { background-image: linear-gradient(115deg, #fff 0%, #fff 54%, #fff5f0 78%, #fff 100%); background-size: 190% 100%; animation: lahza-search-sheen 6s ease-in-out infinite; }
+.home-category-all, .home-bottom-nav button.home-bottom-nav-active { animation: lahza-brand-breathe 3.4s ease-in-out infinite; }
+.home-featured-store, .home-popular-product { box-shadow: 0 .8rem 1.45rem -1.2rem rgba(111,16,40,.34); transition: transform .22s cubic-bezier(.23,1,.32,1), box-shadow .22s ease, border-color .22s ease; }
+.home-featured-store:hover, .home-popular-product:hover { box-shadow: 0 1rem 1.75rem -1.05rem rgba(237,102,94,.46); }
+.primary-full-button { position: relative; overflow: hidden; background: linear-gradient(112deg, #c83a58 0%, #ed665e 44%, #9d2141 100%); background-size: 170% 100%; box-shadow: 0 .9rem 1.55rem -1rem rgba(200,58,88,.58); animation: lahza-button-sheen 4.6s ease-in-out infinite; }
+.primary-full-button::after { position: absolute; top: 0; right: 120%; width: 38%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,.32), transparent); content: ""; pointer-events: none; transform: skewX(-20deg); animation: lahza-sweep 5.8s ease-in-out infinite; }
+.home-bottom-nav { box-shadow: 0 1rem 2.2rem -1.2rem rgba(84,22,42,.38), 0 0 0 .12rem rgba(237,102,94,.055); }
+.home-bottom-nav::before { position: absolute; inset: -.16rem; z-index: -1; border-radius: inherit; background: linear-gradient(120deg, rgba(237,102,94,.23), transparent 36%, rgba(111,16,40,.15)); filter: blur(.4rem); content: ""; opacity: .7; }
+.home-product-favorite { animation: lahza-sparkle 2.7s ease-in-out infinite; }
+@keyframes lahza-logo-glow { 0%, 100% { box-shadow: 0 .42rem .9rem rgba(111,16,40,.22), 0 0 0 0 rgba(237,102,94,0); } 48% { box-shadow: 0 .6rem 1.25rem rgba(111,16,40,.32), 0 0 0 .32rem rgba(237,102,94,.1); } }
+@keyframes lahza-brand-breathe { 0%, 100% { box-shadow: 0 .7rem 1.4rem -1rem rgba(111,16,40,.45); } 50% { box-shadow: 0 .9rem 1.75rem -.95rem rgba(237,102,94,.64); } }
+@keyframes lahza-search-sheen { 0%, 26%, 100% { background-position: 100% 0; } 54% { background-position: 0 0; } }
+@keyframes lahza-button-sheen { 0%, 100% { background-position: 100% 0; } 50% { background-position: 0 0; } }
+@keyframes lahza-sweep { 0%, 42% { right: 120%; } 62%, 100% { right: -48%; } }
+@keyframes lahza-sparkle { 0%, 100% { filter: drop-shadow(0 0 0 rgba(237,102,94,0)); transform: scale(1); } 50% { filter: drop-shadow(0 .15rem .32rem rgba(237,102,94,.52)); transform: scale(1.14) rotate(8deg); } }
+@media (prefers-reduced-motion: reduce) { .lahza-logo-symbol, .header-search-button, .home-category-all, .home-bottom-nav button.home-bottom-nav-active, .primary-full-button, .primary-full-button::after, .home-product-favorite { animation: none !important; } }
