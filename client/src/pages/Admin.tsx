@@ -54,7 +54,7 @@ export default function Admin() {
   const isOwner = session?.role === "owner";
   const availableTabs = tabs.filter(item => !item.ownerOnly || isOwner);
   useEffect(() => { if (isOwner && tab === "orders") setTab("home"); }, [isOwner, tab]);
-  const ownerQuickTabs = availableTabs.filter(item => item.ownerOnly);
+  const ownerQuickTabs = availableTabs;
 
   if (sessionQuery.isLoading || (sessionQuery.isFetching && !session)) return <div dir="rtl" className="admin-loading"><Loader2 className="h-7 w-7 animate-spin text-red-600" /><span>جارٍ التحقق من الصلاحيات...</span></div>;
   if (!session) return <div dir="rtl" className="admin-loading"><ShieldCheck className="h-9 w-9 text-[#63301b]" /><h1>لوحة الإدارة محمية</h1><p>افتحها عبر النقر المزدوج على شعار «لحظة» في الصفحة الرئيسية.</p><Button onClick={() => setLocation("/")} className="mt-3 rounded-xl bg-red-600 hover:bg-red-700"><ArrowRight className="h-4 w-4" /> العودة للرئيسية</Button></div>;
