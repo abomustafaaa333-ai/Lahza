@@ -13,7 +13,7 @@ import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partn
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, formatNewSyp, formatSyp, restaurantTypeMeta, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
-import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, Minus, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bell, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, Minus, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -43,7 +43,7 @@ const demoGalleryImages = [
   `${demoAssetPrefix}/assets/lahza-offer-grocery.jpg`,
   `${demoAssetPrefix}/assets/lahza-offer-restaurant.jpg`,
 ];
-const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
+const homeCategoryEmoji: Partial<Record<LahzaCategory, string>> = { restaurants: "🍔", groceries: "🛒", produce: "🥬", bakery: "🥐", sweets: "🍰", butcher: "🥩", pharmacy: "💊", household: "🧼", baby: "🧸", school_stationery: "✏️", beauty_personal_care: "✨", mobile_accessories: "📱", clothing: "👕", gas: "🔥" };
 const categoryImageByKey: Partial<Record<LahzaCategory, string>> = {
   restaurants: `${demoAssetPrefix}/assets/lahza-category-restaurants.jpg`,
   groceries: `${demoAssetPrefix}/assets/lahza-category-groceries.jpg`,
@@ -60,6 +60,20 @@ const categoryImageByKey: Partial<Record<LahzaCategory, string>> = {
   mobile_accessories: `${demoAssetPrefix}/assets/lahza-category-mobile.jpg`,
   clothing: `${demoAssetPrefix}/assets/lahza-category-clothing.jpg`,
 };
+const homeFeaturedStores: { name: string; category: LahzaCategory; note: string }[] = [
+  { name: "مذاق الساحة", category: "restaurants", note: "وجبات ومشاوي" },
+  { name: "سوق الندى", category: "groceries", note: "مؤونة واحتياجات البيت" },
+  { name: "أفران الصباح", category: "bakery", note: "خبز ومعجنات طازجة" },
+  { name: "حلويات السعادة", category: "sweets", note: "ضيافة وحلويات شامية" },
+];
+const homePopularProducts: { name: string; category: LahzaCategory; note: string }[] = [
+  { name: "وجبة شاورما دجاج", category: "restaurants", note: "خيار يومي محبوب" },
+  { name: "زيت زيتون بكر", category: "groceries", note: "من أساسيات المؤونة" },
+  { name: "كنافة ناعمة", category: "sweets", note: "للضيافة والمناسبات" },
+  { name: "حفاضات أطفال", category: "baby", note: "احتياج عائلي متكرر" },
+  { name: "سائل جلي", category: "household", note: "للبيت يومياً" },
+  { name: "شاحن سريع", category: "mobile_accessories", note: "إكسسوار مطلوب" },
+];
 const minimumDeliveryOrderSyp = MINIMUM_DELIVERY_ORDER_NEW_SYP;
 
 const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
@@ -136,11 +150,8 @@ function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => voi
     <header className="sticky top-0 z-30 border-b border-rose-100 bg-[#fffaf5]/95 pt-3 backdrop-blur-xl">
       <div className="app-shell flex h-[76px] items-center justify-between gap-3">
         <button className="header-menu-button" onClick={onSecret} aria-label="فتح القائمة"><span /><span /><span /></button>
-        <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك">
-          <span className="flex h-12 w-[138px] items-center justify-center rounded-xl bg-transparent"><img src={lahzaWordmarkUrl} alt="لحظة" onError={event => { event.currentTarget.style.display = "none"; }} className="h-12 w-full object-contain" /></span>
-          <small>كل شيء في لحظة</small>
-        </button>
-        <button className="header-notification-button" onClick={onCart} aria-label="عرض السلة"><ShoppingBasket className="h-5 w-5" />{cartCount > 0 ? <span className="cart-count">{cartCount}</span> : null}</button>
+        <button className="brand-mark" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك"><span className="lahza-text-logo"><b>ل</b>حظة</span><small>كل شيء في لحظة</small></button>
+        <button className="header-notification-button" onClick={onCart} aria-label="عرض السلة والتنبيهات"><Bell className="h-5 w-5" />{cartCount > 0 ? <span className="cart-count">{cartCount}</span> : null}</button>
       </div>
       <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span>ابحث عن مطعم، منتج أو خدمة...</span><Search className="h-5 w-5" /></button></div>
     </header>
@@ -533,16 +544,16 @@ export default function Home() {
 
       {screen === "home" ? (
         <>
-          <section className="app-shell home-hero-section pt-5 pb-6">
-            <div className="home-welcome"><p className="section-eyebrow">أهلاً بك في لحظة</p><h1 className="home-welcome-title">كل ما تحتاجه، <span>بخطوة واحدة.</span></h1><p>تسوّق من متاجرك المفضلة، واكتشف العروض القريبة منك بسهولة.</p></div>
-          </section>
+          <section className="app-shell home-hero-section pt-4 pb-2"><div className="home-mini-welcome"><span>تسوّق من لحظة</span><strong>اختيارات يومك في مكان واحد</strong></div></section>
           <section className="app-shell pb-10">
-            <div className="mb-5 flex items-end justify-between"><div><p className="section-eyebrow">تسوّق بسهولة</p><h2 className="section-title">استكشف الأقسام</h2></div><CircleHelp className="mb-1 h-5 w-5 text-slate-300" /></div>
+            <div className="home-section-heading"><div><p className="section-eyebrow">تسوّق حسب الفئة</p><h2 className="section-title">اكتشف ما تحتاجه</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div>
             <div className="home-category-row" aria-label="أقسام لحظة">
               <button type="button" className="home-category-card home-category-all" onClick={() => setScreen("delivery")}><span className="home-category-icon"><LayoutDashboard /></span><span>الكل</span></button>
-              {deliveryCategories.slice(0, 6).map(item => { const Icon = item.custom ? Store : categoryIcons[item.category]; return <button key={item.key} type="button" className="home-category-card" onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }}><span className="home-category-icon"><Icon /></span><span>{item.title}</span></button>; })}
+              {deliveryCategories.slice(0, 6).map(item => { const Icon = item.custom ? Store : categoryIcons[item.category]; const emoji = !item.custom ? homeCategoryEmoji[item.category] : null; return <button key={item.key} type="button" className="home-category-card" onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }}><span className="home-category-icon">{emoji ? <span className="home-category-emoji">{emoji}</span> : <Icon />}</span><span>{item.title}</span></button>; })}
             </div>
-            {!nativeApp ? <a href={appDownloadUrl} className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-red-200 bg-gradient-to-l from-red-600 to-rose-600 px-4 py-3 text-right text-white shadow-md shadow-red-100 transition hover:from-red-700 hover:to-rose-700 active:scale-[0.98]" aria-label="تحميل تطبيق لحظة"><span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15"><Smartphone className="h-5 w-5" /></span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">تحميل تطبيق لحظة</strong><small className="text-xs font-medium text-red-100">نسخة Android الرسمية — افتح صفحة التحميل</small></span><ChevronLeft className="h-5 w-5" /></a> : null}
+            <section className="home-showcase-block"><div className="home-section-heading"><div><p className="section-eyebrow">اختيارات لحظة</p><h2 className="section-title">المتاجر المميزة</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div><div className="home-featured-row">{homeFeaturedStores.map(store => <button key={store.name} type="button" className="home-featured-store" onClick={() => { setActiveCategory(store.category); setActiveCustomCategory(null); setSelectedStore(null); setScreen("stores"); }}><img src={categoryImageByKey[store.category]} alt="" loading="lazy" /><span className="home-store-icon">{homeCategoryEmoji[store.category]}</span><strong>{store.name}</strong><small>{store.note}</small><span className="home-store-open">متاح الآن</span></button>)}</div></section>
+            <section className="home-showcase-block"><div className="home-section-heading"><div><p className="section-eyebrow">مختارة من الكتالوج</p><h2 className="section-title">الأكثر طلباً</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div><div className="home-popular-grid">{homePopularProducts.map(product => <button key={product.name} type="button" className="home-popular-product" onClick={() => { setActiveCategory(product.category); setActiveCustomCategory(null); setSelectedStore(null); setScreen("stores"); }}><img src={categoryImageByKey[product.category]} alt="" loading="lazy" /><span className="home-product-favorite">♡</span><span className="home-product-plus"><Plus className="h-4 w-4" /></span><strong>{product.name}</strong><small>{product.note}</small></button>)}</div></section>
+            {!nativeApp ? <a href={appDownloadUrl} className="mt-7 flex w-full items-center gap-3 rounded-2xl border border-red-200 bg-gradient-to-l from-red-600 to-rose-600 px-4 py-3 text-right text-white shadow-md shadow-red-100 transition hover:from-red-700 hover:to-rose-700 active:scale-[0.98]" aria-label="تحميل تطبيق لحظة"><span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15"><Smartphone className="h-5 w-5" /></span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">تحميل تطبيق لحظة</strong><small className="text-xs font-medium text-red-100">نسخة Android الرسمية — افتح صفحة التحميل</small></span><ChevronLeft className="h-5 w-5" /></a> : null}
             {homeShortcut ? <div className="mt-5 space-y-2"><button type="button" onClick={() => setLocation(homeShortcut.path)} className="flex w-full items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-right text-blue-950 shadow-sm transition hover:bg-blue-100 active:scale-[0.98]" aria-label={`فتح ${homeShortcut.label}`}><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white">{homeShortcut.path === "/partner/store" ? <Store className="h-5 w-5" /> : <LayoutDashboard className="h-5 w-5" />}</span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">{homeShortcut.label}</strong><small className="text-xs font-medium text-slate-600">{homeShortcut.description}</small></span><ChevronLeft className="h-5 w-5 text-blue-900" /></button><button type="button" onClick={() => homeAccountKind === "partner" ? partnerHomeLogout.mutate() : adminHomeLogout.mutate()} disabled={partnerHomeLogout.isPending || adminHomeLogout.isPending} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed"><LogOut className="h-4 w-4" />{partnerHomeLogout.isPending || adminHomeLogout.isPending ? "جارٍ تسجيل الخروج..." : "تسجيل الخروج"}</button></div> : null}
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400"><Bike className="h-4 w-4 text-red-600" /><span>خدمة محلية مخصصة لمنبج</span></div>
           </section>
