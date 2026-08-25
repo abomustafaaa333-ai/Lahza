@@ -9,6 +9,8 @@ const expiryColumns = [
   ["imageStorageKey", "VARCHAR(500) NULL"],
   ["imageDeletePending", "BOOLEAN NOT NULL DEFAULT FALSE"],
   ["catalogItemId", "INT NULL"],
+  ["discountPercent", "INT NOT NULL DEFAULT 0"],
+  ["offerPrice", "INT NOT NULL DEFAULT 0"],
   ["durationDays", "INT NULL"],
   ["expiresAt", "TIMESTAMP NULL"],
   ["deletedAt", "TIMESTAMP NULL"],

@@ -12,6 +12,10 @@ describe("معرض صور عروض الشركاء", () => {
     expect(slides).toEqual([{ id: 1, name: "معمول", imageUrl: "https://images.example.com/maamoul.jpg", partnerName: "حلويات الشام", unitPrice: 30000, storeOpen: false }]);
   });
 
+  it("يستخدم صورة المنتج وسعر العرض ونسبة الخصم عند عدم رفع صورة إضافية", () => {
+    expect(buildPartnerGallerySlides([{ id: 8, text: "عرض المعمول", productImageUrl: "/assets/maamoul.jpg", productPrice: 24000, discountPercent: 20 }])).toEqual([{ id: 8, name: "عرض المعمول", imageUrl: "/assets/maamoul.jpg", partnerName: "متجر لحظة", unitPrice: 24000, discountPercent: 20 }]);
+  });
+
   it("يتجاهل المنتجات التي لا تحتوي رابط صورة", () => {
     expect(buildPartnerGallerySlides([{ id: 1, name: "بلا صورة" }, { id: 2, name: "صورة", imageUrl: "https://images.example.com/item.jpg" }])).toHaveLength(1);
   });

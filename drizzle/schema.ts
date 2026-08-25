@@ -77,6 +77,8 @@ export const partnerOffers = mysqlTable("partner_offers", {
   storeId: int("storeId").references(() => stores.id, { onDelete: "cascade" }),
   catalogItemId: int("catalogItemId").references(() => catalogItems.id, { onDelete: "set null" }),
   text: varchar("text", { length: 220 }).notNull(),
+  discountPercent: int("discountPercent").notNull().default(0),
+  offerPrice: int("offerPrice").notNull().default(0),
   imageUrl: varchar("imageUrl", { length: 500 }),
   imageStorageKey: varchar("imageStorageKey", { length: 500 }),
   imageDeletePending: boolean("imageDeletePending").notNull().default(false),

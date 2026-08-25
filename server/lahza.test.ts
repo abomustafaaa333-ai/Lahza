@@ -217,13 +217,15 @@ describe("تعيين الشريك للمتجر", () => {
 
 describe("عروض المتاجر", () => {
   it("يربط العرض بمتجر الشريك ويجعل صورته اختيارية مع مدة إلزامية", () => {
-    expect(partnerOfferInput.parse({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", durationDays: 30, active: true })).toMatchObject({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", durationDays: 30, active: true });
-    expect(partnerOfferInput.parse({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", imageUrl: "https://images.example.com/offer.jpg", imageStorageKey: "lahza/offers/store-3/a1", durationDays: 7, active: true }).imageStorageKey).toBe("lahza/offers/store-3/a1");
+    expect(partnerOfferInput.parse({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", durationDays: 30, discountPercent: 20, active: true })).toMatchObject({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", durationDays: 30, discountPercent: 20, active: true });
+    expect(partnerOfferInput.parse({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", imageUrl: "https://images.example.com/offer.jpg", imageStorageKey: "lahza/offers/store-3/a1", durationDays: 7, discountPercent: 30, active: true }).imageStorageKey).toBe("lahza/offers/store-3/a1");
   });
 
   it("يرفض عرضاً بلا مدة أو مدة خارج الحدود المسموحة", () => {
     expect(() => partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", active: true })).toThrow();
-    expect(() => partnerOfferInput.parse({ storeId: 3, text: "خصم اليوم على المعمول", durationDays: 366, active: true })).toThrow();
+    expect(() => partnerOfferInput.parse({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", durationDays: 30, active: true })).toThrow();
+    expect(() => partnerOfferInput.parse({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", durationDays: 30, discountPercent: 91, active: true })).toThrow();
+    expect(() => partnerOfferInput.parse({ storeId: 3, catalogItemId: 12, text: "خصم اليوم على المعمول", durationDays: 366, discountPercent: 20, active: true })).toThrow();
   });
 
   it("يحسب تاريخ الانتهاء بعد عدد الأيام المختار", () => {

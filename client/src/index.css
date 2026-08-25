@@ -380,3 +380,104 @@ body { font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; color: #4a323
 .home-bottom-nav-taxi-label { max-width: 4.8rem; font-size: .56rem; line-height: 1.15; text-align: center; }
 .home-bottom-nav-count { position: absolute; top: .32rem; left: calc(50% - .9rem); display: grid; min-width: 1.05rem; height: 1.05rem; place-items: center; border-radius: 99px; color: #fff; background: #ed665e; box-shadow: 0 0 0 2px #fffaf5; font-size: .5rem; font-weight: 900; }
 @media (max-width: 380px) { .home-bottom-nav { gap: .18rem; width: calc(100% - .7rem); padding: .35rem; }.home-bottom-nav button { font-size: .58rem; }.home-bottom-nav-taxi-label { max-width: 3.9rem; font-size: .5rem; } }
+
+
+/* Automatic featured-offer artwork, composed from the real product image and Lahza identity. */
+.lahza-offer-artwork {
+  position: relative;
+  min-height: 18rem;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: 1.75rem;
+  background: linear-gradient(135deg, #fff5e8 0%, #ffd9c6 48%, #ef745f 100%);
+  color: #54162a;
+  box-shadow: 0 18px 36px rgba(111, 16, 40, .16);
+}
+.lahza-offer-artwork::before {
+  position: absolute;
+  z-index: -1;
+  top: -34%;
+  left: -8%;
+  width: 65%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .5);
+  content: "";
+}
+.lahza-offer-artwork-glow {
+  position: absolute;
+  z-index: -1;
+  right: -12%;
+  bottom: -35%;
+  width: 74%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(111, 16, 40, .22);
+  filter: blur(2px);
+}
+.lahza-offer-artwork-brand {
+  position: absolute;
+  top: 1rem;
+  right: 1.1rem;
+  color: #6f1028;
+  font-size: .8rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+.lahza-offer-artwork-badge {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  min-width: 5rem;
+  border-radius: 999px;
+  background: #6f1028;
+  color: #fffaf5;
+  padding: .55rem .8rem;
+  text-align: center;
+  font-size: .82rem;
+  font-weight: 900;
+  box-shadow: 0 .5rem 1.25rem rgba(84, 22, 42, .24);
+}
+.lahza-offer-artwork-copy {
+  position: absolute;
+  z-index: 2;
+  right: 1.15rem;
+  bottom: 1.1rem;
+  display: grid;
+  max-width: 52%;
+  gap: .25rem;
+}
+.lahza-offer-artwork-copy small { color: #8a2942; font-size: .72rem; font-weight: 800; }
+.lahza-offer-artwork-copy strong { overflow: hidden; color: #54162a; font-size: 1.2rem; font-weight: 900; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.lahza-offer-artwork-copy > span { overflow: hidden; color: #6d5260; font-size: .78rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.lahza-offer-artwork-prices { display: flex; flex-wrap: wrap; align-items: baseline; gap: .55rem; direction: rtl; }
+.lahza-offer-artwork-prices del { color: #8c6470; font-size: .76rem; font-weight: 700; }
+.lahza-offer-artwork-prices b { color: #6f1028; font-size: 1rem; font-weight: 900; }
+.lahza-offer-artwork-product {
+  position: absolute;
+  left: .65rem;
+  bottom: .35rem;
+  display: grid;
+  width: 47%;
+  height: 76%;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 1.35rem 1.35rem 1rem 1rem;
+  background: rgba(255, 255, 255, .35);
+  color: #b75956;
+  transform: rotate(-3deg);
+}
+.lahza-offer-artwork-product img { width: 100%; height: 100%; object-fit: contain; mix-blend-mode: multiply; transform: rotate(3deg) scale(1.05); }
+.lahza-offer-artwork-compact { min-height: 12rem; border-radius: 1.25rem; }
+.lahza-offer-artwork-compact .lahza-offer-artwork-copy { right: .85rem; bottom: .8rem; max-width: 54%; }
+.lahza-offer-artwork-compact .lahza-offer-artwork-copy strong { font-size: .95rem; }
+.lahza-offer-artwork-compact .lahza-offer-artwork-badge { top: .7rem; left: .7rem; min-width: 4.2rem; padding: .4rem .55rem; font-size: .67rem; }
+.lahza-offer-artwork-compact .lahza-offer-artwork-brand { top: .7rem; right: .8rem; font-size: .67rem; }
+.lahza-offer-artwork-compact .lahza-offer-artwork-product { left: .45rem; bottom: .3rem; width: 45%; height: 72%; border-radius: 1rem; }
+@media (max-width: 420px) {
+  .lahza-offer-artwork { min-height: 15.75rem; }
+  .lahza-offer-artwork-copy strong { font-size: 1rem; }
+  .lahza-offer-artwork-copy { max-width: 56%; }
+}
+
+.hero-offer-discount { position: absolute; top: .85rem; left: .85rem; z-index: 3; border-radius: 999px; background: #6f1028; color: #fffaf5; padding: .42rem .68rem; font-size: .72rem; font-weight: 900; box-shadow: 0 .45rem 1rem rgba(84, 22, 42, .28); }
