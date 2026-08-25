@@ -3,7 +3,6 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { IntercityBooking, type IntercityTripSelection } from "@/components/IntercityBooking";
 import { trpc } from "@/lib/trpc";
 import { buildStoreShareUrl, parseSharedStoreId } from "@/lib/storeShare";
 import { buildAppDownloadUrl } from "@/lib/downloadLink";
@@ -14,7 +13,7 @@ import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partn
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, formatNewSyp, formatSyp, restaurantTypeMeta, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
-import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, Minus, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Route, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, Bike, CakeSlice, CarFront, ChevronLeft, CircleHelp, ClipboardList, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, Minus, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -159,7 +158,6 @@ export default function Home() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const [screen, setScreen] = useState<Screen>("home");
-  const [selectedIntercityTrip, setSelectedIntercityTrip] = useState<IntercityTripSelection | null>(null);
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [activeCategory, setActiveCategory] = useState<LahzaCategory | null>(null);
@@ -290,7 +288,6 @@ export default function Home() {
       setNotes("");
       setPickup("");
       setDestination("");
-      setSelectedIntercityTrip(null);
       setScreen("home");
     },
     onError: error => toast.error(error.message),
@@ -312,7 +309,7 @@ export default function Home() {
   }, []);
 
   const total = useMemo(() => cart.reduce((sum, item) => sum + lineTotal(item), 0), [cart]);
-  const deliveryPercent = selectedIntercityTrip ? (deliveryFeesQuery.data?.jarabulusPercent ?? 30) : (deliveryFeesQuery.data?.manbijPercent ?? 20);
+  const deliveryPercent = deliveryFeesQuery.data?.manbijPercent ?? 20;
   const deliveryFeeNewSyp = checkoutMode === "delivery" ? calculatePercentageDeliveryFeeNewSyp(total, deliveryPercent) : 0;
   const grandTotalNewSyp = toNewSyp(total) + deliveryFeeNewSyp;
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
@@ -431,7 +428,6 @@ export default function Home() {
       setNotes("");
       setPickup("");
       setDestination("");
-      setSelectedIntercityTrip(null);
       setScreen("home");
       return;
     }
@@ -448,7 +444,6 @@ export default function Home() {
       discountCode: discountCode.trim() || undefined,
       referralCode: referralCode.trim() || undefined,
       usePointsReward: usePointsReward && checkoutMode === "delivery",
-      intercityTripId: selectedIntercityTrip?.id,
       notes: [notes.trim(), `الموقع: ${customerLocation.trim()}`, !hasManualLocation && customerLocationUrl ? `رابط الخريطة: ${customerLocationUrl}` : ""].filter(Boolean).join("\n") || undefined,
       taxiType: isTaxi ? taxiType : undefined,
       pickupLocation: isTaxi ? pickup : undefined,
@@ -464,7 +459,6 @@ export default function Home() {
     setSelectedStore(null);
     setSelectedProduct(null);
     setSelectedOffer(null);
-    setSelectedIntercityTrip(null);
   };
 
   const openSearchResult = (result: ProductSearchResult) => {
@@ -535,33 +529,6 @@ export default function Home() {
               <button type="button" className="home-category-card home-category-all" onClick={() => setScreen("delivery")}><span className="home-category-icon"><LayoutDashboard /></span><span>الكل</span></button>
               {deliveryCategories.slice(0, 6).map(item => { const Icon = item.custom ? Store : categoryIcons[item.category]; return <button key={item.key} type="button" className="home-category-card" onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }}><span className="home-category-icon"><Icon /></span><span>{item.title}</span></button>; })}
             </div>
-            <div className="mb-5 mt-9 flex items-end justify-between"><div><p className="section-eyebrow">خدمات لحظة</p><h2 className="section-title">كيف نساعدك اليوم؟</h2></div><CircleHelp className="mb-1 h-5 w-5 text-slate-300" /></div>
-            <div className="service-stack">
-              <button className="service-card service-card-delivery" onClick={() => setScreen("delivery")}>
-                <span className="service-card-icon"><Truck /></span>
-                <span className="service-content"><span className="service-title">طلبك للبيت</span><span className="service-subtitle">مطاعم، بقاليات، صيدليات والمزيد</span></span>
-                <ChevronLeft className="service-arrow" />
-                <span className="service-watermark">01</span>
-              </button>
-              <button className="service-card service-card-taxi" onClick={() => setScreen("taxi")}>
-                <span className="service-card-icon"><CarFront /></span>
-                <span className="service-content"><span className="service-title">سيارة أجرة</span><span className="service-subtitle">تاكسي عادي أو فان عند الحاجة</span></span>
-                <ChevronLeft className="service-arrow" />
-                <span className="service-watermark">02</span>
-              </button>
-              <button className="service-card service-card-intercity" onClick={() => setScreen("intercity")}>
-                <span className="service-card-icon"><Route /></span>
-                <span className="service-content"><span className="service-title">اطلب من جرابلس</span><span className="service-subtitle">اختر حجزاً ثم اطلب من أقسام منبج</span></span>
-                <ChevronLeft className="service-arrow" />
-                <span className="service-watermark">03</span>
-              </button>
-              <button className="service-card service-card-offers" onClick={() => setScreen("offers")}>
-                <span className="service-card-icon featured-offer-icon"><BadgePercent /></span>
-                <span className="service-content"><span className="service-card-title">العروض المميزة</span><span className="service-subtitle">اكتشف عروض متاجر لحظة المتاحة الآن</span></span>
-                <ChevronLeft className="service-arrow" />
-                <span className="service-watermark">04</span>
-              </button>
-            </div>
             {!nativeApp ? <a href={appDownloadUrl} className="mt-5 flex w-full items-center gap-3 rounded-2xl border border-red-200 bg-gradient-to-l from-red-600 to-rose-600 px-4 py-3 text-right text-white shadow-md shadow-red-100 transition hover:from-red-700 hover:to-rose-700 active:scale-[0.98]" aria-label="تحميل تطبيق لحظة"><span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15"><Smartphone className="h-5 w-5" /></span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">تحميل تطبيق لحظة</strong><small className="text-xs font-medium text-red-100">نسخة Android الرسمية — افتح صفحة التحميل</small></span><ChevronLeft className="h-5 w-5" /></a> : null}
             {homeShortcut ? <div className="mt-5 space-y-2"><button type="button" onClick={() => setLocation(homeShortcut.path)} className="flex w-full items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-right text-blue-950 shadow-sm transition hover:bg-blue-100 active:scale-[0.98]" aria-label={`فتح ${homeShortcut.label}`}><span className="grid h-10 w-10 place-items-center rounded-xl bg-blue-900 text-white">{homeShortcut.path === "/partner/store" ? <Store className="h-5 w-5" /> : <LayoutDashboard className="h-5 w-5" />}</span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">{homeShortcut.label}</strong><small className="text-xs font-medium text-slate-600">{homeShortcut.description}</small></span><ChevronLeft className="h-5 w-5 text-blue-900" /></button><button type="button" onClick={() => homeAccountKind === "partner" ? partnerHomeLogout.mutate() : adminHomeLogout.mutate()} disabled={partnerHomeLogout.isPending || adminHomeLogout.isPending} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed"><LogOut className="h-4 w-4" />{partnerHomeLogout.isPending || adminHomeLogout.isPending ? "جارٍ تسجيل الخروج..." : "تسجيل الخروج"}</button></div> : null}
             <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400"><Bike className="h-4 w-4 text-red-600" /><span>خدمة محلية مخصصة لمنبج</span></div>
@@ -571,7 +538,7 @@ export default function Home() {
 
       {screen === "delivery" ? (
         <>
-          <PageHeading eyebrow={selectedIntercityTrip ? "اطلب من جرابلس" : "طلبك للبيت"} title="اختر احتياجك" detail={selectedIntercityTrip ? `طلبك سيُسجل ضمن ${selectedIntercityTrip.title}. أضف المنتجات من أقسام منبج ثم أرسل السلة.` : "أضف المنتجات من القسم المناسب، ثم راجع طلبك قبل الإرسال."} onBack={goHome} />
+          <PageHeading eyebrow="التسوق" title="اختر احتياجك" detail="أضف المنتجات من القسم المناسب، ثم راجع طلبك قبل الإرسال." onBack={goHome} />
           <section className="app-shell pb-32">
             <div className="category-grid">
               {deliveryCategories.map(item => {
@@ -616,10 +583,6 @@ export default function Home() {
         </>
       ) : null}
 
-      {screen === "intercity" ? (
-        <IntercityBooking onBack={goHome} isStaticDemo={isStaticDemo} onChooseTrip={trip => { setSelectedIntercityTrip(trip); setScreen("delivery"); toast.success("تم اختيار الحجز. أضف منتجاتك من أقسام منبج."); }} />
-      ) : null}
-
       {screen === "offers" ? (
         <OfferDestinationScreen offers={allOffers as CustomerOffer[]} onBack={goHome} loading={allOffersQuery.isLoading && !isStaticDemo} focusedOfferId={focusedOfferId} onChoose={chooseOffer} />
       ) : null}
@@ -632,8 +595,7 @@ export default function Home() {
           <section className="app-shell space-y-5 pb-10">
             <div className="checkout-card">
               <div className="checkout-card-title"><ClipboardList className="h-5 w-5 text-red-600" /><span>{checkoutMode === "delivery" ? "ملخص الطلب" : "تفاصيل الرحلة"}</span></div>
-              {selectedIntercityTrip && checkoutMode === "delivery" ? <div className="mt-3 rounded-2xl bg-blue-50 p-3 text-sm text-blue-950"><strong>الحجز المختار: {selectedIntercityTrip.title}</strong><span className="mt-1 block text-xs text-slate-600">{selectedIntercityTrip.bookingCloseLabel} · {selectedIntercityTrip.arrivalLabel}</span></div> : null}
-              {checkoutMode === "delivery" ? <CartPreview cart={cart} removeLine={removeLine} total={total} hasPharmacy={hasPharmacy} deliveryFeeNewSyp={deliveryFeeNewSyp} deliveryPercent={deliveryPercent} deliveryArea={selectedIntercityTrip ? "جرابلس" : "منبج"} grandTotalNewSyp={grandTotalNewSyp} /> : <div className="taxi-summary"><CarFront className="h-9 w-9 text-blue-900" /><div><strong>{taxiType === "van" ? "سيارة فان" : "تاكسي عادي"}</strong><span>{pickup || "موقع الانطلاق"} <ChevronLeft className="inline h-3 w-3" /> {destination || "الوجهة"}</span></div></div>}
+              {checkoutMode === "delivery" ? <CartPreview cart={cart} removeLine={removeLine} total={total} hasPharmacy={hasPharmacy} deliveryFeeNewSyp={deliveryFeeNewSyp} deliveryPercent={deliveryPercent} deliveryArea="منبج" grandTotalNewSyp={grandTotalNewSyp} /> : <div className="taxi-summary"><CarFront className="h-9 w-9 text-blue-900" /><div><strong>{taxiType === "van" ? "سيارة فان" : "تاكسي عادي"}</strong><span>{pickup || "موقع الانطلاق"} <ChevronLeft className="inline h-3 w-3" /> {destination || "الوجهة"}</span></div></div>}
             </div>
             <div className="checkout-card space-y-4">
               <div className="checkout-card-title"><UserRound className="h-5 w-5 text-red-600" /><span>بيانات التواصل وموقع الطلب</span></div>
@@ -648,6 +610,7 @@ export default function Home() {
         </>
       ) : null}
 
+      {screen === "home" ? <nav className="home-bottom-nav" aria-label="التنقل الرئيسي"><button type="button" className="home-bottom-nav-active" onClick={goHome}><LayoutDashboard className="h-5 w-5" /><span>الرئيسية</span></button><button type="button" onClick={() => setScreen("delivery")}><ShoppingBasket className="h-5 w-5" /><span>الأقسام</span></button><button type="button" onClick={() => setScreen("offers")}><BadgePercent className="h-5 w-5" /><span>العروض</span></button><button type="button" onClick={() => setScreen("taxi")}><CarFront className="h-5 w-5" /><span>أجرة</span></button></nav> : null}
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
       <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">اختر نوع الدخول</DialogTitle><DialogDescription className="text-center">اختر حسابك ثم أدخل بياناته في المكان الصحيح.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button><button onClick={() => setSecretRole("partner")} className={secretRole === "partner" ? "role-selected" : ""}>شريك</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN للمالك</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : <><div><Label htmlFor="username">اسم المستخدم {secretRole === "partner" ? "للشريك" : "للمشرف"}</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة المرور {secretRole === "partner" ? "للشريك" : "للمشرف"}</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></>}<Button disabled={secretRole === "partner" ? partnerLogin.isPending || !username.trim() || !password : !isStaticDemo && (adminLogin.isPending || (secretRole === "owner" ? !pin : !username.trim() || !password))} className="w-full rounded-xl bg-blue-900 hover:bg-blue-950" onClick={handleAdminLogin}>{secretRole === "partner" ? partnerLogin.isPending ? "جارٍ فتح حساب الشريك..." : "دخول الشريك" : !isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
     </main>
