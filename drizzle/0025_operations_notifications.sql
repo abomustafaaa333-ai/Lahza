@@ -1,4 +1,4 @@
-CREATE TABLE `drivers` (
+CREATE TABLE IF NOT EXISTS `drivers` (
   `id` int AUTO_INCREMENT NOT NULL,
   `name` varchar(80) NOT NULL,
   `phone` varchar(24) NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE `drivers` (
 );
 --> statement-breakpoint
 
-CREATE TABLE `order_assignments` (
+CREATE TABLE IF NOT EXISTS `order_assignments` (
   `id` int AUTO_INCREMENT NOT NULL,
   `orderId` int NOT NULL,
   `driverId` int NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE `order_assignments` (
 );
 --> statement-breakpoint
 
-CREATE TABLE `inventory_movements` (
+CREATE TABLE IF NOT EXISTS `inventory_movements` (
   `id` int AUTO_INCREMENT NOT NULL,
   `catalogItemId` int NOT NULL,
   `quantityDelta` int NOT NULL,
@@ -44,7 +44,7 @@ CREATE TABLE `inventory_movements` (
 );
 --> statement-breakpoint
 
-CREATE TABLE `finance_entries` (
+CREATE TABLE IF NOT EXISTS `finance_entries` (
   `id` int AUTO_INCREMENT NOT NULL,
   `orderId` int,
   `kind` enum('order_income','delivery_fee','partner_payable','driver_payable','adjustment') NOT NULL,
@@ -59,7 +59,7 @@ CREATE TABLE `finance_entries` (
 );
 --> statement-breakpoint
 
-CREATE TABLE `notification_campaigns` (
+CREATE TABLE IF NOT EXISTS `notification_campaigns` (
   `id` int AUTO_INCREMENT NOT NULL,
   `kind` enum('offer','event','reminder') NOT NULL,
   `title` varchar(120) NOT NULL,
@@ -74,7 +74,7 @@ CREATE TABLE `notification_campaigns` (
 );
 --> statement-breakpoint
 
-CREATE TABLE `customer_notifications` (
+CREATE TABLE IF NOT EXISTS `customer_notifications` (
   `id` int AUTO_INCREMENT NOT NULL,
   `campaignId` int NOT NULL,
   `deviceId` varchar(80) NOT NULL,
