@@ -13,6 +13,9 @@ rgb = pix[:, :, :3].astype(np.int16)
 distance = np.linalg.norm(rgb - np.array([255, 248, 241], dtype=np.int16), axis=2)
 alpha = np.clip((distance - 7) * 20, 0, 255).astype(np.uint8)
 pix[:, :, 3] = alpha
+# Use a light cream symbol on the orange app header for stronger contrast.
+orange_mask = (pix[:, :, 0] > 180) & (pix[:, :, 1] < 170) & (pix[:, :, 2] < 140) & (pix[:, :, 3] > 0)
+pix[orange_mask, :3] = np.array([255, 248, 241], dtype=np.uint8)
 result = Image.fromarray(pix, 'RGBA')
 result.thumbnail((1000, 360), Image.Resampling.LANCZOS)
 out.parent.mkdir(parents=True, exist_ok=True)
