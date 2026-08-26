@@ -14,7 +14,7 @@ import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, custom
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
 import { ArrowLeft, BadgePercent, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Fuel, HandCoins, LayoutDashboard, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
@@ -187,7 +187,7 @@ function ServiceIntroCarousel({ onActiveChange }: { onActiveChange: (index: numb
   return <section className="service-intro-panel" aria-label="خدمات لحظة"><div className="service-intro-copy"><span className="service-intro-kicker">خدمات لحظة</span><strong>{slide.title}</strong><small>{slide.detail}</small></div><span className="service-intro-icon"><Icon className="h-7 w-7" /></span><div className="service-intro-dots">{slides.map((item, index) => <button key={item.title} type="button" className={index === active ? "service-intro-dot-active" : ""} onClick={() => changeActive(index)} aria-label={`الشريحة ${index + 1}`} />)}</div></section>;
 }
 
-function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => void; onCart: () => void; onSearch: () => void; cartCount: number }) {
+function Header({ onSecret, onCart, onSearch, cartCount, searchPlaceholder }: { onSecret: () => void; onCart: () => void; onSearch: () => void; cartCount: number; searchPlaceholder: string }) {
   const [serviceTheme, setServiceTheme] = useState(0);
   return (
     <header className={`relative z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme}`}>
@@ -195,7 +195,7 @@ function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => voi
         <button className="current-location-button" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك" aria-label="لحظة — خدمات توصيل منبج وريفها"><span className="current-location-label" aria-label="الموقع الحالي"><MapPinCheck className="h-5 w-5" /><span>الموقع الحالي</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></button>
         <button className="header-cart-button" onClick={onCart} aria-label="فتح سلة التسوق"><ShoppingBasket className="h-5 w-5" /><span>السلة</span>{cartCount > 0 ? <b className="cart-count">{cartCount}</b> : null}</button>
       </div>
-      <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span>ابحث عن مطعم، منتج أو خدمة...</span><Search className="h-5 w-5" /></button></div><ServiceIntroCarousel onActiveChange={setServiceTheme} />
+      <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span><Search className="h-5 w-5" /></button></div><ServiceIntroCarousel onActiveChange={setServiceTheme} />
     </header>
   );
 }
@@ -225,7 +225,7 @@ function PartnerOfferGallery({ slides, onOpen }: { slides: PartnerGallerySlide[]
   return <div className="hero-image-frame" aria-label="عروض مصورة من متاجر لحظة">{activeSlide ? <><button key={activeSlide.id} type="button" onClick={onOpen} className="hero-gallery-slide block h-full w-full cursor-pointer text-right" style={{ backgroundImage: `url("${fallback}")`, backgroundSize: "cover", backgroundPosition: "center" }} aria-label={`فتح العروض المميزة: ${activeSlide.name}`}><img src={activeSlide.imageUrl} alt={`عرض ${activeSlide.name} من ${activeSlide.partnerName}`} onError={event => { event.currentTarget.src = fallback; }} className="hero-offer-image" />{activeSlide.discountPercent ? <span className="hero-offer-discount">خصم {activeSlide.discountPercent}%</span> : null}<div className="hero-offer-caption"><strong>{activeSlide.name}</strong><span className="hero-offer-meta"><span>{activeSlide.partnerName}</span>{activeSlide.originalProductPrice || activeSlide.offerPrice || activeSlide.unitPrice ? <span className="hero-offer-prices"><del>{formatSyp(activeSlide.originalProductPrice || activeSlide.unitPrice)}</del><b>فقط {formatSyp(activeSlide.offerPrice || activeSlide.unitPrice)}</b></span> : null}</span></div></button>{slides.length > 1 ? <div className="hero-gallery-dots" aria-label="صور العروض">{slides.map((slide, index) => <button key={slide.id} type="button" onClick={() => setActiveIndex(index)} aria-label={`عرض الصورة ${index + 1}`} aria-current={index === activeIndex} className={index === activeIndex ? "hero-gallery-dot-active" : ""} />)}</div> : null}</> : <div className="hero-gallery-empty"><BadgePercent className="h-9 w-9" /><strong>عروض لحظة</strong><span>ترقّبوا أحدث العروض من متاجركم المفضلة</span><button type="button" onClick={onOpen} className="hero-gallery-cta">اكتشف العروض</button></div>}</div>;
 }
 function EntryGateDialog({ open, onChoose }: { open: boolean; onChoose: (role: "owner" | "partner" | "guest") => void }) {
-  return <Dialog open={open} onOpenChange={() => undefined}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md overflow-hidden rounded-[2rem] border-0 bg-gradient-to-b from-[#fff8f1] to-white p-0 shadow-2xl"><div className="entry-gate-hero"><span className="entry-gate-mark"><Sparkles className="h-8 w-8" /></span><p>مرحباً بك في</p><h1>لحظة</h1><small>اختر طريقة الدخول للمتابعة</small></div><div className="grid gap-3 p-5"><button type="button" onClick={() => onChoose("owner")} className="entry-gate-option"><span className="entry-gate-option-icon"><LayoutDashboard className="h-5 w-5" /></span><span><strong>دخول المالك</strong><small>إدارة التطبيق والطلبات والمتاجر</small></span><ChevronLeft className="h-5 w-5" /></button><button type="button" onClick={() => onChoose("partner")} className="entry-gate-option"><span className="entry-gate-option-icon"><Store className="h-5 w-5" /></span><span><strong>دخول الشريك</strong><small>إدارة متجرك ومنتجاتك وعروضك</small></span><ChevronLeft className="h-5 w-5" /></button><button type="button" onClick={() => onChoose("guest")} className="entry-gate-option entry-gate-option-guest"><span className="entry-gate-option-icon"><UserRound className="h-5 w-5" /></span><span><strong>الدخول كزائر</strong><small>تصفح المتاجر والعروض واطلب بسهولة</small></span><ChevronLeft className="h-5 w-5" /></button></div></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={() => undefined}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md overflow-hidden rounded-[2rem] border-0 bg-gradient-to-b from-[#fff8f1] to-white p-0 shadow-2xl"><div className="entry-gate-hero"><div className="entry-gate-brand"><img src="/assets/lahza-logo-option-4-header.png?v=8" alt="لحظة" /><span>كل شيء في لحظة</span></div><p>مرحباً بك في خدمات لحظة</p><small>اختر طريقة الدخول للمتابعة</small></div><div className="grid gap-3 p-5"><button type="button" onClick={() => onChoose("owner")} className="entry-gate-option"><span className="entry-gate-option-icon"><LayoutDashboard className="h-5 w-5" /></span><span><strong>دخول المالك</strong><small>إدارة التطبيق والطلبات والمتاجر</small></span><ChevronLeft className="h-5 w-5" /></button><button type="button" onClick={() => onChoose("partner")} className="entry-gate-option"><span className="entry-gate-option-icon"><Store className="h-5 w-5" /></span><span><strong>دخول الشريك</strong><small>إدارة متجرك ومنتجاتك وعروضك</small></span><ChevronLeft className="h-5 w-5" /></button><button type="button" onClick={() => onChoose("guest")} className="entry-gate-option entry-gate-option-guest"><span className="entry-gate-option-icon"><UserRound className="h-5 w-5" /></span><span><strong>الدخول كزائر</strong><small>تصفح المتاجر والعروض واطلب بسهولة</small></span><ChevronLeft className="h-5 w-5" /></button></div></DialogContent></Dialog>;
 }
 
 export default function Home() {
@@ -275,6 +275,29 @@ export default function Home() {
   const [submittedOrder, setSubmittedOrder] = useState<SubmittedOrder | null>(null);
   const [missingProductOpen, setMissingProductOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchPlaceholderIndex, setSearchPlaceholderIndex] = useState(0);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const pullStartY = useRef<number | null>(null);
+  const searchPlaceholders = ["ابحث عن شاورما...", "ابحث عن مواد غذائية...", "ابحث عن صيدلية...", "ابحث عن خدمة توصيل..."];
+  const searchPlaceholder = searchPlaceholders[searchPlaceholderIndex];
+  const canPullRefresh = screen === "home" || screen === "stores" || screen === "offers" || screen === "storeOffers";
+  const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+    if (canPullRefresh && window.scrollY <= 2) pullStartY.current = event.touches[0]?.clientY ?? null;
+  };
+  const handleTouchMove = (event: React.TouchEvent<HTMLElement>) => {
+    if (pullStartY.current === null || refreshing) return;
+    const distance = Math.max(0, Math.min(104, event.touches[0].clientY - pullStartY.current));
+    setPullDistance(distance);
+  };
+  const handleTouchEnd = () => {
+    const shouldRefresh = pullDistance >= 72 && !refreshing;
+    pullStartY.current = null;
+    setPullDistance(0);
+    if (!shouldRefresh) return;
+    setRefreshing(true);
+    void utils.invalidate().finally(() => window.setTimeout(() => setRefreshing(false), 450));
+  };
   const [searchText, setSearchText] = useState("");
   const [missingRequesterName, setMissingRequesterName] = useState("");
   const [missingProductName, setMissingProductName] = useState("");
@@ -404,6 +427,11 @@ export default function Home() {
     setNotificationPermission(permission);
     toast[permission === "granted" ? "success" : "error"](permission === "granted" ? "تم تفعيل تنبيهات لحظة" : "لم يتم تفعيل الإشعارات");
   };
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setSearchPlaceholderIndex(index => (index + 1) % searchPlaceholders.length), 3200);
+    return () => window.clearInterval(timer);
+  }, [searchPlaceholders.length]);
 
   useEffect(() => {
     if (isStaticDemo) return;
@@ -718,8 +746,9 @@ export default function Home() {
   };
 
   return (
-    <main dir="rtl" className="lahza-app-shell min-h-screen text-slate-950">
-      {screen === "home" ? <Header onSecret={() => setSecretOpen(true)} onCart={openCart} onSearch={() => setSearchOpen(true)} cartCount={cart.length} /> : null}
+    <main dir="rtl" className="lahza-app-shell min-h-screen text-slate-950" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+      <div className={`pull-refresh-indicator ${pullDistance > 0 || refreshing ? "pull-refresh-indicator-visible" : ""}`} style={{ transform: `translate(-50%, ${refreshing ? 12 : Math.min(62, pullDistance * .72) - 44}px)` }} role="status" aria-live="polite"><span className={refreshing ? "pull-refresh-spinner" : ""}><ArrowLeft className="h-4 w-4 -rotate-90" /></span><small>{refreshing ? "جارٍ التحديث" : pullDistance >= 72 ? "اترك للتحديث" : "اسحب للتحديث"}</small></div>
+      {screen === "home" ? <Header onSecret={() => setSecretOpen(true)} onCart={openCart} onSearch={() => setSearchOpen(true)} cartCount={cart.length} searchPlaceholder={searchPlaceholder} /> : null}
       {screen === "home" ? <div className="global-offer-bar"><PartnerOfferGallery slides={partnerGallerySlides} onOpen={openFeaturedOffers} /></div> : null}
       {screen === "home" && !isStaticDemo && (notificationsQuery.data ?? []).some(notification => notification.unread) ? <section className="app-shell mt-3"><div className="rounded-3xl border border-orange-200 bg-gradient-to-l from-orange-50 via-white to-amber-50 p-4 shadow-[0_12px_30px_rgba(232,105,38,0.12)]"><div className="mb-3 flex items-center gap-2 text-[#63301b]"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#ff7a33] text-white"><BellRing className="h-4 w-4" /></span><div className="min-w-0 flex-1"><strong className="block text-sm font-black">تنبيهات لحظة</strong><small className="text-[11px] text-[#a9471b]">عروض وأخبار جديدة لك</small></div>{notificationPermission !== "granted" && "Notification" in window ? <button type="button" onClick={enableCustomerNotifications} className="rounded-xl bg-[#63301b] px-3 py-2 text-[11px] font-black text-white transition hover:bg-[#4a2618]">تفعيل</button> : null}</div><div className="space-y-2">{(notificationsQuery.data ?? []).filter(notification => notification.unread).slice(0, 3).map(notification => <button key={notification.id} type="button" onClick={() => { markNotificationRead.mutate({ deviceId, campaignId: notification.id }); if (notification.targetPath === "/offers") setScreen("offers"); }} className="w-full rounded-2xl border border-orange-100 bg-white/85 p-3 text-right transition hover:border-orange-300 hover:shadow-sm"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block text-sm text-[#4a2618]">{notification.title}</strong><small className="mt-1 block leading-5 text-slate-600">{notification.body}</small></span><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#ff6b2d]" aria-label="إشعار جديد" /></span></button>)}</div></div></section> : null}
 
@@ -730,7 +759,7 @@ export default function Home() {
       <SupportContactsDialog open={supportOpen} onOpenChange={setSupportOpen} contacts={supportContacts} />
       <AboutLahzaDialog open={aboutOpen} onOpenChange={setAboutOpen} />
 
-      <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className="screen-transition">
+      <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className={`screen-transition ${screen === "home" ? "screen-transition-home" : ""}`}>
       {screen === "home" ? (
         <>
           <section className="app-shell pb-10">
@@ -760,7 +789,7 @@ export default function Home() {
                 const count = cart.filter(line => line.category === item.category).length;
                 const color = item.custom ? "from-slate-100 to-rose-50 text-[#7a3b1d]" : categoryColors[item.category];
                 const image = categoryImageByKey[item.category];
-                return <button key={item.key} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }} className="category-card">
+                return <button key={item.key} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }} className={`category-card ${activeCategory === item.category && (item.custom?.id ? activeCustomCategory?.id === item.custom.id : !activeCustomCategory) ? "category-card-active" : ""}`}>
                   {image ? <span className="category-card-image"><img src={image} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = "none"; }} /></span> : null}
                   <span className={`category-icon bg-gradient-to-br ${color}`}><Icon className="h-5 w-5" /></span>
                   <span className="category-card-copy"><span>{item.title}</span><small>{item.subtitle}</small></span>
