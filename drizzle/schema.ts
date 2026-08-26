@@ -15,6 +15,7 @@ export const users = mysqlTable("users", {
 export const partners = mysqlTable("partners", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 120 }).notNull(),
+  imageUrl: varchar("imageUrl", { length: 500 }),
   username: varchar("username", { length: 64 }).notNull().unique(),
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   active: boolean("active").notNull().default(true),
@@ -42,6 +43,7 @@ export const stores = mysqlTable("stores", {
   restaurantType: mysqlEnum("restaurantType", ["all", "breakfast", "chicken", "grills", "sandwiches"]).notNull().default("all"),
   customCategoryId: int("customCategoryId").references(() => customCategories.id, { onDelete: "set null" }),
   partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
+  imageUrl: varchar("imageUrl", { length: 500 }),
   active: boolean("active").notNull().default(true),
   sortOrder: int("sortOrder").notNull().default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

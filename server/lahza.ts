@@ -109,6 +109,14 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
   }
 }
 
+async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  for (const [table, name] of [["stores", "imageUrl"], ["partners", "imageUrl"]] as const) {
+    const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
+    const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+    if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` VARCHAR(500) NULL`));
+  }
+}
+
 async function addDeliveryPercentColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "manbijDeliveryPercent" | "jarabulusDeliveryPercent", defaultValue: number) {
   try {
     await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` INT NOT NULL DEFAULT ${defaultValue}`));
@@ -382,6 +390,7 @@ const catalogItemInput = z.object({
   available: z.boolean().default(true),
   storeId: z.number().int().positive().optional(),
   customCategoryId: z.number().int().positive().nullable().optional(),
+  imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
 });
 
 export const storeInput = z.object({
@@ -392,6 +401,7 @@ export const storeInput = z.object({
   partnerId: z.number().int().positive().nullable().optional(),
   active: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
+  imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
 });
 
 const customCategoryInput = z.object({
@@ -405,6 +415,7 @@ const partnerAccountInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم الشريك أو المتجر").max(120),
   phone: z.string().trim().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سورياً صحيحاً يبدأ بـ +9639"),
   password: passwordSchema,
+  imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
 });
 
 export const supportContactInput = z.object({
@@ -735,6 +746,7 @@ export const lahzaRouter = router({
         deleted: false,
         storeId: store?.id ?? null,
         customCategoryId: customCategory?.id ?? null,
+        imageUrl: input.imageUrl || null,
       });
       return { success: true };
     }),
@@ -744,8 +756,12 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const store = await findStoreForCatalog(db, input.storeId, input.category);
       const customCategory = input.category === "other" ? await getActiveCustomCategory(db, store?.customCategoryId ?? input.customCategoryId) : null;
-      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, customCategoryId: customCategory?.id ?? null, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
+      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, customCategoryId: customCategory?.id ?? null, imageUrl: input.imageUrl || null, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
       return { success: true };
+    }),
+    uploadImage: publicProcedure.input(z.object({ storeId: z.number().int().positive(), dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx, ["owner"]);
+      return uploadOfferImage(input.dataUrl, input.storeId, `catalog-${randomBytes(12).toString("hex")}`);
     }),
     updatePrice: publicProcedure.input(z.object({ id: z.number().int().positive(), price: newSypMoneyInput })).mutation(async ({ ctx, input }) => {
       await requireAdmin(ctx);
@@ -920,7 +936,8 @@ export const lahzaRouter = router({
       if (!session) return null;
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const found = await db.select({ id: partners.id, name: partners.name, username: partners.username, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes }).from(partners).where(eq(partners.id, session.partnerId)).limit(1);
+      await ensureProfileImageColumns(db);
+      const found = await db.select({ id: partners.id, name: partners.name, username: partners.username, imageUrl: partners.imageUrl, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes }).from(partners).where(eq(partners.id, session.partnerId)).limit(1);
       if (!found[0] || !found[0].active) return null;
       const assignedStores = await db.select().from(stores).where(eq(stores.partnerId, found[0].id)).orderBy(stores.category, stores.sortOrder, stores.name);
       return { ...found[0], stores: assignedStores };
@@ -968,10 +985,15 @@ export const lahzaRouter = router({
       return { periodStart, periodEnd, stores: assignedStores, current: summarize(currentRows), previous: summarize(previousRows), visits: traffic.length, qrVisits, directVisits: traffic.length - qrVisits };
     }),
     store: router({
-      update: publicProcedure.input(z.object({ storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")) })).mutation(async ({ ctx, input }) => {
         const { db, partner } = await requirePartner(ctx);
-        await db.update(partners).set({ storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes }).where(eq(partners.id, partner.id));
+        await ensureProfileImageColumns(db);
+        await db.update(partners).set({ storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, imageUrl: input.imageUrl || null }).where(eq(partners.id, partner.id));
         return { success: true };
+      }),
+      uploadImage: publicProcedure.input(z.object({ dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
+        const { partner } = await requirePartner(ctx);
+        return uploadOfferImage(input.dataUrl, partner.id, `partner-${randomBytes(12).toString("hex")}`);
       }),
     }),
     stores: router({
@@ -1349,6 +1371,7 @@ export const lahzaRouter = router({
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await ensureProfileImageColumns(db);
         await ensureDemoStores(db);
         return db.select().from(stores).orderBy(stores.category, stores.sortOrder, stores.name);
       }),
@@ -1362,7 +1385,8 @@ export const lahzaRouter = router({
         }
         const customCategory = input.category === "other" ? await getActiveCustomCategory(db, input.customCategoryId) : null;
         if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
-        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", customCategoryId: customCategory?.id ?? null, partnerId: input.partnerId ?? null, active: input.active, sortOrder: input.sortOrder });
+        await ensureProfileImageColumns(db);
+        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", customCategoryId: customCategory?.id ?? null, partnerId: input.partnerId ?? null, imageUrl: input.imageUrl || null, active: input.active, sortOrder: input.sortOrder });
         return { success: true };
       }),
       update: publicProcedure.input(storeInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -1375,8 +1399,9 @@ export const lahzaRouter = router({
         }
         const customCategory = input.category === "other" ? await getActiveCustomCategory(db, input.customCategoryId) : null;
         if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
-        const { id, category, restaurantType, customCategoryId: _customCategoryId, ...patch } = input;
-        await db.update(stores).set({ ...patch, category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null }).where(eq(stores.id, id));
+        await ensureProfileImageColumns(db);
+        const { id, category, restaurantType, customCategoryId: _customCategoryId, imageUrl, ...patch } = input;
+        await db.update(stores).set({ ...patch, imageUrl: imageUrl || null, category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null }).where(eq(stores.id, id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -1386,13 +1411,19 @@ export const lahzaRouter = router({
         await db.delete(stores).where(eq(stores.id, input.id));
         return { success: true };
       }),
+      uploadImage: publicProcedure.input(z.object({ storeId: z.number().int().positive(), dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        await getDb();
+        return uploadOfferImage(input.dataUrl, input.storeId, `store-${randomBytes(12).toString("hex")}`);
+      }),
     }),
     partners: router({
       list: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        return db.select({ id: partners.id, name: partners.name, username: partners.username, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes, createdAt: partners.createdAt }).from(partners).orderBy(desc(partners.createdAt));
+        await ensureProfileImageColumns(db);
+        return db.select({ id: partners.id, name: partners.name, username: partners.username, imageUrl: partners.imageUrl, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes, createdAt: partners.createdAt }).from(partners).orderBy(desc(partners.createdAt));
       }),
       create: publicProcedure.input(partnerAccountInput).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
@@ -1400,14 +1431,16 @@ export const lahzaRouter = router({
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const exists = await db.select({ id: partners.id }).from(partners).where(eq(partners.username, input.phone)).limit(1);
         if (exists[0]) throw new Error("رقم هاتف الشريك مستخدم بالفعل");
-        await db.insert(partners).values({ name: input.name, username: input.phone, passwordHash: await hashSecret(input.password), active: true, storeOpen: true, preparationMinutes: 20 });
+        await ensureProfileImageColumns(db);
+        await db.insert(partners).values({ name: input.name, username: input.phone, imageUrl: input.imageUrl || null, passwordHash: await hashSecret(input.password), active: true, storeOpen: true, preparationMinutes: 20 });
         return { success: true };
       }),
-      update: publicProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(120), active: z.boolean(), storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(120), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")), active: z.boolean(), storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.update(partners).set({ name: input.name, active: input.active, storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes }).where(eq(partners.id, input.id));
+        await ensureProfileImageColumns(db);
+        await db.update(partners).set({ name: input.name, imageUrl: input.imageUrl || null, active: input.active, storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes }).where(eq(partners.id, input.id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
