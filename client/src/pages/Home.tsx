@@ -331,7 +331,7 @@ export default function Home() {
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const pointsQuery = trpc.lahza.customers.points.balance.useQuery({ phone: `+963${checkoutPhone}` }, { enabled: !isStaticDemo && /^9\d{8}$/.test(checkoutPhone), retry: false });
-  const registerCustomer = trpc.lahza.customerAccounts.register.useMutation({ onError: error => toast.error(error.message) });
+  const registerCustomer = trpc.lahza.customerAccounts.register.useMutation({ onError: () => toast.error("تعذر بدء التحقق من الحساب حالياً. حاول مرة أخرى بعد قليل.") });
   const accountStatusQuery = trpc.lahza.customerAccounts.status.useQuery({ phone: `+963${checkoutPhone}` }, { enabled: !isStaticDemo && screen === "checkout" && /^9\d{8}$/.test(checkoutPhone), refetchInterval: 10000, retry: false });
   const rejectedAccount = accountStatusQuery.data?.status === "rejected";
   const createReferralCode = trpc.lahza.customers.referral.getOrCreate.useMutation({ onSuccess: result => { setMyReferralCode(result.code); void navigator.clipboard?.writeText(result.code); toast.success(`رمز إحالتك: ${result.code}`); }, onError: error => toast.error(error.message) });

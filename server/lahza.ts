@@ -110,7 +110,7 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
 }
 
 async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
-  await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`customer_accounts\` (\`id\` INT NOT NULL AUTO_INCREMENT, \`phone\` VARCHAR(24) NOT NULL, \`name\` VARCHAR(80) NOT NULL, \`status\` ENUM('pending','approved','rejected','suspended') NOT NULL DEFAULT 'pending', \`verifiedAt\` TIMESTAMP NULL, \`verifiedBy\` VARCHAR(80) NULL, \`rejectionReason\` VARCHAR(300) NULL, \`lastOrderId\` INT NULL, \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (\`id\`), UNIQUE KEY \`customer_accounts_phone_unique\` (\`phone\`)\`)`));
+  await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`customer_accounts\` (\`id\` INT NOT NULL AUTO_INCREMENT, \`phone\` VARCHAR(24) NOT NULL, \`name\` VARCHAR(80) NOT NULL, \`status\` VARCHAR(20) NOT NULL DEFAULT 'pending', \`verifiedAt\` TIMESTAMP NULL DEFAULT NULL, \`verifiedBy\` VARCHAR(80) NULL DEFAULT NULL, \`rejectionReason\` VARCHAR(300) NULL DEFAULT NULL, \`lastOrderId\` INT NULL DEFAULT NULL, \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, \`updatedAt\` TIMESTAMP NULL DEFAULT NULL, PRIMARY KEY (\`id\`), UNIQUE KEY \`customer_accounts_phone_unique\` (\`phone\`)\`)`));
 }
 
 async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
