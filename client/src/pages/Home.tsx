@@ -33,7 +33,7 @@ type CartLine = {
   priceKnown: boolean;
 };
 
-type StoreOption = { id: number; name: string; category: LahzaCategory; restaurantType?: RestaurantType; storeOpen?: boolean | null };
+type StoreOption = { id: number; name: string; category: LahzaCategory; imageUrl?: string | null; restaurantType?: RestaurantType; storeOpen?: boolean | null };
 type CustomDeliveryCategory = { id: number; slug: string; title: string; subtitle: string };
 type StoreProduct = { id: number; name: string; unit: string; unitPrice: number; available: boolean; imageUrl?: string | null };
 type CustomerOffer = { id: number; text: string; partnerName: string; storeName?: string | null; storeId?: number | null; storeCategory?: string | null; catalogItemId?: number | null; productName?: string | null; productUnit?: string | null; productPrice?: number | null; originalProductPrice?: number | null; productImageUrl?: string | null; discountPercent?: number; offerPrice?: number; imageUrl?: string | null; storeOpen?: boolean | null; featuredStatus?: "none" | "pending" | "approved" | "rejected" };
@@ -857,7 +857,7 @@ function StoresScreen({ category, categoryTitle, stores, loading, restaurantFilt
   const meta = categoryMeta[category];
   const title = categoryTitle ?? meta.title;
   const visual = categoryImageByKey[category];
-  return <><PageHeading eyebrow="متاجر القسم" title={`متاجر ${title}`} detail="اختر متجراً لفتح صفحته ومنتجاته في المكان نفسه." onBack={onBack} /><section className="app-shell pb-12">{category === "restaurants" ? <div className="mb-5 flex flex-wrap gap-2" aria-label="فلترة أنواع المطاعم">{(Object.keys(restaurantTypeMeta) as RestaurantType[]).map(type => <button key={type} type="button" onClick={() => onRestaurantFilterChange(type)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${restaurantFilter === type ? "bg-[#71351d] text-white shadow-sm" : "border border-rose-100 bg-white text-slate-700 hover:border-rose-300 hover:bg-rose-50"}`}>{restaurantTypeMeta[type]}</button>)}</div> : null}{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="store-card-grid">{stores.map(store => <button key={store.id} onClick={() => onChoose(store)} className="store-identity-card"><span className="store-identity-image">{visual ? <img src={visual} alt="" loading="lazy" /> : <Store className="h-7 w-7" />}</span><span className="store-identity-avatar"><Store className="h-5 w-5" /></span><span className="store-identity-copy"><strong>{store.name}</strong><small>{title} · منتجات وعروض مختارة</small></span><ChevronLeft className="store-identity-arrow h-5 w-5" /></button>)}</div> : <EmptyStoreList categoryTitle={title} />}</section></>;
+  return <><PageHeading eyebrow="متاجر القسم" title={`متاجر ${title}`} detail="اختر متجراً لفتح صفحته ومنتجاته في المكان نفسه." onBack={onBack} /><section className="app-shell pb-12">{category === "restaurants" ? <div className="mb-5 flex flex-wrap gap-2" aria-label="فلترة أنواع المطاعم">{(Object.keys(restaurantTypeMeta) as RestaurantType[]).map(type => <button key={type} type="button" onClick={() => onRestaurantFilterChange(type)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${restaurantFilter === type ? "bg-[#71351d] text-white shadow-sm" : "border border-rose-100 bg-white text-slate-700 hover:border-rose-300 hover:bg-rose-50"}`}>{restaurantTypeMeta[type]}</button>)}</div> : null}{loading ? <div className="rounded-3xl bg-slate-50 p-6 text-center text-sm text-slate-500">جارٍ تحميل المتاجر...</div> : stores.length ? <div className="store-card-grid">{stores.map(store => <button key={store.id} onClick={() => onChoose(store)} className="store-identity-card"><span className="store-identity-image">{store.imageUrl || visual ? <img src={store.imageUrl || visual} alt="" loading="lazy" /> : <Store className="h-7 w-7" />}</span><span className="store-identity-avatar"><Store className="h-5 w-5" /></span><span className="store-identity-copy"><strong>{store.name}</strong><small>{title} · منتجات وعروض مختارة</small></span><ChevronLeft className="store-identity-arrow h-5 w-5" /></button>)}</div> : <EmptyStoreList categoryTitle={title} />}</section></>;
 }
 
 function StoreShareCard({ store }: { store: StoreOption }) {
@@ -883,7 +883,7 @@ function StoreShareCard({ store }: { store: StoreOption }) {
 
 function StoreProductsScreen({ store, products, loading, onBack, onChooseProduct, onOpenOffers }: { store: StoreOption; products: StoreProduct[]; loading: boolean; onBack: () => void; onChooseProduct: (product: StoreProduct) => void; onOpenOffers: () => void }) {
   const [need, setNeed] = useState("");
-  const visual = categoryImageByKey[store.category];
+  const visual = store.imageUrl || categoryImageByKey[store.category];
   const categoryTitle = categoryMeta[store.category].title;
   const availableProducts = products.filter(product => product.available);
   const normalizedNeed = need.trim().toLocaleLowerCase("ar");
