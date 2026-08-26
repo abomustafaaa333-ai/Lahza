@@ -953,7 +953,11 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCustomerAccountsTable(db);
-      return db.select().from(customerAccounts).orderBy(desc(customerAccounts.createdAt));
+      const accounts = await db.select().from(customerAccounts).orderBy(desc(customerAccounts.createdAt));
+      const phones = accounts.map(account => account.phone);
+      const pointsRows = phones.length ? await db.select({ customerPhone: customerPoints.customerPhone, balance: customerPoints.balance }).from(customerPoints).where(inArray(customerPoints.customerPhone, phones)) : [];
+      const pointsByPhone = new Map(pointsRows.map(row => [row.customerPhone, row.balance]));
+      return accounts.map(account => ({ ...account, points: pointsByPhone.get(account.phone) ?? 0 }));
     }),
     approve: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const session = await requireAdmin(ctx);
