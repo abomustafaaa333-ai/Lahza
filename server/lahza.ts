@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
 import { getDb } from "./db";
@@ -107,6 +107,10 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
   if (!availableColumns.has("tickerSecondary")) {
     await addTickerColumnIfMissing(db, "tickerSecondary", DEFAULT_TICKER_SECONDARY);
   }
+}
+
+async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`customer_accounts\` (\`id\` INT NOT NULL AUTO_INCREMENT, \`phone\` VARCHAR(24) NOT NULL, \`name\` VARCHAR(80) NOT NULL, \`status\` ENUM('pending','approved','rejected','suspended') NOT NULL DEFAULT 'pending', \`verifiedAt\` TIMESTAMP NULL, \`verifiedBy\` VARCHAR(80) NULL, \`rejectionReason\` VARCHAR(300) NULL, \`lastOrderId\` INT NULL, \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, \`updatedAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (\`id\`), UNIQUE KEY \`customer_accounts_phone_unique\` (\`phone\`)\`)`));
 }
 
 async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
@@ -918,6 +922,54 @@ export const lahzaRouter = router({
       const tripFee = input.deliveryChoice === "doorstep" ? trip[0].doorstepFee : trip[0].pickupFee;
       const created = await db.insert(intercityOrders).values({ tripId: trip[0].id, partnerId, catalogItemId: product?.id ?? null, customerName: input.customerName, customerPhone: input.customerPhone, locationUrl: input.locationUrl, itemName: product?.name ?? input.itemName, quantity: input.quantity, deliveryChoice: input.deliveryChoice, itemAmount, tripFee, status: "new", notes: input.notes ?? null });
       return { success: true, orderId: Number(created[0].insertId), totalAmount: itemAmount + tripFee };
+    }),
+  }),
+  customerAccounts: router({
+    register: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم واتساب سورياً صحيحاً"), name: z.string().trim().min(2).max(80) })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerAccountsTable(db);
+      const existing = (await db.select().from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
+      if (!existing) {
+        await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, status: "pending" });
+        return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
+      }
+      if (existing.name !== input.name && existing.status !== "approved") await db.update(customerAccounts).set({ name: input.name }).where(eq(customerAccounts.id, existing.id));
+      if (existing.status === "approved") return { status: "approved" as const, message: "الحساب موثق ويمكنك متابعة الطلب" };
+      if (existing.status === "rejected") {
+        await db.update(customerAccounts).set({ status: "pending", rejectionReason: null }).where(eq(customerAccounts.id, existing.id));
+      }
+      return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
+    }),
+    status: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/) })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerAccountsTable(db);
+      const found = (await db.select({ status: customerAccounts.status, name: customerAccounts.name }).from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
+      return found ?? { status: "new" as const, name: "" };
+    }),
+    list: publicProcedure.query(async ({ ctx }) => {
+      await requireAdmin(ctx);
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerAccountsTable(db);
+      return db.select().from(customerAccounts).orderBy(desc(customerAccounts.createdAt));
+    }),
+    approve: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const session = await requireAdmin(ctx);
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerAccountsTable(db);
+      await db.update(customerAccounts).set({ status: "approved", verifiedAt: new Date(), verifiedBy: session.role === "owner" ? "المالك" : "المشرف", rejectionReason: null }).where(eq(customerAccounts.id, input.id));
+      return { success: true };
+    }),
+    reject: publicProcedure.input(z.object({ id: z.number().int().positive(), reason: z.string().trim().max(300).optional() })).mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx);
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerAccountsTable(db);
+      await db.update(customerAccounts).set({ status: "rejected", rejectionReason: input.reason || null }).where(eq(customerAccounts.id, input.id));
+      return { success: true };
     }),
   }),
   traffic: router({

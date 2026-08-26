@@ -228,6 +228,12 @@ function EntryGateDialog({ open, onChoose }: { open: boolean; onChoose: (role: "
   return <Dialog open={open} onOpenChange={() => undefined}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md overflow-hidden rounded-[2rem] border-0 bg-gradient-to-b from-[#fff8f1] to-white p-0 shadow-2xl"><div className="entry-gate-hero"><div className="entry-gate-brand"><img src="/assets/lahza-logo-option-4-header.png?v=8" alt="لحظة" /><span>كل شيء في لحظة</span></div><p>مرحباً بك في خدمات لحظة</p><small>اختر طريقة الدخول للمتابعة</small></div><div className="grid gap-3 p-5"><button type="button" onClick={() => onChoose("owner")} className="entry-gate-option"><span className="entry-gate-option-icon"><LayoutDashboard className="h-5 w-5" /></span><span><strong>دخول المالك</strong><small>إدارة التطبيق والطلبات والمتاجر</small></span><ChevronLeft className="h-5 w-5" /></button><button type="button" onClick={() => onChoose("partner")} className="entry-gate-option"><span className="entry-gate-option-icon"><Store className="h-5 w-5" /></span><span><strong>دخول الشريك</strong><small>إدارة متجرك ومنتجاتك وعروضك</small></span><ChevronLeft className="h-5 w-5" /></button><button type="button" onClick={() => onChoose("guest")} className="entry-gate-option entry-gate-option-guest"><span className="entry-gate-option-icon"><UserRound className="h-5 w-5" /></span><span><strong>الدخول كزائر</strong><small>تصفح المتاجر والعروض واطلب بسهولة</small></span><ChevronLeft className="h-5 w-5" /></button></div></DialogContent></Dialog>;
 }
 
+function PendingCustomerDialog({ open, phone, name, onClose }: { open: boolean; phone: string; name: string; onClose: () => void }) {
+  const message = `مرحباً، أريد تفعيل حسابي في تطبيق لحظة.\nالاسم: ${name}\nرقم واتساب: ${phone}`;
+  const whatsappUrl = `https://wa.me/${phone.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
+  return <Dialog open={open} onOpenChange={value => { if (!value) onClose(); }}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl border-0 bg-[#fffaf7] p-6 shadow-2xl"><DialogHeader><DialogTitle className="text-right text-xl text-[#4a2618]">تفعيل حسابك في لحظة</DialogTitle><DialogDescription className="text-right leading-7">حسابك جديد، وسيبقى الطلب معلّقاً حتى يتأكد فريق لحظة من رقم واتساب.</DialogDescription></DialogHeader><div className="mt-4 rounded-2xl border border-orange-100 bg-white p-4 text-sm leading-8 text-[#63301b]"><strong className="block">هل تريد تفعيل حسابك في تطبيق لحظة؟</strong><span className="mt-1 block text-slate-600">أرسل الرسالة الجاهزة إلى واتساب من الرقم نفسه، ثم سيقوم المالك أو المشرف بتأكيد الحساب.</span><code dir="ltr" className="mt-3 block rounded-xl bg-orange-50 p-3 text-xs text-slate-600">{message}</code></div><div className="mt-4 flex gap-2"><a href={whatsappUrl} target="_blank" rel="noreferrer" className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-black text-white"><MessageCircle className="h-5 w-5" /> مشاركة إلى واتساب</a><button type="button" onClick={onClose} className="rounded-xl border border-orange-200 bg-white px-4 py-3 text-sm font-black text-[#63301b]">إغلاق</button></div></DialogContent></Dialog>;
+}
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
@@ -254,6 +260,7 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [checkoutName, setCheckoutName] = useState("");
   const [checkoutPhone, setCheckoutPhone] = useState("");
+  const [pendingCustomerOpen, setPendingCustomerOpen] = useState(false);
   const [discountCode, setDiscountCode] = useState("");
   const [referralCode, setReferralCode] = useState("");
   const [myReferralCode, setMyReferralCode] = useState("");
@@ -322,6 +329,7 @@ export default function Home() {
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const pointsQuery = trpc.lahza.customers.points.balance.useQuery({ phone: `+963${checkoutPhone}` }, { enabled: !isStaticDemo && /^9\d{8}$/.test(checkoutPhone), retry: false });
+  const registerCustomer = trpc.lahza.customerAccounts.register.useMutation({ onError: error => toast.error(error.message) });
   const createReferralCode = trpc.lahza.customers.referral.getOrCreate.useMutation({ onSuccess: result => { setMyReferralCode(result.code); void navigator.clipboard?.writeText(result.code); toast.success(`رمز إحالتك: ${result.code}`); }, onError: error => toast.error(error.message) });
   const createMissingProductRequest = trpc.lahza.missingProducts.create.useMutation({
     onSuccess: () => {
@@ -632,7 +640,7 @@ export default function Home() {
     }, { enableHighAccuracy: false, timeout: 20000, maximumAge: 0 });
   };
 
-  const submitCheckout = () => {
+  const submitCheckout = async () => {
     const isTaxi = checkoutMode === "taxi";
     if (!isTaxi && toNewSyp(total) < minimumDeliveryOrderSyp) {
       toast.error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumDeliveryOrderSyp)}`);
@@ -654,6 +662,18 @@ export default function Home() {
     if (isTaxi && (!pickup.trim() || !destination.trim())) {
       toast.error("أكمل موقع الانطلاق والوجهة");
       return;
+    }
+    if (!isStaticDemo) {
+      try {
+        const account = await registerCustomer.mutateAsync({ phone: `+963${checkoutPhone}`, name: checkoutName.trim() });
+        if (account.status !== "approved") {
+          setPendingCustomerOpen(true);
+          toast.info("تم تسجيل طلب تفعيل حسابك، وسيبقى الطلب معلقاً حتى الموافقة");
+          return;
+        }
+      } catch {
+        return;
+      }
     }
     if (isStaticDemo) {
       const demoOrderId = Math.floor(Date.now() / 1000);
@@ -756,6 +776,7 @@ export default function Home() {
       <Dialog open={searchOpen} onOpenChange={open => { setSearchOpen(open); if (!open) setSearchText(""); }}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-[#4a2618]"><Search className="h-5 w-5 text-red-600" /> البحث عن منتج</DialogTitle><DialogDescription className="text-right">اكتب اسم المنتج أو المتجر، وستظهر لك الأسعار وحالة التوفر.</DialogDescription></DialogHeader><div className="mt-3"><Label htmlFor="product-search">اسم المنتج أو المتجر</Label><Input id="product-search" autoFocus value={searchText} onChange={event => setSearchText(event.target.value)} placeholder="مثال: فروج، عدس، حلويات..." className="mt-2 h-12 border-slate-200 bg-white text-base shadow-sm" /></div><div className="mt-4 max-h-[52vh] space-y-2 overflow-y-auto pr-1">{normalizedSearchText.length < 2 ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">اكتب حرفين على الأقل لبدء البحث.</div> : productSearchQuery.isLoading ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">جارٍ البحث عن المنتجات...</div> : productSearchQuery.data?.length ? productSearchQuery.data.map(result => <button key={result.id} type="button" onClick={() => openSearchResult(result as ProductSearchResult)} className="w-full rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition hover:border-rose-200 hover:bg-rose-50 active:scale-[0.99]"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate text-base text-[#4a2618]">{result.name}</strong><small className="mt-1 block truncate text-xs font-bold text-slate-500">من متجر: {result.storeName}</small></span><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${result.available ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{result.available ? "متاح" : "غير متاح"}</span></span><span className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><strong className="text-red-600">{result.price > 0 ? `سعر تقديري: ${formatNewSyp(result.price)}` : "السعر عند التأكيد"}</strong><small className={result.storeOpen ? "text-slate-500" : "font-bold text-amber-700"}>{result.storeOpen ? "فتح صفحة المتجر" : "المتجر مغلق حالياً"}</small></span></button>) : <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">لم نجد منتجات أو متاجر مطابقة. يمكنك استخدام «لم تجد ما تريد؟» لطلب المنتج من الإدارة.</div>}</div></DialogContent></Dialog>
       <SupportContactsDialog open={supportOpen} onOpenChange={setSupportOpen} contacts={supportContacts} />
       <AboutLahzaDialog open={aboutOpen} onOpenChange={setAboutOpen} />
+      <PendingCustomerDialog open={pendingCustomerOpen} phone={`+963${checkoutPhone}`} name={checkoutName.trim()} onClose={() => setPendingCustomerOpen(false)} />
 
       <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className={`screen-transition ${screen === "home" ? "screen-transition-home" : "screen-transition-internal"}`}>
       {screen === "home" ? (

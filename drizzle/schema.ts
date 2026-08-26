@@ -229,6 +229,19 @@ export const customerProfiles = mysqlTable("customer_profiles", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const customerAccounts = mysqlTable("customer_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  phone: varchar("phone", { length: 24 }).notNull().unique(),
+  name: varchar("name", { length: 80 }).notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "suspended"]).notNull().default("pending"),
+  verifiedAt: timestamp("verifiedAt"),
+  verifiedBy: varchar("verifiedBy", { length: 80 }),
+  rejectionReason: varchar("rejectionReason", { length: 300 }),
+  lastOrderId: int("lastOrderId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const discountCodes = mysqlTable("discount_codes", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 40 }).notNull().unique(),
