@@ -8,7 +8,7 @@ import Home from "@/pages/Home";
 import NotFound from "@/pages/NotFound";
 import PartnerPortal from "@/pages/PartnerPortal";
 import { Route, Switch } from "wouter";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { clearAuthRuntimeLock, lockAuthRuntime } from "./lib/authRuntime";
@@ -20,18 +20,8 @@ function Router() {
   return <Switch><Route path="/" component={Home} /><Route path="/download" component={DownloadApp} /><Route path="/partner/store" component={PartnerPortal} /><Route path="/partner" component={PartnerPortal} /><Route path="/admin" component={AdminPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
 }
 
-function LahzaSplashScreen() {
-  return <main dir="rtl" className="lahza-splash-screen" aria-label="شاشة بدء تطبيق لحظة"><div className="lahza-splash-orbit" aria-hidden="true" /><div className="lahza-splash-brand"><img src="/assets/lahza-logo-option-4-header.png?v=7" alt="لحظة" /><span>كل شيء في لحظة</span></div><p>خدماتك اليومية أقرب إليك</p><div className="lahza-splash-progress" aria-hidden="true"><span /></div></main>;
-}
-
 export default function App() {
-  const [booting, setBooting] = useState(true);
   const backgroundedAt = useRef<number | null>(null);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setBooting(false), 900);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     if (isStaticDemo) return;
@@ -61,6 +51,5 @@ export default function App() {
     };
   }, []);
 
-  if (booting) return <LahzaSplashScreen />;
   return <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider>{!isStaticDemo ? <AppUpdateNotice /> : null}<Toaster richColors position="top-center" /><Router /></TooltipProvider></ThemeProvider></ErrorBoundary>;
 }
