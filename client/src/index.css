@@ -665,3 +665,9 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 6.8rem
 @media (max-width: 420px) {
   header[class*="header-service-theme-"] .service-intro-panel { min-height: 6rem; }
 }
+
+/* تخفيض بداية المحتوى الداخلي فقط؛ الواجهة الرئيسية مستثناة */
+.screen-transition-internal { padding-top: 2rem; }
+@media (max-width: 420px) {
+  .screen-transition-internal { padding-top: 2.2rem; }
+}

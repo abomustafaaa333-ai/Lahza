@@ -758,7 +758,7 @@ export default function Home() {
       <SupportContactsDialog open={supportOpen} onOpenChange={setSupportOpen} contacts={supportContacts} />
       <AboutLahzaDialog open={aboutOpen} onOpenChange={setAboutOpen} />
 
-      <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className={`screen-transition ${screen === "home" ? "screen-transition-home" : ""}`}>
+      <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className={`screen-transition ${screen === "home" ? "screen-transition-home" : "screen-transition-internal"}`}>
       {screen === "home" ? (
         <>
           <section className="app-shell pb-10">
