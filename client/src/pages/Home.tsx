@@ -190,7 +190,7 @@ function ServiceIntroCarousel({ onActiveChange }: { onActiveChange: (index: numb
 function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => void; onCart: () => void; onSearch: () => void; cartCount: number }) {
   const [serviceTheme, setServiceTheme] = useState(0);
   return (
-    <header className={`sticky top-0 z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme}`}>
+    <header className={`relative z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme}`}>
       <div className="app-shell flex h-[76px] items-center justify-end gap-3">
         <button className="current-location-button" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك" aria-label="لحظة — خدمات توصيل منبج وريفها"><span className="current-location-label" aria-label="الموقع الحالي"><MapPinCheck className="h-5 w-5" /><span>الموقع الحالي</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></button>
         <button className="header-cart-button" onClick={onCart} aria-label="فتح سلة التسوق"><ShoppingBasket className="h-5 w-5" /><span>السلة</span>{cartCount > 0 ? <b className="cart-count">{cartCount}</b> : null}</button>

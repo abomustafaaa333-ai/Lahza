@@ -600,9 +600,9 @@ header.sticky { box-shadow: 0 .8rem 1.8rem -1.65rem rgba(84,22,42,.52); }
 
 /* Full service hero background: the service slide replaces the old orange header surface. */
 header.header-service-theme-0 { background: linear-gradient(145deg, #8f3517 0%, #c95422 54%, #f47a32 100%); border-bottom-color: rgba(255,248,241,.24); }
-header.header-service-theme-1 { background: linear-gradient(145deg, #71301e 0%, #b94d28 52%, #ec7836 100%); border-bottom-color: rgba(255,248,241,.24); }
-header.header-service-theme-2 { background: linear-gradient(145deg, #63301b 0%, #a94829 54%, #d96b32 100%); border-bottom-color: rgba(255,248,241,.24); }
-header.header-service-theme-3 { background: linear-gradient(145deg, #7b321c 0%, #c15b25 54%, #f1843c 100%); border-bottom-color: rgba(255,248,241,.24); }
+header.header-service-theme-1 { background: linear-gradient(145deg, #087d87 0%, #159da5 55%, #42b8bb 100%); border-bottom-color: rgba(255,255,255,.28); }
+header.header-service-theme-2 { background: linear-gradient(145deg, #8f3517 0%, #c95422 54%, #f47a32 100%); border-bottom-color: rgba(255,248,241,.24); }
+header.header-service-theme-3 { background: linear-gradient(145deg, #087d87 0%, #159da5 55%, #42b8bb 100%); border-bottom-color: rgba(255,255,255,.28); }
 header[class*="header-service-theme-"] { transition: background 700ms ease, border-color 700ms ease; }
 header[class*="header-service-theme-"] .service-intro-panel { width: 100%; min-height: 8rem; margin: .7rem 0 0; border: 0; border-radius: 0; padding: 1.1rem max(1.1rem, calc((100% - 760px) / 2 + 1.1rem)) 1.35rem; background: transparent; box-shadow: none; }
 header[class*="header-service-theme-"] .current-location-label,
