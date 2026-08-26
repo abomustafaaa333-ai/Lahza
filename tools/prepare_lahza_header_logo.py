@@ -12,7 +12,7 @@ rgb = pix[:, :, :3].astype(np.int16)
 # Remove the cream board while preserving antialiased logo edges.
 distance = np.linalg.norm(rgb - np.array([255, 248, 241], dtype=np.int16), axis=2)
 alpha = np.clip((distance - 7) * 20, 0, 255).astype(np.uint8)
-pix[:, :, 3] = np.maximum(pix[:, :, 3], alpha)
+pix[:, :, 3] = alpha
 result = Image.fromarray(pix, 'RGBA')
 result.thumbnail((1000, 360), Image.Resampling.LANCZOS)
 out.parent.mkdir(parents=True, exist_ok=True)
