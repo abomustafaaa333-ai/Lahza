@@ -62,7 +62,7 @@ export default function Admin() {
 
   return <div dir="rtl" className="admin-app">
     <aside className={`admin-sidebar ${menuOpen ? "sidebar-open" : ""}`}>
-      <div className="admin-logo"><span className="h-9 w-28 overflow-hidden rounded-xl bg-white"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-9 w-full object-contain" /></span><small>إدارة الخدمات</small></div>
+      <div className="admin-logo"><span className="h-9 w-40 overflow-hidden rounded-xl bg-white"><img src={lahzaWordmarkUrl} alt="لحظة" className="h-9 w-full object-contain" /></span><small>إدارة الخدمات</small></div>
       <div className="admin-role"><ShieldCheck className="h-4 w-4" /><span>{isOwner ? "حساب المالك" : "حساب مشرف"}</span></div>
       <nav>{availableTabs.map(item => { const Icon = item.icon; return <button key={item.id} onClick={() => { setTab(item.id); setMenuOpen(false); }} className={tab === item.id ? "admin-nav-active" : ""}><Icon className="h-4 w-4" /><span>{item.label}</span></button>; })}</nav>
       <div className="admin-sidebar-footer"><Button variant="ghost" onClick={() => logout.mutate()} className="w-full justify-start rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"><LogOut className="h-4 w-4" />تسجيل الخروج</Button><span>لحظة · منبج</span></div>
