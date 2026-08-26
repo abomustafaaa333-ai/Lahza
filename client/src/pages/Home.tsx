@@ -169,7 +169,7 @@ function SupportHelpCard({ onOpen, contactCount }: { onOpen: () => void; contact
   return <div className="flex items-center gap-3 rounded-2xl border border-rose-100 bg-[#fff8f5] p-4"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#63301b] text-white"><Phone className="h-5 w-5" /></span><div className="min-w-0 flex-1"><strong className="block text-sm text-[#4a2618]">تحتاج مساعدة قبل التأكيد؟</strong><small className="mt-1 block text-xs font-medium leading-5 text-slate-600">{contactCount ? `تتوفر ${contactCount} ${contactCount === 1 ? "جهة تواصل" : "جهات تواصل"} لخدمتك.` : "تواصل مع فريق لحظة عند نشر أرقام الدعم."}</small></div><button type="button" onClick={onOpen} className="shrink-0 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-black text-[#63301b] transition hover:bg-rose-50">تواصل معنا</button></div>;
 }
 
-function ServiceIntroCarousel() {
+function ServiceIntroCarousel({ onActiveChange }: { onActiveChange: (index: number) => void }) {
   const slides = [
     { icon: Bike, title: "توصيل سريع إلى بابك", detail: "اطلب احتياجاتك من متاجرك المحلية بسهولة." },
     { icon: BadgePercent, title: "عروض مميزة كل يوم", detail: "اكتشف خصومات مختارة من متاجر لحظة." },
@@ -177,23 +177,25 @@ function ServiceIntroCarousel() {
     { icon: MapPinCheck, title: "خدمة تصل إلى موقعك", detail: "حدد موقعك ودع فريق لحظة يتابع طلبك." },
   ];
   const [active, setActive] = useState(0);
+  const changeActive = (index: number) => { setActive(index); onActiveChange(index); };
   useEffect(() => {
-    const timer = window.setInterval(() => setActive(value => (value + 1) % slides.length), 5000);
+    const timer = window.setInterval(() => setActive(value => { const next = (value + 1) % slides.length; onActiveChange(next); return next; }), 5000);
     return () => window.clearInterval(timer);
   }, [slides.length]);
   const slide = slides[active];
   const Icon = slide.icon;
-  return <section className="service-intro-panel" aria-label="خدمات لحظة"><div className="service-intro-copy"><span className="service-intro-kicker">خدمات لحظة</span><strong>{slide.title}</strong><small>{slide.detail}</small></div><span className="service-intro-icon"><Icon className="h-7 w-7" /></span><div className="service-intro-dots">{slides.map((item, index) => <button key={item.title} type="button" className={index === active ? "service-intro-dot-active" : ""} onClick={() => setActive(index)} aria-label={`الشريحة ${index + 1}`} />)}</div></section>;
+  return <section className="service-intro-panel" aria-label="خدمات لحظة"><div className="service-intro-copy"><span className="service-intro-kicker">خدمات لحظة</span><strong>{slide.title}</strong><small>{slide.detail}</small></div><span className="service-intro-icon"><Icon className="h-7 w-7" /></span><div className="service-intro-dots">{slides.map((item, index) => <button key={item.title} type="button" className={index === active ? "service-intro-dot-active" : ""} onClick={() => changeActive(index)} aria-label={`الشريحة ${index + 1}`} />)}</div></section>;
 }
 
 function Header({ onSecret, onCart, onSearch, cartCount }: { onSecret: () => void; onCart: () => void; onSearch: () => void; cartCount: number }) {
+  const [serviceTheme, setServiceTheme] = useState(0);
   return (
-    <header className="sticky top-0 z-30 border-b border-[#ff6b2d] bg-[#ff7a33]/95 pt-3 backdrop-blur-xl">
+    <header className={`sticky top-0 z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme}`}>
       <div className="app-shell flex h-[76px] items-center justify-end gap-3">
         <button className="current-location-button" onDoubleClick={onSecret} title="انقر مرتين لدخول المالك أو المشرف أو الشريك" aria-label="لحظة — خدمات توصيل منبج وريفها"><span className="current-location-label" aria-label="الموقع الحالي"><MapPinCheck className="h-5 w-5" /><span>الموقع الحالي</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></button>
         <button className="header-cart-button" onClick={onCart} aria-label="فتح سلة التسوق"><ShoppingBasket className="h-5 w-5" /><span>السلة</span>{cartCount > 0 ? <b className="cart-count">{cartCount}</b> : null}</button>
       </div>
-      <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span>ابحث عن مطعم، منتج أو خدمة...</span><Search className="h-5 w-5" /></button></div><ServiceIntroCarousel />
+      <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span>ابحث عن مطعم، منتج أو خدمة...</span><Search className="h-5 w-5" /></button></div><ServiceIntroCarousel onActiveChange={setServiceTheme} />
     </header>
   );
 }
