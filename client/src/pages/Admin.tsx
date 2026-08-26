@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
-const lahzaWordmarkUrl = "https://lahzaapp-wge8gktc.manus.space/manus-storage/lahza-arabic-wordmark-cropped-v2_315134f0.png";
+const lahzaWordmarkUrl = "/assets/lahza-logo-option-4.svg";
 
 type Tab = "home" | "orders" | "intercityOrders" | "taxiOrders" | "archive" | "catalog" | "discountCodes" | "expiredOffers" | "notifications" | "stores" | "categories" | "delivery" | "customers" | "missingProducts" | "employees" | "drivers" | "inventory" | "finance" | "analytics" | "team" | "partners" | "intercity" | "settings";
 type AdminSupportContact = { id: number; label: string; phone: string; callEnabled: boolean; whatsappEnabled: boolean; active: boolean; sortOrder: number };
