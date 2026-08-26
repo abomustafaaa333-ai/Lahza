@@ -246,7 +246,7 @@ export default function Home() {
   const [selectedOffer, setSelectedOffer] = useState<CustomerOffer | null>(null);
   const [selectedGalleryOffer, setSelectedGalleryOffer] = useState<PartnerGallerySlide | null>(null);
   const [focusedOfferId, setFocusedOfferId] = useState<number | null>(null);
-  const [entryOpen, setEntryOpen] = useState(true);
+  const [entryOpen, setEntryOpen] = useState(false);
   const [secretOpen, setSecretOpen] = useState(false);
   const [secretRole, setSecretRole] = useState<"owner" | "supervisor" | "partner">("owner");
   const [pin, setPin] = useState("");
