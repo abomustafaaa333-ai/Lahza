@@ -936,9 +936,7 @@ export const lahzaRouter = router({
       }
       if (existing.name !== input.name && existing.status !== "approved") await db.update(customerAccounts).set({ name: input.name }).where(eq(customerAccounts.id, existing.id));
       if (existing.status === "approved") return { status: "approved" as const, message: "الحساب موثق ويمكنك متابعة الطلب" };
-      if (existing.status === "rejected") {
-        await db.update(customerAccounts).set({ status: "pending", rejectionReason: null }).where(eq(customerAccounts.id, existing.id));
-      }
+      if (existing.status === "rejected") return { status: "rejected" as const, message: "تم رفض الحساب، تواصل مع فريق لحظة عبر واتساب" };
       return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
     }),
     status: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/) })).query(async ({ input }) => {
