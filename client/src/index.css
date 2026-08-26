@@ -709,3 +709,13 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 6.8rem
 .global-offer-bar .hero-offer-caption,
 .global-offer-bar .hero-offer-discount,
 .global-offer-bar .hero-gallery-dots { z-index: 3; }
+
+/* Crop the decorative side margins embedded in generated offer artwork. */
+.global-offer-bar .hero-offer-image {
+  transform: scale(1.14);
+  transform-origin: center;
+}
+.home-hero-section .hero-gallery-slide .hero-offer-image {
+  transform: scale(1.14);
+  transform-origin: center;
+}
