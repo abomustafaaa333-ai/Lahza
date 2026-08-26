@@ -735,3 +735,15 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 6.8rem
   transform: scale(1.14) !important;
   transform-origin: center center;
 }
+
+/* Give the shared offer strip 0.5cm more room on each side. */
+.global-offer-bar {
+  width: calc(100% + 1cm);
+  margin-inline: -0.5cm;
+}
+@media (min-width: 760px) {
+  .global-offer-bar {
+    width: min(calc(100% + 1cm), 780px);
+    margin-inline: auto;
+  }
+}
