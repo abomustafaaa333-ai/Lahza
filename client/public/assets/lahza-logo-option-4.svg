@@ -9,5 +9,5 @@
     <path d="M300 108 L321 180 L394 202 L321 224 L300 302 L279 224 L206 202 L279 180 Z" fill="#FF742D" stroke="none"/>
     <path d="M300 141 L311 190 L360 202 L311 214 L300 263 L289 214 L240 202 L289 190 Z" fill="#FFF8F1" stroke="none"/>
   </g>
-  <text id="wordmark" x="1145" y="244" text-anchor="end" direction="rtl" unicode-bidi="bidi-override" font-family="Tahoma, Arial, sans-serif" font-size="168" font-weight="900" letter-spacing="-7" fill="#63301B">لحظة</text>
+  <text id="wordmark" x="1145" y="244" text-anchor="end" direction="rtl" font-family="Tahoma, Arial, sans-serif" font-size="168" font-weight="900" letter-spacing="-7" fill="#63301B">لحظة</text>
 </svg>

@@ -11,7 +11,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
-const lahzaWordmarkUrl = "/assets/lahza-logo-option-4.svg";
+const lahzaWordmarkUrl = "/assets/lahza-logo-option-4.svg?v=2";
 
 type AssignedStore = { id: number; name: string; category: LahzaCategory; categoryTitle?: string | null; active: boolean };
 type PartnerData = { id: number; name: string; storeOpen: boolean; preparationMinutes: number; stores: AssignedStore[] };
