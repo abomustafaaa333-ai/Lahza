@@ -632,3 +632,18 @@ header[class*="header-service-theme-"] .service-intro-copy { max-width: 28rem; }
 }
 
 /* End of service hero background overrides. */
+
+/* Branded startup screen: short, deterministic, and never blocks the app indefinitely. */
+.lahza-splash-screen { position: relative; display: grid; min-height: 100dvh; place-items: center; overflow: hidden; isolation: isolate; color: #fffaf4; background: linear-gradient(145deg, #087d87 0%, #159da5 52%, #ff7a33 100%); }
+.lahza-splash-screen::before, .lahza-splash-screen::after { position: absolute; content: ""; border-radius: 999px; filter: blur(2px); opacity: .22; z-index: -1; }
+.lahza-splash-screen::before { width: 18rem; height: 18rem; top: -5rem; left: -5rem; background: #ff8438; }
+.lahza-splash-screen::after { width: 22rem; height: 22rem; right: -8rem; bottom: -8rem; background: #f5efe5; }
+.lahza-splash-orbit { position: absolute; width: 15rem; height: 15rem; border: 1px solid rgba(255,255,255,.2); border-radius: 50%; box-shadow: 0 0 0 2rem rgba(255,255,255,.04), 0 0 0 4rem rgba(255,255,255,.025); }
+.lahza-splash-brand { display: flex; width: min(72vw, 18rem); flex-direction: column; align-items: center; gap: .7rem; text-align: center; }
+.lahza-splash-brand img { display: block; width: min(68vw, 15rem); height: auto; max-height: 7.5rem; object-fit: contain; object-position: center; filter: drop-shadow(0 9px 18px rgba(53,24,12,.25)); }
+.lahza-splash-brand span { width: 100%; color: #fffaf4; font-size: clamp(.9rem, 3.2vw, 1.1rem); font-weight: 900; letter-spacing: .02em; text-shadow: 0 2px 7px rgba(49,27,17,.35); }
+.lahza-splash-screen > p { position: absolute; top: calc(50% + 7.4rem); margin: 0; color: rgba(255,250,244,.88); font-size: .78rem; font-weight: 700; }
+.lahza-splash-progress { position: absolute; top: calc(50% + 9.8rem); width: 5.5rem; height: .24rem; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.22); }
+.lahza-splash-progress span { display: block; width: 42%; height: 100%; border-radius: inherit; background: #fffaf4; animation: lahza-splash-progress 900ms ease-in-out forwards; }
+@keyframes lahza-splash-progress { from { transform: translateX(-240%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .lahza-splash-progress span { animation: none; width: 100%; } }
