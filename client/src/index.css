@@ -779,3 +779,19 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 7rem; 
 @media (prefers-reduced-motion: reduce) {
   .home-category-row > *, .home-featured-row > *, .home-bottom-nav button { transition: none; }
 }
+
+/* شريط اكتشف ما تحتاجه: بطاقة الكل بأربع أيقونات وبطاقات مربعة متناسقة. */
+.home-category-row > .home-category-card { width: 7.35rem; min-width: 7.35rem; height: 8.35rem; min-height: 8.35rem; justify-content: center; gap: .6rem; border-radius: 1.35rem; padding: .7rem .55rem; }
+.home-category-row > .home-category-card > span:last-child { display: block; overflow: hidden; width: 100%; color: #4a2618; font-size: .78rem; font-weight: 900; line-height: 1.45; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.home-category-row > .home-category-all > span:last-child { color: #fff; }
+.home-category-mini-grid { display: grid; width: 4.15rem; height: 4.15rem; grid-template-columns: repeat(2, 1fr); gap: .28rem; place-items: center; border-radius: 1.05rem; padding: .42rem; background: rgba(255,255,255,.98); box-shadow: 0 .5rem 1rem -0.65rem rgba(99,48,27,.42); }
+.home-category-mini-grid > span { display: grid; width: 1.48rem; height: 1.48rem; place-items: center; border-radius: .48rem; color: #ff742d; background: #fff5e8; }
+.home-category-mini-grid svg { width: .82rem; height: .82rem; stroke-width: 2.5; }
+.home-category-all { gap: .52rem !important; }
+.home-category-icon { width: 4.15rem; height: 4.15rem; border-radius: 1.05rem; }
+.home-category-icon-photo { border-radius: 1.05rem; }
+.home-category-icon-photo::after { border-radius: inherit; }
+@media (max-width: 420px) {
+  .home-category-row > .home-category-card { width: 6.8rem; min-width: 6.8rem; height: 7.9rem; min-height: 7.9rem; }
+  .home-category-mini-grid, .home-category-icon { width: 3.8rem; height: 3.8rem; }
+}
