@@ -1019,3 +1019,63 @@ header[class*="header-service-theme-"] .service-intro-copy small {
   text-overflow: clip !important;
   overflow-wrap: anywhere;
 }
+
+/* شارة احترافية لأقوى العروض داخل اللوحة الفيروزية */
+header[class*="header-service-theme-"] .service-intro-offer-mark {
+  position: absolute;
+  top: 50%;
+  left: max(1.1rem, calc((100% - 760px) / 2 + 1.1rem));
+  display: grid;
+  width: 8.2rem;
+  justify-items: center;
+  gap: .18rem;
+  color: #fff;
+  text-align: center;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+header[class*="header-service-theme-"] .service-intro-offer-mark-icon {
+  display: grid;
+  width: 2.45rem;
+  height: 2.45rem;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.62);
+  border-radius: .82rem;
+  color: #fff3d9;
+  background: linear-gradient(145deg, #ff9b4a, #f0642d);
+  box-shadow: 0 .45rem 1rem -0.5rem rgba(255,116,45,.95), 0 0 0 .24rem rgba(255,255,255,.08);
+}
+header[class*="header-service-theme-"] .service-intro-offer-mark strong {
+  display: block;
+  color: #fff;
+  font-size: .94rem;
+  font-weight: 950;
+  letter-spacing: -.025em;
+  line-height: 1.25;
+  text-shadow: 0 2px 8px rgba(0,35,39,.42);
+  white-space: nowrap;
+}
+header[class*="header-service-theme-"] .service-intro-offer-mark b {
+  display: block;
+  color: #ffd09b;
+  font-size: .76rem;
+  font-weight: 900;
+  letter-spacing: .01em;
+  line-height: 1.2;
+  text-shadow: 0 2px 7px rgba(0,35,39,.4);
+  white-space: nowrap;
+}
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .service-intro-offer-mark {
+    left: .78rem;
+    width: 6.8rem;
+  }
+  header[class*="header-service-theme-"] .service-intro-offer-mark-icon {
+    width: 2.05rem;
+    height: 2.05rem;
+    border-radius: .7rem;
+  }
+  header[class*="header-service-theme-"] .service-intro-offer-mark strong { font-size: .76rem; }
+  header[class*="header-service-theme-"] .service-intro-offer-mark b { font-size: .62rem; }
+  header[class*="header-service-theme-"] .service-intro-copy { max-width: calc(100% - 7.2rem) !important; }
+}
