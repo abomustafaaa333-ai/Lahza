@@ -751,7 +751,7 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 6.8rem
 /* واجهة لحظة المحسّنة: تسلسل بصري أوضح ولمسات حديثة مستوحاة من المعاينة. */
 header[class*="header-service-theme-"] { border-bottom: 0; box-shadow: 0 1.1rem 2.5rem -2rem rgba(8, 125, 135, .55); }
 header[class*="header-service-theme-"] .header-inner { gap: .85rem; }
-header[class*="header-service-theme-"] .header-search-wrap { margin-top: .25rem; }
+header[class*="header-service-theme-"] .header-search-wrap { margin-top: calc(.25rem + .5cm); }
 header[class*="header-service-theme-"] .header-search-button { min-height: 3.45rem; border: 2px solid rgba(255,255,255,.92); border-radius: 999px; background: #fff; box-shadow: 0 .8rem 1.6rem -1.15rem rgba(4, 82, 91, .6); }
 header[class*="header-service-theme-"] .header-search-button svg { width: 2.35rem; height: 2.35rem; padding: .48rem; border-radius: 999px; }
 header[class*="header-service-theme-"] .service-intro-panel { min-height: 7rem; padding-bottom: 1.1rem; }
