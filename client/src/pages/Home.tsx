@@ -39,7 +39,10 @@ type StoreProduct = { id: number; name: string; unit: string; unitPrice: number;
 type CustomerOffer = { id: number; text: string; partnerName: string; ratingStars?: number; completedOrders?: number; storeName?: string | null; storeId?: number | null; storeCategory?: string | null; catalogItemId?: number | null; productName?: string | null; productUnit?: string | null; productPrice?: number | null; originalProductPrice?: number | null; productImageUrl?: string | null; discountPercent?: number; offerPrice?: number; imageUrl?: string | null; storeOpen?: boolean | null; featuredStatus?: "none" | "pending" | "approved" | "rejected" };
 type ProductSearchResult = { id: number; name: string; unit: string; price: number; available: boolean; storeId: number; storeName: string; storeCategory: LahzaCategory; storeOpen: boolean };
 type SupportContact = { id: number; label: string; phone: string; callEnabled: boolean; whatsappEnabled: boolean };
+type CustomerAuthSession = { mode: "customer" | "guest"; phone?: string; name?: string; remember?: boolean };
 
+const CUSTOMER_AUTH_STORAGE_KEY = "lahza_customer_auth_v1";
+const DEMO_OTP_CODE = "123456";
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 const demoAssetPrefix = isStaticDemo ? "." : "";
 const demoGalleryImages = [
@@ -224,10 +227,44 @@ function EntryGateDialog({ open, onChoose }: { open: boolean; onChoose: (role: "
 }
 
 
+function CustomerAuthScreen({ onAuthenticated }: { onAuthenticated: (session: CustomerAuthSession) => void }) {
+  const [step, setStep] = useState<"choices" | "phone" | "otp">("choices");
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [phone, setPhone] = useState("");
+  const [name, setName] = useState("");
+  const [otp, setOtp] = useState("");
+  const [remember, setRemember] = useState(true);
+  const [error, setError] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
+  const normalizedPhone = phone.replace(/\D/g, "").replace(/^963/, "").replace(/^0/, "");
+  const fullPhone = `+963${normalizedPhone}`;
+  const validPhone = /^9\d{8}$/.test(normalizedPhone);
+  const startFlow = (nextMode: "login" | "register") => {
+    setMode(nextMode);
+    setStep("phone");
+    setError("");
+  };
+  const sendOtp = () => {
+    if (!validPhone) { setError("أدخل رقمًا سوريًا صحيحًا يبدأ من 9 ويتكون من 9 أرقام."); return; }
+    if (mode === "register" && name.trim().length < 2) { setError("اكتب اسمك لننشئ حسابك في لحظة."); return; }
+    setError("");
+    setOtp("");
+    setOtpSent(true);
+    setStep("otp");
+  };
+  const verifyOtp = () => {
+    if (otp !== DEMO_OTP_CODE) { setError("رمز التحقق التجريبي غير صحيح. استخدم 123456."); return; }
+    onAuthenticated({ mode: "customer", phone: fullPhone, name: name.trim() || undefined, remember });
+  };
+  return <main className="customer-auth-page" dir="rtl"><div className="customer-auth-card"><div className="customer-auth-brand"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>منبج بين يديك</span></div>{step === "choices" ? <><div className="customer-auth-heading"><p>أهلاً بك في لحظة</p><h1>كل طلباتك أقرب إليك</h1><span>سجّل دخولك لتتابع طلباتك وتحصل على تجربة أسرع.</span></div><div className="customer-auth-actions"><button type="button" onClick={() => startFlow("login")} className="customer-auth-primary">تسجيل الدخول <ChevronLeft className="h-5 w-5" /></button><button type="button" onClick={() => startFlow("register")} className="customer-auth-secondary">التسجيل إذا لم تمتلك حسابًا بعد <Plus className="h-5 w-5" /></button><button type="button" onClick={() => onAuthenticated({ mode: "guest" })} className="customer-auth-guest">الدخول كزائر <UserRound className="h-5 w-5" /></button></div><p className="customer-auth-note">يمكنك متابعة التصفح كزائر، وإنشاء حسابك لاحقًا في أي وقت.</p></> : step === "phone" ? <><button type="button" className="customer-auth-back" onClick={() => { setStep("choices"); setError(""); }}><ArrowLeft className="h-4 w-4" /> العودة للخيارات</button><div className="customer-auth-heading"><p>{mode === "login" ? "تسجيل الدخول" : "إنشاء حساب جديد"}</p><h1>{mode === "login" ? "أدخل رقم هاتفك" : "لنبدأ حسابك في لحظة"}</h1><span>{mode === "login" ? "سنرسل لك رمز تحقق تجريبيًا على رقم الهاتف." : "أدخل اسمك ورقم هاتفك لإنشاء حسابك."}</span></div><div className="customer-auth-form">{mode === "register" ? <label><span>الاسم</span><Input value={name} onChange={event => setName(event.target.value)} placeholder="اكتب اسمك" autoComplete="name" /></label> : null}<label><span>رقم الهاتف</span><div className="customer-auth-phone"><b>+963</b><Input dir="ltr" inputMode="numeric" value={phone} onChange={event => setPhone(event.target.value.replace(/\D/g, "").replace(/^963/, "").replace(/^0/, "").slice(0, 9))} placeholder="9XXXXXXXX" autoComplete="tel" /></div></label><label className="customer-auth-remember"><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} /><span>حفظ معلومات التسجيل على هذا الجهاز</span></label><button type="button" onClick={sendOtp} className="customer-auth-primary">إرسال رمز التحقق <ChevronLeft className="h-5 w-5" /></button>{error ? <p className="customer-auth-error">{error}</p> : null}<p className="customer-auth-demo-hint">نسخة تجريبية: استخدم الرمز <b dir="ltr">123456</b></p></div></> : null}{step === "otp" ? <div className="customer-auth-otp-panel"><button type="button" className="customer-auth-back" onClick={() => { setStep("phone"); setError(""); }}><ArrowLeft className="h-4 w-4" /> تعديل رقم الهاتف</button><div className="customer-auth-heading"><p>التحقق من الرقم</p><h1>أدخل رمز OTP</h1><span>أرسلنا رمزًا تجريبيًا إلى <b dir="ltr">{fullPhone}</b>.</span></div><label className="customer-auth-otp-field"><span>رمز التحقق</span><Input dir="ltr" inputMode="numeric" maxLength={6} value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456" autoFocus /></label><button type="button" onClick={verifyOtp} className="customer-auth-primary">تحقق ودخول <CheckCircle2 className="h-5 w-5" /></button>{error ? <p className="customer-auth-error">{error}</p> : null}<button type="button" className="customer-auth-resend" onClick={() => { setOtp(""); setError(""); setOtpSent(true); }}>إعادة إرسال الرمز التجريبي</button><p className="customer-auth-demo-hint">الرمز التجريبي: <b dir="ltr">123456</b>{otpSent ? " · صالح لهذه الجلسة" : ""}</p></div> : null}</div></main>;
+}
+
 export default function Home() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
   const [screen, setScreen] = useState<Screen>("home");
+  const [customerAuthReady, setCustomerAuthReady] = useState(false);
+  const [customerAuth, setCustomerAuth] = useState<CustomerAuthSession | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
@@ -274,6 +311,21 @@ export default function Home() {
   const [searchPlaceholderIndex, setSearchPlaceholderIndex] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(CUSTOMER_AUTH_STORAGE_KEY);
+      if (saved) setCustomerAuth(JSON.parse(saved) as CustomerAuthSession);
+    } catch {
+      window.localStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
+    } finally {
+      setCustomerAuthReady(true);
+    }
+  }, []);
+  const completeCustomerAuth = (session: CustomerAuthSession) => {
+    if (session.mode === "customer" && session.remember) window.localStorage.setItem(CUSTOMER_AUTH_STORAGE_KEY, JSON.stringify(session));
+    else window.localStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
+    setCustomerAuth(session);
+  };
   const pullStartY = useRef<number | null>(null);
   const searchPlaceholders = ["ابحث عن شاورما...", "ابحث عن مواد غذائية...", "ابحث عن صيدلية...", "ابحث عن خدمة توصيل..."];
   const searchPlaceholder = searchPlaceholders[searchPlaceholderIndex];
@@ -742,6 +794,9 @@ export default function Home() {
     if (secretRole === "owner") adminLogin.mutate({ role: "owner", pin });
     else adminLogin.mutate({ role: "supervisor", username, password });
   };
+
+  if (!customerAuthReady) return <main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ تجهيز لحظتك...</span></main>;
+  if (!customerAuth) return <CustomerAuthScreen onAuthenticated={completeCustomerAuth} />;
 
   return (
     <main dir="rtl" className="lahza-app-shell min-h-screen text-slate-950" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
