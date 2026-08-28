@@ -1018,7 +1018,8 @@ header[class*="header-service-theme-"] .service-intro-basket img {
   height: 100% !important;
   border-radius: 0 !important;
   object-fit: cover !important;
-  object-position: center center !important;
+  object-position: center top !important;
+  clip-path: inset(0 0 6% 0);
   mix-blend-mode: multiply;
   filter: saturate(1.06) contrast(1.02);
 }
