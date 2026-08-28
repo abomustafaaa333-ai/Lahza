@@ -990,3 +990,13 @@ header[class*="header-service-theme-"] .service-intro-panel {
     line-height: 1.25;
   }
 }
+
+/* سلة التسوق المصورة داخل لوحة خدمات لحظة */
+header[class*="header-service-theme-"] .header-search-wrap { transform: translateY(.25cm); }
+header[class*="header-service-theme-"] .service-intro-basket { overflow: hidden; border-radius: 1.6rem; background: transparent; box-shadow: 0 1rem 1.8rem -1rem rgba(0,0,0,.34); }
+header[class*="header-service-theme-"] .service-intro-basket img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+header[class*="header-service-theme-"] .service-intro-basket svg { display: none; }
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .header-search-wrap { transform: translateY(.25cm); }
+  header[class*="header-service-theme-"] .service-intro-basket { border-radius: 1.15rem; }
+}
