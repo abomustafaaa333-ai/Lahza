@@ -928,3 +928,16 @@ header[class*="header-service-theme-"] .header-search-button svg { width: 2.65re
   header[class*="header-service-theme-"] .header-search-button { min-height: 3.25rem; padding-inline: .55rem 1rem; font-size: .78rem; }
   header[class*="header-service-theme-"] .header-search-button svg { width: 2.15rem; height: 2.15rem; }
 }
+
+/* سلة الفيكتور داخل لوحة الخدمات، مع استرجاع سلة الرأس السابقة */
+header[class*="header-service-theme-"] .header-cart-button { border: 0; border-radius: 1.35rem; padding: .9rem 1.15rem; color: #fff; background: linear-gradient(135deg, #ff742d, #ff4d18); box-shadow: 0 .8rem 1.4rem -1rem rgba(255,91,25,.9); }
+header[class*="header-service-theme-"] .header-cart-button svg { color: #fff; }
+header[class*="header-service-theme-"] .service-intro-panel { position: relative; overflow: hidden; }
+header[class*="header-service-theme-"] .service-intro-basket { order: -1; display: grid; place-items: center; width: 5.2rem; height: 5.2rem; border-radius: 1.6rem; color: #63301b; background: #fff; box-shadow: 0 1rem 1.8rem -1rem rgba(0,0,0,.34); }
+header[class*="header-service-theme-"] .service-intro-basket svg { width: 3rem; height: 3rem; stroke-width: 1.8; }
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .header-cart-button { border-radius: 1.05rem; padding: .62rem .82rem; color: #fff; background: linear-gradient(135deg, #ff742d, #ff4d18); }
+  header[class*="header-service-theme-"] .header-cart-button svg { color: #fff; }
+  header[class*="header-service-theme-"] .service-intro-basket { width: 3.9rem; height: 3.9rem; border-radius: 1.15rem; }
+  header[class*="header-service-theme-"] .service-intro-basket svg { width: 2.25rem; height: 2.25rem; }
+}
