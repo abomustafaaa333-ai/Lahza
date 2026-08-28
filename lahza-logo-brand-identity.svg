@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200" role="img" aria-labelledby="title desc">
+  <title id="title">شعار لحظة</title>
+  <desc id="desc">رمز حركة وتوصيل بألوان فيروزية وبرتقالية مع كلمة لحظة وعبارة خدمات توصيل منبج وريفها</desc>
+  <defs>
+    <linearGradient id="teal" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0A777D"/><stop offset="1" stop-color="#043B40"/></linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A45"/><stop offset="1" stop-color="#FF4D18"/></linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#043B40" flood-opacity=".18"/></filter>
+  </defs>
+  <g transform="translate(600 365)" filter="url(#softShadow)">
+    <circle r="250" fill="none" stroke="url(#teal)" stroke-width="42" stroke-linecap="round" stroke-dasharray="1030 550" transform="rotate(-42)"/>
+    <path d="M-250 70 C-170 155 -56 194 58 170 C126 156 184 120 231 68" fill="none" stroke="#19AAB0" stroke-width="28" stroke-linecap="round" opacity=".9"/>
+    <path d="M-116 78 L-30 -125 L-2 -28 L132 -73 L33 119 L6 21 Z" fill="url(#orange)" stroke="#FFB16B" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M-170 120 C-118 95 -67 91 -18 108" fill="none" stroke="#FF742D" stroke-width="23" stroke-linecap="round"/>
+    <path d="M-186 167 C-125 140 -67 141 -15 157" fill="none" stroke="#FF742D" stroke-width="18" stroke-linecap="round" opacity=".8"/>
+    <rect x="-82" y="78" width="145" height="96" rx="18" fill="#FF742D" transform="rotate(-8)"/>
+    <path d="M-54 77 Q-9 28 37 77" fill="none" stroke="#FFD5A8" stroke-width="14" stroke-linecap="round"/>
+    <circle cx="196" cy="-40" r="18" fill="#FF742D"/><circle cx="-215" cy="-65" r="12" fill="#FFB16B"/>
+  </g>
+  <text x="600" y="790" direction="rtl" text-anchor="middle" font-family="Noto Sans Arabic, Arial, sans-serif" font-size="190" font-weight="900" fill="url(#teal)" letter-spacing="-8">لحظة</text>
+  <path d="M350 835 H850" stroke="#FF742D" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="325" cy="835" r="9" fill="#FF742D"/><circle cx="875" cy="835" r="9" fill="#FF742D"/>
+  <text x="600" y="910" direction="rtl" text-anchor="middle" font-family="Noto Sans Arabic, Arial, sans-serif" font-size="42" font-weight="700" fill="#075C63">خدمات توصيل منبج وريفها</text>
+</svg>
