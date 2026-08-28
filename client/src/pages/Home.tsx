@@ -199,7 +199,7 @@ function Header({ onSearch, onExplore, searchPlaceholder }: { onSearch: () => vo
   return (
     <header className={`relative z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme}`}>
       <div className="app-shell header-top-row flex h-[76px] items-center justify-end gap-3">
-        <button className="current-location-button" onClick={() => window.open(lahzaCustomerServiceWhatsAppUrl, "_blank", "noopener,noreferrer")} title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><span className="current-location-label" aria-label="خدمة الزبائن"><MessageCircle className="h-5 w-5" /><span>خدمة الزبائن</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></button>
+        <a className="current-location-button" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><span className="current-location-label" aria-label="خدمة الزبائن"><MessageCircle className="h-5 w-5" /><span>خدمة الزبائن</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></a>
       </div>
       <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span><Search className="h-5 w-5" /></button></div><ServiceIntroCarousel onActiveChange={setServiceTheme} onExplore={onExplore} />
     </header>
