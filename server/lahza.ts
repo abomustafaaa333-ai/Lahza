@@ -20,6 +20,8 @@ import type { TrpcContext } from "./_core/context";
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
+const DEMO_CUSTOMER_PHONE = "+963997311078";
+const DEMO_CUSTOMER_NAME = "عميل لحظة التجريبي";
 const DEFAULT_MASTER_PIN = "555369";
 const LEGACY_DEFAULT_MASTER_PIN = "5555";
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
@@ -129,6 +131,8 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
 
 async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`customer_accounts\` (\`id\` INT NOT NULL AUTO_INCREMENT, \`phone\` VARCHAR(24) NOT NULL, \`name\` VARCHAR(80) NOT NULL, \`status\` VARCHAR(20) NOT NULL DEFAULT 'pending', \`verifiedAt\` TIMESTAMP NULL DEFAULT NULL, \`verifiedBy\` VARCHAR(80) NULL DEFAULT NULL, \`rejectionReason\` VARCHAR(300) NULL DEFAULT NULL, \`lastOrderId\` INT NULL DEFAULT NULL, \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, \`updatedAt\` TIMESTAMP NULL DEFAULT NULL, PRIMARY KEY (\`id\`), UNIQUE KEY \`customer_accounts_phone_unique\` (\`phone\`))`));
+  const demo = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, DEMO_CUSTOMER_PHONE)).limit(1))[0];
+  if (!demo) await db.insert(customerAccounts).values({ phone: DEMO_CUSTOMER_PHONE, name: DEMO_CUSTOMER_NAME, status: "approved", verifiedAt: new Date(), verifiedBy: "بيئة التطوير" });
 }
 
 async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
@@ -719,9 +723,26 @@ export const lahzaRouter = router({
       await requireAdmin(ctx, ["owner"]);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerAccountsTable(db);
       const activeSince = new Date(Date.now() - 2 * 60 * 1000);
       const activeRows = await db.select({ deviceId: customerPresence.deviceId }).from(customerPresence).where(gt(customerPresence.lastSeen, activeSince));
-      return { activeVisitors: activeRows.length };
+      const accounts = await db.select().from(customerAccounts).orderBy(desc(customerAccounts.createdAt));
+      const phones = accounts.map(account => account.phone);
+      const pointsRows = phones.length ? await db.select({ customerPhone: customerPoints.customerPhone, balance: customerPoints.balance, lifetimeEarned: customerPoints.lifetimeEarned }).from(customerPoints).where(inArray(customerPoints.customerPhone, phones)) : [];
+      const pointsByPhone = new Map(pointsRows.map(row => [row.customerPhone, { balance: row.balance, lifetimeEarned: row.lifetimeEarned }]));
+      const orderRows = phones.length ? await db.select({ customerPhone: orders.customerPhone }).from(orders).where(inArray(orders.customerPhone, phones)) : [];
+      const intercityOrderRows = phones.length ? await db.select({ customerPhone: intercityOrders.customerPhone }).from(intercityOrders).where(inArray(intercityOrders.customerPhone, phones)) : [];
+      const orderCountByPhone = new Map<string, number>();
+      for (const row of [...orderRows, ...intercityOrderRows]) orderCountByPhone.set(row.customerPhone, (orderCountByPhone.get(row.customerPhone) ?? 0) + 1);
+      return {
+        activeVisitors: activeRows.length,
+        accounts: accounts.map(account => ({
+          ...account,
+          orderCount: orderCountByPhone.get(account.phone) ?? 0,
+          points: pointsByPhone.get(account.phone)?.balance ?? 0,
+          pointsEarned: pointsByPhone.get(account.phone)?.lifetimeEarned ?? 0,
+        })),
+      };
     }),
   }),
   missingProducts: router({

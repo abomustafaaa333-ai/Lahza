@@ -160,6 +160,10 @@ function SupportContactsDialog({ open, onOpenChange, contacts }: { open: boolean
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl border-0 bg-white p-5 shadow-2xl"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-[#4a2618]"><Phone className="h-5 w-5 text-[#ff8438]" /> تواصل معنا</DialogTitle><DialogDescription className="text-right">اختر الطريقة المناسبة، وسيصل اتصالك مباشرة إلى فريق لحظة.</DialogDescription></DialogHeader><div className="mt-3 space-y-3">{contacts.length ? contacts.map(contact => <article key={contact.id} className="rounded-2xl border border-rose-100 bg-[#ffffff] p-4"><strong className="block text-sm text-[#4a2618]">{contact.label}</strong><span dir="ltr" className="mt-1 block text-xs font-bold text-slate-500">{contact.phone}</span><div className="mt-3 flex flex-wrap gap-2">{contact.callEnabled ? <a href={`tel:${contact.phone}`} className="inline-flex items-center gap-2 rounded-xl bg-[#63301b] px-3 py-2 text-xs font-black text-white transition hover:bg-[#4a2618]"><Phone className="h-4 w-4" /> اتصال</a> : null}{contact.whatsappEnabled ? <a href={supportWhatsAppUrl(contact.phone)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-black text-white transition hover:bg-emerald-700"><MessageCircle className="h-4 w-4" /> واتساب</a> : null}</div></article>) : <div className="rounded-2xl border border-dashed border-rose-200 bg-rose-50 p-4 text-center text-sm font-bold leading-7 text-[#63301b]">لا توجد أرقام تواصل منشورة حالياً. سيضيفها مدير لحظة من لوحة التحكم قريباً.</div>}</div></DialogContent></Dialog>;
 }
 
+function CustomerAuthRequiredDialog({ open, onContinue, onCancel }: { open: boolean; onContinue: () => void; onCancel: () => void }) {
+  return <Dialog open={open} onOpenChange={value => !value && onCancel()}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-[#173d3f]"><ShoppingBasket className="h-5 w-5 text-[#ff6b2b]" /> سجّل الآن لإضافة المنتجات</DialogTitle><DialogDescription className="text-right leading-7">يمكنك التصفح كزائر، لكن إضافة المنتجات إلى السلة وإرسال الطلبات متاحة للعملاء المسجلين فقط.</DialogDescription></DialogHeader><div className="mt-4 grid gap-2"><Button type="button" onClick={onContinue} className="w-full rounded-2xl bg-[#ff6b2b] py-6 font-black text-white hover:bg-[#f4511e]">سجّل الآن <ChevronLeft className="h-5 w-5" /></Button><Button type="button" variant="outline" onClick={onCancel} className="w-full rounded-2xl py-6 font-black text-[#00666b]">متابعة التصفح</Button></div></DialogContent></Dialog>;
+}
+
 function AboutLahzaDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl border-0 bg-white p-5 shadow-2xl"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-[#4a2618]"><CircleHelp className="h-5 w-5 text-[#ff8438]" /> حول التطبيق</DialogTitle><DialogDescription className="text-right">لحظة — خدمات توصيل منبج.</DialogDescription></DialogHeader><div className="mt-3 rounded-2xl bg-[#ffffff] p-4 text-sm leading-8 text-slate-600"><strong className="block text-base text-[#63301b]">كل ما تحتاجه في لحظة</strong><p className="mt-2">يساعدك تطبيق لحظة على استكشاف المتاجر المحلية وطلب المنتجات، مع متابعة حالة الطلب والتواصل السهل مع فريق الخدمة عند الحاجة.</p><p className="mt-2">تغطي الخدمة حالياً مدينة منبج، ويجري تطوير المزيد من الخدمات تدريجياً.</p></div></DialogContent></Dialog>;
 }
@@ -308,6 +312,7 @@ export default function Home() {
   const [destination, setDestination] = useState("");
   const [submittedOrder, setSubmittedOrder] = useState<SubmittedOrder | null>(null);
   const [missingProductOpen, setMissingProductOpen] = useState(false);
+  const [customerAuthRequiredOpen, setCustomerAuthRequiredOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchPlaceholderIndex, setSearchPlaceholderIndex] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
@@ -539,6 +544,10 @@ export default function Home() {
   const nativeApp = isNativeLahzaApp();
 
   const addLine = (line: Omit<CartLine, "id">, returnTo: Screen = "store") => {
+    if (customerAuth?.mode !== "customer") {
+      setCustomerAuthRequiredOpen(true);
+      return;
+    }
     setDiscountPreview(null);
     setReferralPreview(null);
     setCart(current => [...current, { ...line, id: `${Date.now()}-${Math.random()}` }]);
@@ -627,6 +636,10 @@ export default function Home() {
     setScreen("checkout");
   };
   const openCart = () => {
+    if (customerAuth?.mode !== "customer") {
+      setCustomerAuthRequiredOpen(true);
+      return;
+    }
     setCheckoutMode("delivery");
     setCheckoutStep(1);
     setScreen("checkout");
@@ -810,6 +823,7 @@ export default function Home() {
       <Dialog open={searchOpen} onOpenChange={open => { setSearchOpen(open); if (!open) setSearchText(""); }}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-[#4a2618]"><Search className="h-5 w-5 text-red-600" /> البحث عن منتج</DialogTitle><DialogDescription className="text-right">اكتب اسم المنتج أو المتجر، وستظهر لك الأسعار وحالة التوفر.</DialogDescription></DialogHeader><div className="mt-3"><Label htmlFor="product-search">اسم المنتج أو المتجر</Label><Input id="product-search" autoFocus value={searchText} onChange={event => setSearchText(event.target.value)} placeholder="مثال: فروج، عدس، حلويات..." className="mt-2 h-12 border-slate-200 bg-white text-base shadow-sm" /></div><div className="mt-4 max-h-[52vh] space-y-2 overflow-y-auto pr-1">{normalizedSearchText.length < 2 ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">اكتب حرفين على الأقل لبدء البحث.</div> : productSearchQuery.isLoading ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">جارٍ البحث عن المنتجات...</div> : productSearchQuery.data?.length ? productSearchQuery.data.map(result => <button key={result.id} type="button" onClick={() => openSearchResult(result as ProductSearchResult)} className="w-full rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition hover:border-rose-200 hover:bg-rose-50 active:scale-[0.99]"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate text-base text-[#4a2618]">{result.name}</strong><small className="mt-1 block truncate text-xs font-bold text-slate-500">من متجر: {result.storeName}</small></span><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${result.available ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{result.available ? "متاح" : "غير متاح"}</span></span><span className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><strong className="text-red-600">{result.price > 0 ? `سعر تقديري: ${formatNewSyp(result.price)}` : "السعر عند التأكيد"}</strong><small className={result.storeOpen ? "text-slate-500" : "font-bold text-amber-700"}>{result.storeOpen ? "فتح صفحة المتجر" : "المتجر مغلق حالياً"}</small></span></button>) : <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">لم نجد منتجات أو متاجر مطابقة. يمكنك استخدام «لم تجد ما تريد؟» لطلب المنتج من الإدارة.</div>}</div></DialogContent></Dialog>
       <SupportContactsDialog open={supportOpen} onOpenChange={setSupportOpen} contacts={supportContacts} />
       <AboutLahzaDialog open={aboutOpen} onOpenChange={setAboutOpen} />
+      <CustomerAuthRequiredDialog open={customerAuthRequiredOpen} onContinue={() => { setCustomerAuthRequiredOpen(false); setCustomerAuth(null); }} onCancel={() => setCustomerAuthRequiredOpen(false)} />
       
 
       <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className={`screen-transition ${screen === "home" ? "screen-transition-home" : "screen-transition-internal"}`}>
