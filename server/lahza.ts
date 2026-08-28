@@ -1397,6 +1397,29 @@ export const lahzaRouter = router({
       return { success: true };
     }),
   }),
+  publicFeaturedOffers: publicProcedure.query(async () => {
+    const db = await getDb();
+    if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+    await cleanExpiredOffers();
+    const now = new Date();
+    const rows = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)))).orderBy(desc(partnerOffers.createdAt));
+    const [storeRows, partnerRows, productRows] = await Promise.all([
+      db.select({ id: stores.id, name: stores.name, category: stores.category }).from(stores),
+      db.select({ id: partners.id, name: partners.name }).from(partners),
+      db.select({ id: catalogItems.id, name: catalogItems.name, available: catalogItems.available, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl, storeId: catalogItems.storeId, category: catalogItems.category }).from(catalogItems).where(eq(catalogItems.deleted, false)),
+    ]);
+    const storeById = new Map(storeRows.map(store => [store.id, store]));
+    const partnerById = new Map(partnerRows.map(partner => [partner.id, partner.name]));
+    const productById = new Map(productRows.map(product => [product.id, product]));
+    const ratings = await getStoreRatingMap(db);
+    return rows.map(offer => {
+      const product = offer.catalogItemId ? productById.get(offer.catalogItemId) ?? null : null;
+      const resolvedStoreId = offer.storeId ?? product?.storeId ?? null;
+      const store = resolvedStoreId ? storeById.get(resolvedStoreId) : undefined;
+      const rating = resolvedStoreId ? ratings.get(resolvedStoreId) ?? { completedOrders: 0, ratingStars: 3 } : { completedOrders: 0, ratingStars: 3 };
+      return { ...offer, storeId: resolvedStoreId, storeName: store?.name ?? "متجر مميز", storeCategory: store?.category ?? product?.category ?? "other", partnerName: partnerById.get(offer.partnerId) ?? "شريك لحظة", ratingStars: rating.ratingStars, completedOrders: rating.completedOrders, product };
+    });
+  }),
   admin: router({
     discountCodes: router({
       list: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); return db.select().from(discountCodes).orderBy(desc(discountCodes.createdAt)); }),
