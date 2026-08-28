@@ -950,3 +950,22 @@ header[class*="header-service-theme-"] .header-top-row .header-cart-button {
   box-shadow: 0 .8rem 1.4rem -1rem rgba(255,91,25,.9) !important;
 }
 header[class*="header-service-theme-"] .header-top-row .header-cart-button svg { color: #fff !important; }
+
+/* واجهة المعاينة الأولى كصورة كاملة مع مناطق تفاعل غير مرئية */
+.preview-home-replica { position: relative; width: 100%; max-width: 540px; margin: 0 auto; overflow: hidden; background: #fff; line-height: 0; }
+.preview-home-replica > img { display: block; width: 100%; height: auto; user-select: none; }
+.preview-hotspot { position: absolute; z-index: 2; display: block; border: 0; background: transparent; cursor: pointer; }
+.preview-hotspot-cart { top: 1.8%; left: 3%; width: 22%; height: 5.2%; }
+.preview-hotspot-location { top: 1.8%; right: 4%; width: 31%; height: 5.2%; }
+.preview-hotspot-search { top: 6.8%; left: 4%; width: 92%; height: 7.5%; }
+.preview-hotspot-categories { top: 21%; left: 3%; width: 94%; height: 14%; }
+.preview-hotspot-offer { top: 35%; left: 3%; width: 94%; height: 16%; }
+.preview-hotspot-stores { top: 52%; left: 3%; width: 94%; height: 17%; }
+.preview-hotspot-nav-home { bottom: 0; right: 0; width: 25%; height: 5.8%; }
+.preview-hotspot-nav-stores { bottom: 0; right: 25%; width: 25%; height: 5.8%; }
+.preview-hotspot-nav-offers { bottom: 0; left: 25%; width: 25%; height: 5.8%; }
+.preview-hotspot-nav-orders { bottom: 0; left: 0; width: 25%; height: 5.8%; }
+.screen-transition-home:has(.preview-home-replica) + .home-bottom-nav { display: none; }
+@media (max-width: 600px) {
+  .preview-home-replica { max-width: none; width: 100%; }
+}
