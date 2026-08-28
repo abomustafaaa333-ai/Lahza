@@ -1136,3 +1136,33 @@ header[class*="header-service-theme-"] .current-location-button:hover {
   .home-offer-gallery .hero-offer-caption,
   .global-offer-bar .hero-offer-caption { width: 60%; padding: .78rem .68rem; }
 }
+
+/* Home category "All" card: larger four-item visual grid. */
+.home-category-row > .home-category-all .home-category-mini-grid {
+  width: 3.55rem;
+  height: 3.55rem;
+  gap: .18rem;
+  padding: .25rem;
+}
+.home-category-row > .home-category-all .home-category-mini-grid > span {
+  width: 1.28rem;
+  height: 1.28rem;
+  border-radius: .55rem;
+}
+.home-category-row > .home-category-all .home-category-mini-grid > span img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+@media (max-width: 420px) {
+  .home-category-row > .home-category-all .home-category-mini-grid {
+    width: 3.2rem;
+    height: 3.2rem;
+    gap: .16rem;
+    padding: .22rem;
+  }
+  .home-category-row > .home-category-all .home-category-mini-grid > span {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+}
