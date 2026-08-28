@@ -941,3 +941,12 @@ header[class*="header-service-theme-"] .service-intro-basket svg { width: 3rem; 
   header[class*="header-service-theme-"] .service-intro-basket { width: 3.9rem; height: 3.9rem; border-radius: 1.15rem; }
   header[class*="header-service-theme-"] .service-intro-basket svg { width: 2.25rem; height: 2.25rem; }
 }
+
+/* تأكيد نهائي: سلة الرأس مستقلة عن سلة لوحة الخدمات */
+header[class*="header-service-theme-"] .header-top-row .header-cart-button {
+  border: 0 !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, #ff742d, #ff4d18) !important;
+  box-shadow: 0 .8rem 1.4rem -1rem rgba(255,91,25,.9) !important;
+}
+header[class*="header-service-theme-"] .header-top-row .header-cart-button svg { color: #fff !important; }
