@@ -832,3 +832,26 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 8.4rem
   .home-offer-gallery .hero-image-frame { min-height: 10.4rem; }
   .home-featured-row > * { min-width: 9.7rem; }
 }
+
+/* المعاينة الأولى — تطبيق بصري مباشر على رأس لحظة */
+header[class*="header-service-theme-"] { overflow: hidden; border-bottom: 0; background: radial-gradient(circle at 78% 28%, rgba(255,116,45,.28), transparent 25%), linear-gradient(135deg, #043b40 0%, #075c63 52%, #0b8b91 100%); box-shadow: 0 1.3rem 2.8rem -1.8rem rgba(1,52,57,.8); }
+header[class*="header-service-theme-"] .header-inner { min-height: 5.4rem; padding-top: .45rem; }
+header[class*="header-service-theme-"] .current-location-button { border: 1px solid rgba(255,255,255,.18); border-radius: 999px; padding: .75rem 1rem; color: #fff; background: rgba(0,35,39,.18); }
+header[class*="header-service-theme-"] .current-location-label { color: #fff; }
+header[class*="header-service-theme-"] .header-cart-button { border: 0; border-radius: 1.35rem; padding: .9rem 1.15rem; color: #fff; background: linear-gradient(135deg, #ff742d, #ff4d18); box-shadow: 0 .8rem 1.4rem -1rem rgba(255,91,25,.9); }
+header[class*="header-service-theme-"] .header-search-wrap { margin-top: .8rem; }
+header[class*="header-service-theme-"] .header-search-button { min-height: 3.75rem; border: 0; color: #6b625e; background: #fff; box-shadow: 0 .9rem 1.5rem -1rem rgba(0,35,39,.65); }
+header[class*="header-service-theme-"] .header-search-button svg { background: #ff5a1f; color: #fff; }
+header[class*="header-service-theme-"] .service-intro-panel { min-height: 14.5rem; width: 100%; margin-top: .65rem; border: 0; border-radius: 0; padding: 2rem max(1.1rem, calc((100% - 760px) / 2 + 1.1rem)) 1.8rem; background: radial-gradient(circle at 78% 44%, rgba(255,116,45,.34), transparent 25%), linear-gradient(135deg, #043b40, #075c63 58%, #0a777d); box-shadow: none; }
+header[class*="header-service-theme-"] .service-intro-copy { max-width: 24rem; gap: .35rem; }
+header[class*="header-service-theme-"] .service-intro-kicker { color: #ffb17d; font-size: .78rem; }
+header[class*="header-service-theme-"] .service-intro-copy strong { font-size: clamp(1.45rem, 6vw, 2.05rem); line-height: 1.3; }
+header[class*="header-service-theme-"] .service-intro-copy small { color: rgba(255,255,255,.82); font-size: .82rem; }
+header[class*="header-service-theme-"] .service-intro-icon { width: 5.2rem; height: 5.2rem; border: 0; border-radius: 1.6rem; color: #63301b; background: #fff; box-shadow: 0 1rem 1.8rem -1rem rgba(0,0,0,.34); }
+header[class*="header-service-theme-"] .service-intro-dots { bottom: 1rem; }
+header[class*="header-service-theme-"] .service-intro-dots button { background: rgba(255,255,255,.55); }
+@media (max-width: 420px) {
+  header[class*="header-service-theme-"] .header-inner { min-height: 4.9rem; }
+  header[class*="header-service-theme-"] .service-intro-panel { min-height: 12.6rem; padding-top: 1.55rem; }
+  header[class*="header-service-theme-"] .service-intro-copy strong { font-size: 1.3rem; }
+}
