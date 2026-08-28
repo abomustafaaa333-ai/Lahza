@@ -1026,6 +1026,26 @@ export const lahzaRouter = router({
       const found = (await db.select({ status: customerAccounts.status, name: customerAccounts.name }).from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
       return found ?? { status: "new" as const, name: "" };
     }),
+    updatePhone: publicProcedure.input(z.object({ currentPhone: z.string().regex(/^\+9639\d{8}$/), newPhone: z.string().regex(/^\+9639\d{8}$/) })).mutation(async ({ input }) => {
+      if (input.currentPhone === input.newPhone) return { success: true };
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerAccountsTable(db);
+      const current = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, input.currentPhone)).limit(1))[0];
+      if (!current) throw new Error("الحساب الحالي غير موجود");
+      const duplicate = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, input.newPhone)).limit(1))[0];
+      if (duplicate) throw new Error("رقم الهاتف الجديد مرتبط بحساب آخر");
+      const existingPoints = (await db.select({ id: customerPoints.id }).from(customerPoints).where(eq(customerPoints.customerPhone, input.newPhone)).limit(1))[0];
+      if (existingPoints) throw new Error("رقم الهاتف الجديد مرتبط برصيد نقاط، اختر رقمًا آخر");
+      await db.update(customerAccounts).set({ phone: input.newPhone }).where(eq(customerAccounts.id, current.id));
+      await db.update(customerPoints).set({ customerPhone: input.newPhone }).where(eq(customerPoints.customerPhone, input.currentPhone));
+      await db.update(pointTransactions).set({ customerPhone: input.newPhone }).where(eq(pointTransactions.customerPhone, input.currentPhone));
+      await db.update(customerReferrals).set({ ownerPhone: input.newPhone }).where(eq(customerReferrals.ownerPhone, input.currentPhone));
+      await db.update(customerReferrals).set({ referredPhone: input.newPhone }).where(eq(customerReferrals.referredPhone, input.currentPhone));
+      await db.update(orders).set({ customerPhone: input.newPhone }).where(eq(orders.customerPhone, input.currentPhone));
+      await db.update(intercityOrders).set({ customerPhone: input.newPhone }).where(eq(intercityOrders.customerPhone, input.currentPhone));
+      return { success: true };
+    }),
     list: publicProcedure.query(async ({ ctx }) => {
       await requireAdmin(ctx);
       const db = await getDb();

@@ -18,7 +18,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
-type Screen = "home" | "delivery" | "stores" | "store" | "productQuantity" | "storeOffers" | "offerQuantity" | "taxi" | "intercity" | "offers" | "checkout" | "orderTracking";
+type Screen = "home" | "delivery" | "stores" | "store" | "productQuantity" | "storeOffers" | "offerQuantity" | "taxi" | "intercity" | "offers" | "checkout" | "orderTracking" | "account";
 type PromotionPreview = { code: string; kind: "discount" | "referral"; percent: number; discountAmount: number; itemsTotal: number };
 type SubmittedOrder = { id: number; customerPhone: string; orderType: "delivery" | "taxi"; customerName: string; status: "pending" | "confirmed" | "preparing" | "on_the_way" | "completed" | "cancelled" | "rejected"; totalAmount: number; deliveryFee: number; deliveryAddress: string; paymentMethod: "cash" | "sham_cash"; eta: string; lines: CartLine[]; notes: string };
 
@@ -190,7 +190,11 @@ function ServiceIntroCarousel({ onActiveChange, onExplore }: { onActiveChange: (
   return <section className="service-intro-panel" aria-label="خدمات لحظة"><div className="service-intro-copy"><span className="service-intro-kicker">خدمات لحظة</span><span className="service-intro-tagline">منبج بين يديك</span><strong>{slide.title}</strong><small>{slide.detail}</small><button type="button" className="service-intro-cta" onClick={onExplore}>استكشف الآن <ChevronLeft className="h-4 w-4" /></button></div><div className="service-intro-offer-mark" aria-label="أقوى العروض لدى لحظة"><span className="service-intro-offer-mark-icon"><BadgePercent className="h-5 w-5" /></span><strong>أقوى العروض</strong><b>لدى لحظة</b></div><div className="service-intro-dots">{slides.map((item, index) => <button key={item.title} type="button" className={index === active ? "service-intro-dot-active" : ""} onClick={() => changeActive(index)} aria-label={`الشريحة ${index + 1}`} />)}</div></section>;
 }
 
-function Header({ onSecret, onCart, onSearch, onExplore, cartCount, searchPlaceholder }: { onSecret: () => void; onCart: () => void; onSearch: () => void; onExplore: () => void; cartCount: number; searchPlaceholder: string }) {
+function PersistentCartButton({ onCart, cartCount }: { onCart: () => void; cartCount: number }) {
+  return <button type="button" className="persistent-cart-button" onClick={onCart} aria-label={`فتح السلة${cartCount ? `، ${cartCount} عناصر` : ""}`}><ShoppingBasket className="h-5 w-5" /><span>السلة</span>{cartCount > 0 ? <b>{cartCount}</b> : null}</button>;
+}
+
+function Header({ onSecret, onSearch, onExplore, searchPlaceholder }: { onSecret: () => void; onSearch: () => void; onExplore: () => void; searchPlaceholder: string }) {
   const [serviceTheme, setServiceTheme] = useState(0);
   const lastBrandTap = useRef(0);
   const handleBrandTap = () => {
@@ -207,7 +211,6 @@ function Header({ onSecret, onCart, onSearch, onExplore, cartCount, searchPlaceh
       <div className="app-shell header-top-row flex h-[76px] items-center justify-end gap-3">
         <button type="button" className="header-brand-button" onClick={handleBrandTap} title="انقر مرتين لفتح بوابة الإدارة" aria-label="شعار لحظة"><img src="/assets/lahza-icon.svg" alt="" /><span>لحظة</span></button>
         <button className="current-location-button" onClick={() => window.open(lahzaCustomerServiceWhatsAppUrl, "_blank", "noopener,noreferrer")} title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><span className="current-location-label" aria-label="خدمة الزبائن"><MessageCircle className="h-5 w-5" /><span>خدمة الزبائن</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></button>
-        <button className="header-cart-button" onClick={onCart} aria-label="فتح سلة التسوق"><ShoppingBasket className="h-5 w-5" /><span>السلة</span>{cartCount > 0 ? <b className="cart-count">{cartCount}</b> : null}</button>
       </div>
       <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span><Search className="h-5 w-5" /></button></div><ServiceIntroCarousel onActiveChange={setServiceTheme} onExplore={onExplore} />
     </header>
@@ -411,6 +414,7 @@ export default function Home() {
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
   const pointsQuery = trpc.lahza.customers.points.balance.useQuery({ phone: `+963${checkoutPhone}` }, { enabled: !isStaticDemo && /^9\d{8}$/.test(checkoutPhone), retry: false });
+  const updateCustomerPhone = trpc.lahza.customerAccounts.updatePhone.useMutation({ onSuccess: (_result, variables) => { updateCustomerSessionPhone(variables.newPhone); toast.success("تم تحديث رقم هاتفك بنجاح"); }, onError: error => toast.error(error.message) });
   const createReferralCode = trpc.lahza.customers.referral.getOrCreate.useMutation({ onSuccess: result => { setMyReferralCode(result.code); void navigator.clipboard?.writeText(result.code); toast.success(`رمز إحالتك: ${result.code}`); }, onError: error => toast.error(error.message) });
   const createMissingProductRequest = trpc.lahza.missingProducts.create.useMutation({
     onSuccess: () => {
@@ -685,6 +689,21 @@ export default function Home() {
     }
     openCart();
   };
+  const openAccount = () => setScreen("account");
+  const logoutCustomer = () => {
+    window.localStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
+    setCustomerAuth(null);
+    setScreen("home");
+  };
+  const updateCustomerSessionPhone = (newPhone: string) => {
+    setCustomerAuth(previous => {
+      if (!previous) return previous;
+      const next = { ...previous, phone: newPhone };
+      if (next.mode === "customer" && next.remember) window.localStorage.setItem(CUSTOMER_AUTH_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    setCheckoutPhone(newPhone.replace("+963", ""));
+  };
 
   const openTaxiCheckout = () => {
     if (!pickup.trim() || !destination.trim()) {
@@ -849,7 +868,8 @@ export default function Home() {
   return (
     <main dir="rtl" className="lahza-app-shell min-h-screen text-slate-950" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       <div className={`pull-refresh-indicator ${pullDistance > 0 || refreshing ? "pull-refresh-indicator-visible" : ""}`} style={{ transform: `translate(-50%, ${refreshing ? 12 : Math.min(62, pullDistance * .72) - 44}px)` }} role="status" aria-live="polite"><span className={refreshing ? "pull-refresh-spinner" : ""}><ArrowLeft className="h-4 w-4 -rotate-90" /></span><small>{refreshing ? "جارٍ التحديث" : pullDistance >= 72 ? "اترك للتحديث" : "اسحب للتحديث"}</small></div>
-      {screen === "home" ? <Header onSecret={() => setSecretOpen(true)} onCart={openCart} onSearch={() => setSearchOpen(true)} onExplore={openFeaturedOffers} cartCount={cart.length} searchPlaceholder={searchPlaceholder} /> : null}
+      <PersistentCartButton onCart={openCart} cartCount={cart.length} />
+      {screen === "home" ? <Header onSecret={() => setSecretOpen(true)} onSearch={() => setSearchOpen(true)} onExplore={openFeaturedOffers} searchPlaceholder={searchPlaceholder} /> : null}
       {screen === "home" && !isStaticDemo && (notificationsQuery.data ?? []).some(notification => notification.unread) ? <section className="app-shell mt-3"><div className="rounded-3xl border border-orange-200 bg-gradient-to-l from-orange-50 via-white to-amber-50 p-4 shadow-[0_12px_30px_rgba(232,105,38,0.12)]"><div className="mb-3 flex items-center gap-2 text-[#63301b]"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#ff7a33] text-white"><BellRing className="h-4 w-4" /></span><div className="min-w-0 flex-1"><strong className="block text-sm font-black">تنبيهات لحظة</strong><small className="text-[11px] text-[#a9471b]">عروض وأخبار جديدة لك</small></div>{notificationPermission !== "granted" && "Notification" in window ? <button type="button" onClick={enableCustomerNotifications} className="rounded-xl bg-[#63301b] px-3 py-2 text-[11px] font-black text-white transition hover:bg-[#4a2618]">تفعيل</button> : null}</div><div className="space-y-2">{(notificationsQuery.data ?? []).filter(notification => notification.unread).slice(0, 3).map(notification => <button key={notification.id} type="button" onClick={() => { markNotificationRead.mutate({ deviceId, campaignId: notification.id }); if (notification.targetPath === "/offers") setScreen("offers"); }} className="w-full rounded-2xl border border-orange-100 bg-white/85 p-3 text-right transition hover:border-orange-300 hover:shadow-sm"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block text-sm text-[#4a2618]">{notification.title}</strong><small className="mt-1 block leading-5 text-slate-600">{notification.body}</small></span><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[#ff6b2d]" aria-label="إشعار جديد" /></span></button>)}</div></div></section> : null}
 
       <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <><DialogClose aria-label="إغلاق العرض" className="absolute right-4 top-4 z-10 grid h-12 w-12 place-items-center rounded-full border border-white/70 bg-slate-950/50 text-white shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-slate-950/70 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"><X className="h-7 w-7" strokeWidth={3} /><span className="sr-only">إغلاق العرض</span></DialogClose>{selectedGalleryOffer.imageUrl ? <img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /> : <div className="grid h-52 place-items-center bg-gradient-to-br from-red-600 to-orange-500 text-white"><BadgePercent className="h-14 w-14" /></div>}<div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-[#4a2618]">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={openFeaturedOffers} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
@@ -935,6 +955,7 @@ export default function Home() {
       {screen === "offerQuantity" && selectedOffer ? <OfferQuantityScreen offer={selectedOffer} onBack={() => setScreen(selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers")} onAdd={quantity => { void addFromStore(selectedOffer.storeId, () => { const category = selectedOffer.storeCategory && selectedOffer.storeCategory in categoryMeta ? selectedOffer.storeCategory as LahzaCategory : "offers"; addLine({ category, catalogItemId: selectedOffer.catalogItemId ?? undefined, itemName: selectedOffer.productName ?? selectedOffer.text, quantity, unit: selectedOffer.productUnit ?? "وحدة", unitPrice: selectedOffer.productPrice ?? 0, priceKnown: Boolean(selectedOffer.productPrice && selectedOffer.productPrice > 0) }, selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers"); }); }} /> : null}
 
       {screen === "orderTracking" && submittedOrder ? <OrderTrackingScreen order={orderTrackingQuery.data ? { id: orderTrackingQuery.data.id, customerPhone: orderTrackingQuery.data.customerPhone, orderType: orderTrackingQuery.data.orderType, customerName: orderTrackingQuery.data.customerName, status: orderTrackingQuery.data.status, totalAmount: orderTrackingQuery.data.totalAmount, deliveryFee: orderTrackingQuery.data.deliveryFee, deliveryAddress: orderTrackingQuery.data.locationText || submittedOrder.deliveryAddress, paymentMethod: orderTrackingQuery.data.paymentMethod, eta: submittedOrder.eta, lines: orderTrackingQuery.data.lines.map(line => ({ id: String(line.id), catalogItemId: line.catalogItemId ?? undefined, category: "groceries" as LahzaCategory, itemName: line.itemName, quantity: Number(line.quantity), unit: line.unit, unitPrice: line.unitPrice, priceKnown: line.priceKnown })), notes: orderTrackingQuery.data.notes || submittedOrder.notes } : submittedOrder} loading={orderTrackingQuery.isLoading} onHome={goHome} onOpenCart={openCart} /> : null}
+      {screen === "account" ? <CustomerAccountScreen session={customerAuth} onBack={goHome} onLogout={logoutCustomer} onPhoneSubmit={newPhone => { if (customerAuth?.mode === "customer" && customerAuth.phone) updateCustomerPhone.mutate({ currentPhone: customerAuth.phone, newPhone }); }} savingPhone={updateCustomerPhone.isPending} onOpenOrder={submittedOrder ? () => setScreen("orderTracking") : undefined} /> : null}
 
       {screen === "checkout" ? (
         <>
@@ -948,11 +969,51 @@ export default function Home() {
       ) : null}
 
       </div>
-      {screen !== "checkout" ? <nav className="home-bottom-nav" aria-label="التنقل الرئيسي"><button type="button" className={screen === "home" ? "home-bottom-nav-active" : ""} onClick={goHome}><LayoutDashboard className="h-5 w-5" /><span>الرئيسية</span></button><button type="button" className={screen === "delivery" || screen === "stores" || screen === "store" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("delivery")}><Store className="h-5 w-5" /><span>المتاجر</span></button><button type="button" className={screen === "offers" || screen === "storeOffers" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("offers")}><BadgePercent className="h-5 w-5" /><span>العروض</span></button><button type="button" className={screen === "taxi" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("taxi")} aria-label="طلب سيارة أجرة"><CarFront className="h-5 w-5" /><span className="home-bottom-nav-taxi-label">طلب سيارة أجرة</span></button><button type="button" className={screen === "orderTracking" ? "home-bottom-nav-active" : ""} onClick={openMyOrder} aria-label="فتح طلبي"><ClipboardList className="h-5 w-5" /><span>طلبي</span>{cart.length ? <b className="home-bottom-nav-count">{cart.length}</b> : null}</button></nav> : null}
+      {screen !== "checkout" ? <nav className="home-bottom-nav" aria-label="التنقل الرئيسي"><button type="button" className={screen === "home" ? "home-bottom-nav-active" : ""} onClick={goHome}><LayoutDashboard className="h-5 w-5" /><span>الرئيسية</span></button><button type="button" className={screen === "delivery" || screen === "stores" || screen === "store" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("delivery")}><Store className="h-5 w-5" /><span>المتاجر</span></button><button type="button" className={screen === "offers" || screen === "storeOffers" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("offers")}><BadgePercent className="h-5 w-5" /><span>العروض</span></button><button type="button" className={screen === "taxi" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("taxi")} aria-label="طلب سيارة أجرة"><CarFront className="h-5 w-5" /><span className="home-bottom-nav-taxi-label">طلب سيارة أجرة</span></button><button type="button" className={screen === "account" ? "home-bottom-nav-active" : ""} onClick={openAccount} aria-label="فتح حسابي"><UserRound className="h-5 w-5" /><span>حسابي</span></button></nav> : null}
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
       <Dialog open={secretOpen} onOpenChange={setSecretOpen}><DialogContent dir="rtl" className="w-[calc(100%-2rem)] max-w-sm rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><div className="admin-lock-icon">L</div><DialogTitle className="pt-2 text-center text-xl">اختر نوع الدخول</DialogTitle><DialogDescription className="text-center">اختر حسابك ثم أدخل بياناته في المكان الصحيح.</DialogDescription></DialogHeader><div className="mt-3 space-y-4"><div className="role-switch"><button onClick={() => setSecretRole("owner")} className={secretRole === "owner" ? "role-selected" : ""}>المالك</button><button onClick={() => setSecretRole("supervisor")} className={secretRole === "supervisor" ? "role-selected" : ""}>مشرف</button><button onClick={() => setSecretRole("partner")} className={secretRole === "partner" ? "role-selected" : ""}>شريك</button></div>{secretRole === "owner" ? <div><Label htmlFor="pin">رمز PIN للمالك</Label><Input id="pin" inputMode="numeric" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" /></div> : secretRole === "partner" ? <div><Label htmlFor="password">كلمة مرور الشريك</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && password) handleAdminLogin(); }} placeholder="كلمة المرور التي أعطاها لك المالك" /></div> : <><div><Label htmlFor="username">اسم المستخدم للمشرف</Label><Input id="username" dir="ltr" value={username} onChange={e => setUsername(e.target.value)} /></div><div><Label htmlFor="password">كلمة المرور للمشرف</Label><Input id="password" dir="ltr" type="password" value={password} onChange={e => setPassword(e.target.value)} /></div></>}<Button disabled={secretRole === "partner" ? partnerLogin.isPending || !password : !isStaticDemo && (adminLogin.isPending || (secretRole === "owner" ? !pin : !username.trim() || !password))} className="w-full rounded-xl bg-[#63301b] hover:bg-[#4a2618]" onClick={handleAdminLogin}>{secretRole === "partner" ? partnerLogin.isPending ? "جارٍ فتح حساب الشريك..." : "دخول الشريك" : !isStaticDemo && adminLogin.isPending ? "جارٍ التحقق..." : "دخول آمن"}</Button></div></DialogContent></Dialog>
     </main>
   );
+}
+
+function CustomerAccountScreen({ session, onBack, onLogout, onPhoneSubmit, savingPhone, onOpenOrder }: { session: CustomerAuthSession; onBack: () => void; onLogout: () => void; onPhoneSubmit: (phone: string) => void; savingPhone: boolean; onOpenOrder?: () => void }) {
+  const isGuest = session.mode === "guest";
+  const phone = session.phone ?? "";
+  const [phoneEditOpen, setPhoneEditOpen] = useState(false);
+  const [newPhone, setNewPhone] = useState("");
+  const [referralCode, setReferralCode] = useState("");
+  const pointsQuery = trpc.lahza.customers.points.balance.useQuery({ phone: phone || "+963900000000" }, { enabled: !isStaticDemo && !isGuest && /^\+9639\d{8}$/.test(phone), retry: false });
+  const createReferralCode = trpc.lahza.customers.referral.getOrCreate.useMutation({ onSuccess: result => { setReferralCode(result.code); void navigator.clipboard?.writeText(result.code); toast.success("تم إنشاء رمز الإحالة ونسخه"); }, onError: error => toast.error(error.message) });
+  useEffect(() => {
+    setNewPhone(phone.replace(/^\+963/, ""));
+  }, [phone]);
+  const points = isGuest ? 0 : (pointsQuery.data?.balance ?? 0);
+  const lifetimeEarned = isGuest ? 0 : (pointsQuery.data?.lifetimeEarned ?? 0);
+  const rewardTarget = 10;
+  const remainingForReward = Math.max(0, rewardTarget - points);
+  const rewardPercent = pointsQuery.data?.rewardPercent ?? 0;
+  const handleCreateReferral = () => {
+    if (isGuest) return;
+    if (isStaticDemo) {
+      const code = `LHZ-DEMO-${phone.slice(-4) || "0997"}`;
+      setReferralCode(code);
+      void navigator.clipboard?.writeText(code);
+      toast.success("تم إنشاء رمز الإحالة التجريبي ونسخه");
+      return;
+    }
+    if (/^\+9639\d{8}$/.test(phone)) createReferralCode.mutate({ phone });
+  };
+  const submitPhone = () => {
+    const normalized = newPhone.replace(/\D/g, "").replace(/^963/, "").replace(/^0/, "").slice(0, 9);
+    if (!/^9\d{8}$/.test(normalized)) {
+      toast.error("أدخل رقم هاتف سوري يبدأ بالرقم 9");
+      return;
+    }
+    onPhoneSubmit(`+963${normalized}`);
+    setPhoneEditOpen(false);
+  };
+  if (isGuest) return <section className="app-shell account-screen pb-12"><PageHeading eyebrow="حسابي" title="أنشئ حسابك في لحظة" detail="سجّل برقم هاتفك لتحتفظ ببياناتك وتجمع النقاط وتستخدم الإحالات." onBack={onBack} /><div className="account-guest-card"><div className="account-guest-icon"><UserRound className="h-7 w-7" /></div><h2>أنت تتصفح كزائر</h2><p>يمكنك متابعة التصفح، لكن النقاط والإحالات والطلبات تحتاج إلى حساب عميل مسجل.</p><button type="button" className="primary-full-button" onClick={onLogout}>تسجيل الدخول أو إنشاء حساب <ChevronLeft className="h-5 w-5" /></button></div></section>;
+  return <section className="app-shell account-screen pb-12"><PageHeading eyebrow="حسابي" title={`أهلاً ${session.name || "بك في لحظة"}`} detail="تابع بياناتك ونقاطك ومكافآتك من مكان واحد." onBack={onBack} /><div className="account-hero"><div className="account-avatar"><UserRound className="h-7 w-7" /></div><div className="min-w-0 flex-1"><strong>{session.name || "عميل لحظة"}</strong><span dir="ltr">{phone}</span></div><span className="account-status">حساب عميل</span></div><div className="account-stat-grid"><article><Sparkles className="h-5 w-5" /><strong>{points}</strong><span>نقاطك الحالية</span></article><article><CheckCircle2 className="h-5 w-5" /><strong>{lifetimeEarned}</strong><span>إجمالي النقاط المكتسبة</span></article><article><ShoppingBasket className="h-5 w-5" /><strong>{onOpenOrder ? "متاح" : "—"}</strong><span>آخر طلب</span></article></div><section className="account-card"><div className="account-card-heading"><div><p>مكافأة الحسم</p><h2>{remainingForReward ? `تبقى ${remainingForReward} نقاط` : "المكافأة متاحة لك"}</h2></div><BadgePercent className="h-6 w-6" /></div><div className="account-progress"><span style={{ width: `${Math.min(100, points / rewardTarget * 100)}%` }} /></div><div className="account-progress-labels"><span>{points} نقاط</span><span>{rewardTarget} نقاط للحصول على رمز الحسم</span></div>{rewardPercent > 0 ? <p className="account-card-note">يمكنك استخدام المكافأة للحصول على خصم {rewardPercent}% عند استيفاء الشروط.</p> : <p className="account-card-note">اجمع نقاطًا من الطلبات المكتملة والإحالات الناجحة لتحصل على مكافأة الحسم.</p>}</section><section className="account-card"><div className="account-card-heading"><div><p>رمز الإحالة</p><h2>{referralCode || "شارك لحظة مع أصدقائك"}</h2></div><Share2 className="h-6 w-6" /></div><p className="account-card-note">أنشئ رمزًا خاصًا بك وشاركه، وستحصل على نقاط عند اكتمال طلب الإحالة.</p><div className="account-card-actions"><button type="button" onClick={handleCreateReferral} disabled={createReferralCode.isPending} className="account-action-primary"><Share2 className="h-4 w-4" />{createReferralCode.isPending ? "جارٍ الإنشاء..." : referralCode ? "إنشاء ونسخ الرمز" : "إنشاء رمز الإحالة"}</button>{referralCode ? <button type="button" onClick={() => { void navigator.clipboard?.writeText(referralCode); toast.success("تم نسخ رمز الإحالة"); }} className="account-action-secondary">نسخ الرمز</button> : null}</div></section><section className="account-card"><div className="account-card-heading"><div><p>بيانات الحساب</p><h2>رقم الهاتف</h2></div><Phone className="h-6 w-6" /></div><div className="account-phone-row"><span dir="ltr">{phone}</span><button type="button" onClick={() => setPhoneEditOpen(open => !open)} className="account-edit-button"><Pencil className="h-4 w-4" /> تغيير الرقم</button></div>{phoneEditOpen ? <div className="account-phone-edit"><Input dir="ltr" inputMode="numeric" value={newPhone} onChange={event => setNewPhone(event.target.value.replace(/\D/g, "").replace(/^963/, "").replace(/^0/, "").slice(0, 9))} placeholder="9XXXXXXXX" /><button type="button" disabled={savingPhone} onClick={submitPhone} className="account-action-primary">{savingPhone ? "جارٍ الحفظ..." : "حفظ الرقم"}</button></div> : null}</section>{onOpenOrder ? <button type="button" onClick={onOpenOrder} className="account-order-button"><ClipboardList className="h-5 w-5" /> عرض آخر طلب وتتبع حالته <ChevronLeft className="h-5 w-5" /></button> : null}<button type="button" onClick={onLogout} className="account-logout-button"><LogOut className="h-5 w-5" /> تسجيل الخروج</button></section>;
 }
 
 function StoresScreen({ category, categoryTitle, stores, loading, restaurantFilter, onRestaurantFilterChange, onBack, onChoose }: { category: LahzaCategory; categoryTitle?: string; stores: StoreOption[]; loading: boolean; restaurantFilter: RestaurantType; onRestaurantFilterChange: (filter: RestaurantType) => void; onBack: () => void; onChoose: (store: StoreOption) => void }) {
