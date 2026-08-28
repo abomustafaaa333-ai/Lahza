@@ -192,10 +192,21 @@ function ServiceIntroCarousel({ onActiveChange, onExplore }: { onActiveChange: (
 
 function Header({ onSecret, onCart, onSearch, onExplore, cartCount, searchPlaceholder }: { onSecret: () => void; onCart: () => void; onSearch: () => void; onExplore: () => void; cartCount: number; searchPlaceholder: string }) {
   const [serviceTheme, setServiceTheme] = useState(0);
+  const lastBrandTap = useRef(0);
+  const handleBrandTap = () => {
+    const now = Date.now();
+    if (now - lastBrandTap.current < 520) {
+      lastBrandTap.current = 0;
+      onSecret();
+      return;
+    }
+    lastBrandTap.current = now;
+  };
   return (
     <header className={`relative z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme}`}>
       <div className="app-shell header-top-row flex h-[76px] items-center justify-end gap-3">
-        <button className="current-location-button" onClick={() => window.open(lahzaCustomerServiceWhatsAppUrl, "_blank", "noopener,noreferrer")} onDoubleClick={onSecret} title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><span className="current-location-label" aria-label="خدمة الزبائن"><MessageCircle className="h-5 w-5" /><span>خدمة الزبائن</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></button>
+        <button type="button" className="header-brand-button" onClick={handleBrandTap} title="انقر مرتين لفتح بوابة الإدارة" aria-label="شعار لحظة"><img src="/assets/lahza-icon.svg" alt="" /><span>لحظة</span></button>
+        <button className="current-location-button" onClick={() => window.open(lahzaCustomerServiceWhatsAppUrl, "_blank", "noopener,noreferrer")} title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><span className="current-location-label" aria-label="خدمة الزبائن"><MessageCircle className="h-5 w-5" /><span>خدمة الزبائن</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></button>
         <button className="header-cart-button" onClick={onCart} aria-label="فتح سلة التسوق"><ShoppingBasket className="h-5 w-5" /><span>السلة</span>{cartCount > 0 ? <b className="cart-count">{cartCount}</b> : null}</button>
       </div>
       <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span><Search className="h-5 w-5" /></button></div><ServiceIntroCarousel onActiveChange={setServiceTheme} onExplore={onExplore} />

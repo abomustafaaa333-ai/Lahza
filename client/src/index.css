@@ -1533,3 +1533,14 @@ header[class*="header-service-theme-"] .current-location-button:hover {
   .customer-auth-card { min-height: calc(100svh - 1.5rem); border-radius: 1.55rem; padding: 1.2rem; }
   .customer-auth-brand > span { font-size: .66rem; }
 }
+
+
+/* Visible Lahza brand button: double tap opens the administration gateway. */
+.header-brand-button { display: inline-flex; align-items: center; justify-content: center; gap: .34rem; min-width: 5.9rem; height: 2.8rem; margin-inline-end: auto; border: 1px solid rgba(255,255,255,.48); border-radius: 1rem; padding: .22rem .55rem; color: #ffffff; background: rgba(0,73,79,.22); box-shadow: 0 .55rem 1.25rem -1rem rgba(0,32,38,.62); cursor: pointer; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
+.header-brand-button img { display: block; width: 2.15rem; height: 2.15rem; object-fit: contain; }
+.header-brand-button span { color: #ffffff; font-size: .88rem; font-weight: 950; letter-spacing: -.04em; }
+.header-brand-button:hover { border-color: rgba(255,255,255,.82); background: rgba(0,73,79,.38); transform: translateY(-1px); }
+.header-brand-button:focus-visible { outline: 3px solid rgba(255,132,56,.9); outline-offset: 3px; }
+@media (max-width: 380px) { .header-brand-button { min-width: 2.8rem; width: 2.8rem; padding: .2rem; }.header-brand-button span { display: none; } }
+header[class*="header-service-theme-"] .header-brand-button { border-color: rgba(255,255,255,.76); background: rgba(255,255,255,.13); }
+header[class*="header-service-theme-"] .header-brand-button:hover { background: rgba(255,255,255,.24); }
