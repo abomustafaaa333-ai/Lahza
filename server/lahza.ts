@@ -826,6 +826,36 @@ export const lahzaRouter = router({
         return partner?.active ? [{ ...store, ...rating, storeOpen: partner.storeOpen }] : [];
       });
     }),
+    popularProducts: publicProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const rows = await db.select({
+        catalogItemId: orderLines.catalogItemId,
+        itemName: orderLines.itemName,
+        category: orderLines.category,
+        quantity: orderLines.quantity,
+        imageUrl: catalogItems.imageUrl,
+      }).from(orderLines)
+        .innerJoin(orders, eq(orderLines.orderId, orders.id))
+        .leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id))
+        .where(eq(orders.status, "completed"));
+
+      const totals = new Map<string, { catalogItemId: number | null; name: string; category: LahzaCategory; quantity: number; imageUrl: string | null }>();
+      for (const row of rows) {
+        const category = categories.includes(row.category as (typeof categories)[number]) ? row.category as LahzaCategory : "other";
+        const key = row.catalogItemId ? `id:${row.catalogItemId}` : `name:${row.itemName}:${category}`;
+        const parsedQuantity = Number.parseFloat(String(row.quantity).replace(",", "."));
+        const quantity = Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
+        const existing = totals.get(key);
+        if (existing) existing.quantity += quantity;
+        else totals.set(key, { catalogItemId: row.catalogItemId, name: row.itemName, category, quantity, imageUrl: row.imageUrl ?? null });
+      }
+
+      return Array.from(totals.values())
+        .sort((a, b) => b.quantity - a.quantity || a.name.localeCompare(b.name, "ar"))
+        .slice(0, 6)
+        .map(product => ({ ...product, note: `${product.quantity % 1 === 0 ? product.quantity : product.quantity.toFixed(1)} طلب مكتمل` }));
+    }),
     products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
