@@ -950,3 +950,25 @@ header[class*="header-service-theme-"] .header-top-row .header-cart-button {
   box-shadow: 0 .8rem 1.4rem -1rem rgba(255,91,25,.9) !important;
 }
 header[class*="header-service-theme-"] .header-top-row .header-cart-button svg { color: #fff !important; }
+
+/* ضبط موضع اللوحة والبطاقات وفق الطلب الأخير */
+header[class*="header-service-theme-"] .service-intro-panel {
+  position: relative;
+  top: -0.7cm;
+  margin-bottom: -0.7cm;
+}
+.home-category-row > .home-category-card {
+  height: calc(7.15rem + .5cm);
+  min-height: calc(7.15rem + .5cm);
+}
+.home-store-icon { display: none !important; }
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .service-intro-panel {
+    top: -0.7cm;
+    margin-bottom: -0.7cm;
+  }
+  .home-category-row > .home-category-card {
+    height: calc(5.45rem + .5cm);
+    min-height: calc(5.45rem + .5cm);
+  }
+}
