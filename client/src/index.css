@@ -795,3 +795,6 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 7rem; 
   .home-category-row > .home-category-card { width: 5.65rem; min-width: 5.65rem; height: 6.75rem; min-height: 6.75rem; }
   .home-category-mini-grid, .home-category-icon { width: 2.95rem; height: 2.95rem; }
 }
+
+.home-category-mini-grid > span { overflow: hidden; background: #fff; }
+.home-category-mini-grid > span img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
