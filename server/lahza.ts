@@ -1565,22 +1565,28 @@ export const lahzaRouter = router({
       }),
     }),
     offers: router({
-      active: publicProcedure.query(async ({ ctx }) => {
-        await requireAdmin(ctx, ["owner"]);
+      active: publicProcedure.query(async () => {
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await cleanExpiredOffers();
         const now = new Date();
         const rows = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)))).orderBy(desc(partnerOffers.createdAt));
         const [storeRows, partnerRows, productRows] = await Promise.all([
-          db.select({ id: stores.id, name: stores.name }).from(stores),
+          db.select({ id: stores.id, name: stores.name, category: stores.category }).from(stores),
           db.select({ id: partners.id, name: partners.name }).from(partners),
-          db.select({ id: catalogItems.id, name: catalogItems.name, available: catalogItems.available, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl }).from(catalogItems).where(eq(catalogItems.deleted, false)),
+          db.select({ id: catalogItems.id, name: catalogItems.name, available: catalogItems.available, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl, storeId: catalogItems.storeId, category: catalogItems.category }).from(catalogItems).where(eq(catalogItems.deleted, false)),
         ]);
         const storeById = new Map(storeRows.map(store => [store.id, store.name]));
         const partnerById = new Map(partnerRows.map(partner => [partner.id, partner.name]));
         const productById = new Map(productRows.map(product => [product.id, product]));
-        return rows.map(offer => ({ ...offer, storeName: offer.storeId ? storeById.get(offer.storeId) ?? "متجر غير محدد" : "متجر غير محدد", partnerName: partnerById.get(offer.partnerId) ?? "شريك غير محدد", product: offer.catalogItemId ? productById.get(offer.catalogItemId) ?? null : null }));
+        const ratings = await getStoreRatingMap(db);
+        return rows.map(offer => {
+          const product = offer.catalogItemId ? productById.get(offer.catalogItemId) ?? null : null;
+          const resolvedStoreId = offer.storeId ?? product?.storeId ?? null;
+          const resolvedStore = resolvedStoreId ? storeRows.find(store => store.id === resolvedStoreId) : undefined;
+          const rating = resolvedStoreId ? ratings.get(resolvedStoreId) ?? { completedOrders: 0, ratingStars: 3 } : { completedOrders: 0, ratingStars: 3 };
+          return { ...offer, storeId: resolvedStoreId, storeName: resolvedStore?.name ?? (offer.storeId ? storeById.get(offer.storeId) ?? "متجر غير محدد" : "متجر غير محدد"), storeCategory: resolvedStore?.category ?? product?.category ?? "other", ratingStars: rating.ratingStars, completedOrders: rating.completedOrders, partnerName: partnerById.get(offer.partnerId) ?? "شريك غير محدد", product };
+        });
       }),
       updateActive: publicProcedure.input(z.object({ id: z.number().int().positive(), text: z.string().trim().min(3).max(180), offerPrice: z.number().int().positive(), durationDays: z.number().int().min(1).max(365), active: z.boolean() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
