@@ -1035,3 +1035,30 @@ header[class*="header-service-theme-"] .service-intro-dots {
     transform: scale(1.5) !important;
   }
 }
+
+/* تكبير الصور داخل بطاقات اكتشف ما تحتاجه فقط، مع إبقاء البطاقة والإطار بالحجم نفسه */
+.home-category-icon-photo .home-category-image,
+.home-category-mini-grid > span img {
+  inset: 50% auto auto 50%;
+  width: calc(100% + .5cm) !important;
+  height: calc(100% + .5cm) !important;
+  max-width: none;
+  max-height: none;
+  transform: translate(-50%, -50%);
+}
+
+/* إظهار نصوص لوحة الخدمات الفيروزية كاملة من دون نقاط اختصار */
+header[class*="header-service-theme-"] .service-intro-copy {
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+}
+header[class*="header-service-theme-"] .service-intro-copy strong,
+header[class*="header-service-theme-"] .service-intro-copy small {
+  display: block;
+  overflow: visible !important;
+  max-width: 100%;
+  white-space: normal !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere;
+}
