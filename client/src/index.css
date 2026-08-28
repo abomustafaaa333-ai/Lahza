@@ -907,3 +907,24 @@ header[class*="header-service-theme-"] .service-intro-dots button { background: 
   .home-category-row > .home-category-card > span:last-child, .home-category-all-label { font-size: .7rem; }
 }
 .
+
+/* مطابقة القسم الفيروزي العلوي مع المعاينة الأولى */
+header[class*="header-service-theme-"] .header-top-row { direction: rtl; min-height: 5.4rem; padding-inline: 1.45rem; }
+header[class*="header-service-theme-"] .current-location-button { order: 1; min-height: 2.9rem; padding: .62rem .88rem; border: 1px solid rgba(255,255,255,.3); border-radius: 999px; background: rgba(0,35,39,.2); }
+header[class*="header-service-theme-"] .current-location-label { gap: .35rem; font-size: 1rem; font-weight: 900; }
+header[class*="header-service-theme-"] .header-cart-button { order: 2; min-height: 2.9rem; border: 0; border-radius: 1.35rem; padding: .68rem 1rem; color: #63301b; background: #fff; box-shadow: 0 .55rem 1.2rem -0.8rem rgba(0,0,0,.42); }
+header[class*="header-service-theme-"] .header-cart-button svg { color: #63301b; }
+header[class*="header-service-theme-"] .header-search-wrap { margin-top: .55rem; padding-inline: 1.45rem; }
+header[class*="header-service-theme-"] .header-search-button { min-height: 4.25rem; border-radius: 999px; padding-inline: .7rem 1.35rem; font-size: 1.02rem; }
+header[class*="header-service-theme-"] .header-search-button svg { width: 2.65rem; height: 2.65rem; }
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .header-top-row { min-height: 4.65rem; padding-inline: .9rem; }
+  header[class*="header-service-theme-"] .current-location-button { min-height: 2.45rem; padding: .45rem .68rem; }
+  header[class*="header-service-theme-"] .current-location-label { gap: .22rem; font-size: .78rem; }
+  header[class*="header-service-theme-"] .current-location-button svg { width: 1.05rem; height: 1.05rem; }
+  header[class*="header-service-theme-"] .header-cart-button { min-height: 2.45rem; border-radius: 1rem; padding: .48rem .72rem; font-size: .75rem; }
+  header[class*="header-service-theme-"] .header-cart-button svg { width: 1.05rem; height: 1.05rem; }
+  header[class*="header-service-theme-"] .header-search-wrap { margin-top: .4rem; padding-inline: .9rem; }
+  header[class*="header-service-theme-"] .header-search-button { min-height: 3.25rem; padding-inline: .55rem 1rem; font-size: .78rem; }
+  header[class*="header-service-theme-"] .header-search-button svg { width: 2.15rem; height: 2.15rem; }
+}
