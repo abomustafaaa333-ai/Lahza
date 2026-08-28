@@ -1460,7 +1460,8 @@ header[class*="header-service-theme-"] .current-location-button:hover {
   align-items: stretch;
   direction: ltr;
 }
-.customer-auth-phone b {
+.customer-auth-phone b,
+.customer-auth-phone select {
   min-width: 4.1rem;
   display: grid;
   place-items: center;
@@ -1469,9 +1470,26 @@ header[class*="header-service-theme-"] .current-location-button:hover {
   border-radius: .9rem 0 0 .9rem;
   color: #00666b;
   background: #eefafa;
-  font-size: .82rem;
+  font-size: .75rem;
+  font-weight: 850;
 }
-.customer-auth-phone input { border-radius: 0 .9rem .9rem 0; }
+.customer-auth-phone select {
+  width: 9.2rem;
+  min-width: 9.2rem;
+  padding: 0 .45rem;
+  direction: rtl;
+  text-align: right;
+  cursor: pointer;
+}
+.customer-auth-phone input { min-width: 0; border-radius: 0 .9rem .9rem 0; }
+.customer-auth-phone-hint {
+  display: block;
+  margin-top: .35rem;
+  color: #607477;
+  font-size: .68rem;
+  font-weight: 700;
+  text-align: right;
+}
 .customer-auth-remember {
   display: flex !important;
   align-items: center;

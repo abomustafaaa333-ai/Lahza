@@ -22,6 +22,7 @@ const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
 const DEMO_CUSTOMER_PHONE = "+963997311078";
 const DEMO_CUSTOMER_NAME = "عميل لحظة التجريبي";
+const internationalPhoneSchema = z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل رقم هاتف دولياً صحيحاً مع رمز الدولة");
 const DEFAULT_MASTER_PIN = "555369";
 const LEGACY_DEFAULT_MASTER_PIN = "5555";
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
@@ -542,7 +543,7 @@ const intercityOrderInput = z.object({
   catalogItemId: z.number().int().positive().optional(),
   partnerId: z.number().int().positive().optional(),
   customerName: z.string().trim().min(2).max(80),
-  customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
+  customerPhone: internationalPhoneSchema,
   locationUrl: z.string().url("حدد موقعك عبر زر تحديد موقعي قبل إرسال الطلب").max(500),
   itemName: z.string().trim().min(2).max(180),
   quantity: z.string().trim().min(1).max(32).default("1"),
@@ -553,7 +554,7 @@ const intercityOrderInput = z.object({
 const deviceIdSchema = z.string().trim().min(16, "معرف الجهاز غير صالح").max(80);
 const missingProductRequestInput = z.object({
   customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
-  customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
+  customerPhone: internationalPhoneSchema,
   productName: z.string().trim().min(2, "اكتب اسم المنتج المطلوب").max(180),
   notes: z.string().trim().max(500).optional(),
 });
@@ -615,7 +616,7 @@ export const orderInputSchema = z.object({
   orderType: z.enum(["delivery", "taxi"]),
   intercityTripId: z.number().int().positive().optional(),
   customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
-  customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
+  customerPhone: internationalPhoneSchema,
   locationMode: z.enum(["gps", "manual"]).default("gps"),
   locationText: z.string().trim().min(3, "اكتب وصفاً واضحاً لموقعك").max(280).optional(),
   locationUrl: z.string().url("رابط الموقع غير صالح").max(500).optional(),
@@ -640,7 +641,7 @@ export const orderInputSchema = z.object({
 const adminOrderUpdateInput = z.object({
   id: z.number().int().positive(),
   customerName: z.string().trim().min(2).max(80),
-  customerPhone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم الهاتف السوري ابتداءً من 9"),
+  customerPhone: internationalPhoneSchema,
   paymentMethod: z.enum(["sham_cash", "cash"]),
   locationMode: z.enum(["gps", "manual"]),
   locationText: z.string().trim().max(280).optional(),
@@ -700,7 +701,7 @@ export const lahzaRouter = router({
       return { success: true };
     }),
     points: router({
-      balance: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/) })).query(async ({ input }) => {
+      balance: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).query(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const balance = (await db.select().from(customerPoints).where(eq(customerPoints.customerPhone, input.phone)).limit(1))[0];
@@ -710,7 +711,7 @@ export const lahzaRouter = router({
       }),
     }),
     referral: router({
-      getOrCreate: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/) })).mutation(async ({ input }) => {
+      getOrCreate: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const existing = await db.select({ code: customerReferrals.code }).from(customerReferrals).where(eq(customerReferrals.ownerPhone, input.phone)).limit(1);
@@ -1020,14 +1021,14 @@ export const lahzaRouter = router({
       if (existing.status === "rejected") return { status: "rejected" as const, message: "تم رفض الحساب، تواصل مع فريق لحظة عبر واتساب" };
       return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
     }),
-    status: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/) })).query(async ({ input }) => {
+    status: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCustomerAccountsTable(db);
       const found = (await db.select({ status: customerAccounts.status, name: customerAccounts.name }).from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
       return found ?? { status: "new" as const, name: "" };
     }),
-    updatePhone: publicProcedure.input(z.object({ currentPhone: z.string().regex(/^\+9639\d{8}$/), newPhone: z.string().regex(/^\+9639\d{8}$/) })).mutation(async ({ input }) => {
+    updatePhone: publicProcedure.input(z.object({ currentPhone: internationalPhoneSchema, newPhone: internationalPhoneSchema })).mutation(async ({ input }) => {
       if (input.currentPhone === input.newPhone) return { success: true };
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
@@ -1268,7 +1269,7 @@ export const lahzaRouter = router({
     previewPromotion: publicProcedure.input(z.object({
       code: z.string().trim().min(2).max(40),
       kind: z.enum(["discount", "referral"]),
-      customerPhone: z.string().regex(/^\+9639\d{8}$/).optional(),
+      customerPhone: internationalPhoneSchema.optional(),
       lines: z.array(lineInput).min(1).max(30),
     })).mutation(async ({ input }) => {
       const db = await ensureCatalogSeed();
@@ -1429,7 +1430,7 @@ export const lahzaRouter = router({
       }
       return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending };
     }),
-    track: publicProcedure.input(z.object({ orderId: z.number().int().positive(), customerPhone: z.string().regex(/^\+9639\d{8}$/) })).query(async ({ input }) => {
+    track: publicProcedure.input(z.object({ orderId: z.number().int().positive(), customerPhone: internationalPhoneSchema })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const order = (await db.select().from(orders).where(and(eq(orders.id, input.orderId), eq(orders.customerPhone, input.customerPhone))).limit(1))[0];
