@@ -802,3 +802,6 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 7rem; 
 .home-category-mini-grid { position: relative; }
 .home-category-all-label { display: block; min-width: 100%; margin-top: .05rem; color: #fff; font-size: .78rem; font-weight: 950; line-height: 1.35; text-align: center; text-shadow: 0 1px 2px rgba(74,38,24,.28); }
 .home-store-rating { display: block; margin: .12rem .2rem .05rem; color: #f5a623; font-size: .72rem; font-weight: 950; letter-spacing: .08em; line-height: 1; direction: ltr; text-shadow: 0 1px 2px rgba(122,59,29,.18); }
+
+.store-identity-rating { position: absolute; right: .8rem; top: 6.05rem; z-index: 3; border-radius: 999px; padding: .18rem .34rem; color: #f5a623; background: rgba(255,255,255,.94); font-size: .62rem; font-weight: 950; letter-spacing: .04em; line-height: 1; direction: ltr; box-shadow: 0 .25rem .55rem -0.4rem rgba(74,38,24,.5); }
+@media (max-width: 420px) { .store-identity-rating { top: 5.65rem; right: .65rem; font-size: .56rem; } }
