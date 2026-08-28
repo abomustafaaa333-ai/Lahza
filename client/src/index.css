@@ -800,5 +800,5 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 7rem; 
 .home-category-mini-grid > span img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 
 .home-category-mini-grid { position: relative; }
-.home-category-all-label { position: absolute; inset: 50% auto auto 50%; min-width: 2.8rem; transform: translate(-50%, -50%); border: 1px solid rgba(255,255,255,.85); border-radius: .55rem; padding: .14rem .3rem; color: #fff; background: rgba(74,38,24,.78); font-size: .7rem; font-weight: 950; line-height: 1.4; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.home-category-all-label { display: block; min-width: 100%; margin-top: .05rem; color: #fff; font-size: .78rem; font-weight: 950; line-height: 1.35; text-align: center; text-shadow: 0 1px 2px rgba(74,38,24,.28); }
 .home-store-rating { display: block; margin: .12rem .2rem .05rem; color: #f5a623; font-size: .72rem; font-weight: 950; letter-spacing: .08em; line-height: 1; direction: ltr; text-shadow: 0 1px 2px rgba(122,59,29,.18); }
