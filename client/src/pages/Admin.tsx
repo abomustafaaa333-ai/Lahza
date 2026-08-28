@@ -9,7 +9,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
-const lahzaWordmarkUrl = "/assets/lahza-logo-option-4.svg?v=2";
+const lahzaWordmarkUrl = "/assets/lahza-logo.svg";
 
 function readImageFile(file: File) {
   return new Promise<string>((resolve, reject) => {

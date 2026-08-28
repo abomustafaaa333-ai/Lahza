@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">أيقونة تطبيق لحظة</title>
+  <desc id="desc">رمز موقع جغرافي وساعة وحركة على خلفية برتقالية</desc>
+  <g id="icon-background"><rect x="48" y="48" width="928" height="928" rx="220" fill="#FF6B2B"/></g>
+  <g id="speed-trails" fill="#FFFDF8">
+    <rect x="190" y="365" width="235" height="40" rx="20"/>
+    <rect x="155" y="440" width="270" height="40" rx="20"/>
+    <rect x="210" y="515" width="215" height="40" rx="20"/>
+    <circle cx="164" cy="590" r="20"/>
+  </g>
+  <g id="location-clock">
+    <path d="M545 170c-140 0-254 114-254 254 0 189 254 370 254 370s254-181 254-370c0-140-114-254-254-254Z" fill="#FFFDF8"/>
+    <circle cx="545" cy="420" r="148" fill="#FF6B2B"/>
+    <circle cx="545" cy="420" r="24" fill="#00666B"/>
+    <path d="M545 420V318M545 420l83 54" fill="none" stroke="#00666B" stroke-width="36" stroke-linecap="round"/>
+  </g>
+</svg>

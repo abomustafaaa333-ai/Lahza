@@ -11,7 +11,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
 
-const lahzaWordmarkUrl = "/assets/lahza-logo-option-4.svg?v=2";
+const lahzaWordmarkUrl = "/assets/lahza-logo.svg";
 const readImageFile = (file: File) => new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result ?? "")); reader.onerror = () => reject(new Error("تعذر قراءة الصورة")); reader.readAsDataURL(file); });
 
 type AssignedStore = { id: number; name: string; category: LahzaCategory; categoryTitle?: string | null; active: boolean };
