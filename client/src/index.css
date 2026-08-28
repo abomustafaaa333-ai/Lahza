@@ -1079,3 +1079,11 @@ header[class*="header-service-theme-"] .service-intro-offer-mark b {
   header[class*="header-service-theme-"] .service-intro-offer-mark b { font-size: .62rem; }
   header[class*="header-service-theme-"] .service-intro-copy { max-width: calc(100% - 7.2rem) !important; }
 }
+
+/* تنزيل خدمة الزبائن في الهيدر فقط حسب الطلب */
+header[class*="header-service-theme-"] .current-location-button {
+  transform: translateY(.70cm);
+}
+header[class*="header-service-theme-"] .current-location-button:hover {
+  transform: translateY(.70cm);
+}
