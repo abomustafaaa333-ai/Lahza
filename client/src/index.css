@@ -860,3 +860,50 @@ header[class*="header-service-theme-"] .service-intro-dots button { background: 
 .service-intro-cta:hover { box-shadow: 0 .7rem 1.1rem -0.65rem rgba(255,91,25,.95); }
 .service-intro-cta:active { transform: scale(.96); }
 @media (prefers-reduced-motion: reduce) { .service-intro-cta { transition: none; } }
+
+/* مطابقة أحجام المعاينة الأولى على شاشات الهاتف */
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .header-inner { min-height: 4.45rem; padding-inline: .9rem; }
+  header[class*="header-service-theme-"] .current-location-button { padding: .52rem .72rem; font-size: .82rem; }
+  header[class*="header-service-theme-"] .current-location-button svg { width: 1.15rem; height: 1.15rem; }
+  header[class*="header-service-theme-"] .header-cart-button { border-radius: 1.05rem; padding: .62rem .82rem; font-size: .82rem; }
+  header[class*="header-service-theme-"] .header-cart-button svg { width: 1.18rem; height: 1.18rem; }
+  header[class*="header-service-theme-"] .header-search-wrap { margin-top: .55rem; padding-inline: .9rem; }
+  header[class*="header-service-theme-"] .header-search-button { min-height: 3.05rem; font-size: .82rem; }
+  header[class*="header-service-theme-"] .header-search-button svg { width: 2.25rem; height: 2.25rem; }
+  header[class*="header-service-theme-"] .service-intro-panel { min-height: 10.8rem; padding: 1.15rem .9rem 1.2rem; }
+  header[class*="header-service-theme-"] .service-intro-copy { max-width: 15rem; gap: .2rem; }
+  header[class*="header-service-theme-"] .service-intro-kicker { font-size: .65rem; }
+  header[class*="header-service-theme-"] .service-intro-copy strong { font-size: 1.08rem; line-height: 1.25; }
+  header[class*="header-service-theme-"] .service-intro-copy small { font-size: .66rem; }
+  header[class*="header-service-theme-"] .service-intro-icon { width: 3.9rem; height: 3.9rem; border-radius: 1.15rem; }
+  .service-intro-cta { margin-top: .35rem; padding: .42rem .72rem; font-size: .68rem; }
+  .home-section-heading { margin-bottom: .58rem; }
+  .home-section-heading .section-title { font-size: 1.35rem; }
+  .home-section-heading .section-eyebrow { font-size: .64rem; }
+  .home-category-row { gap: .52rem; padding-inline: .1rem; }
+  .home-category-row > .home-category-card { width: 4.55rem; min-width: 4.55rem; height: 5.45rem; min-height: 5.45rem; border-radius: 1rem; gap: .32rem; padding: .42rem .3rem; }
+  .home-category-row > .home-category-card > span:last-child, .home-category-all-label { font-size: .62rem; line-height: 1.25; }
+  .home-category-mini-grid, .home-category-icon { width: 2.25rem; height: 2.25rem; }
+  .home-category-mini-grid { gap: .14rem; border-radius: .7rem; padding: .26rem; }
+  .home-category-mini-grid > span { width: .82rem; height: .82rem; border-radius: .28rem; }
+  .home-category-mini-grid > span img { border-radius: .28rem; }
+  .home-category-icon-photo { border-radius: .72rem; }
+  .home-category-row > .home-category-card > img, .home-category-row > .home-category-card .home-category-icon-photo img { border-radius: .72rem; }
+  .home-offer-gallery { margin-top: .85rem; }
+  .home-offer-gallery .hero-image-frame { min-height: 8.25rem; border-radius: 1.25rem; }
+  .home-offer-gallery .hero-offer-caption { right: .62rem; bottom: .62rem; left: .62rem; padding: .45rem .55rem; font-size: .68rem; }
+  .home-featured-row { gap: .55rem; }
+  .home-featured-row > * { min-width: 8.15rem; border-radius: 1.05rem; }
+  .home-featured-store > img { height: 4.7rem; }
+  .home-store-rating { margin-top: .08rem; font-size: .62rem; }
+  .home-bottom-nav { border-radius: 1.3rem; }
+  .home-bottom-nav button { min-height: 3.6rem; padding: .45rem .25rem; font-size: .62rem; }
+  .home-bottom-nav button svg { width: 1.2rem; height: 1.2rem; }
+}
+@media (min-width: 601px) and (max-width: 900px) {
+  .home-category-row > .home-category-card { width: 5.3rem; min-width: 5.3rem; height: 6.25rem; min-height: 6.25rem; }
+  .home-category-mini-grid, .home-category-icon { width: 2.7rem; height: 2.7rem; }
+  .home-category-row > .home-category-card > span:last-child, .home-category-all-label { font-size: .7rem; }
+}
+.
