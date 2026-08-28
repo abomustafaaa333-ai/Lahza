@@ -805,3 +805,30 @@ header[class*="header-service-theme-"] .service-intro-panel { min-height: 7rem; 
 
 .store-identity-rating { position: absolute; right: .8rem; top: 6.05rem; z-index: 3; border-radius: 999px; padding: .18rem .34rem; color: #f5a623; background: rgba(255,255,255,.94); font-size: .62rem; font-weight: 950; letter-spacing: .04em; line-height: 1; direction: ltr; box-shadow: 0 .25rem .55rem -0.4rem rgba(74,38,24,.5); }
 @media (max-width: 420px) { .store-identity-rating { top: 5.65rem; right: .65rem; font-size: .56rem; } }
+
+/* مطابقة المعاينة الأولى: واجهة تجارية حيوية ومساحات بيضاء أوضح */
+header[class*="header-service-theme-"] .header-inner { padding-inline: .9rem; }
+header[class*="header-service-theme-"] .current-location-button { font-size: 1.05rem; font-weight: 950; }
+header[class*="header-service-theme-"] .header-search-button { min-height: 3.7rem; box-shadow: 0 .9rem 1.7rem -1.1rem rgba(4,82,91,.62); }
+header[class*="header-service-theme-"] .service-intro-panel { min-height: 8.4rem; border-radius: 0 0 2.15rem 2.15rem; }
+.home-section-heading { align-items: end; margin-bottom: .85rem; }
+.home-section-heading .section-title { letter-spacing: -.045em; }
+.home-category-row { gap: .8rem; padding-inline: .15rem; }
+.home-category-row > .home-category-card { border-radius: 1.45rem; box-shadow: 0 .8rem 1.45rem -1.05rem rgba(74,38,24,.3); }
+.home-category-row > .home-category-all { border: 1.5px solid #ff742d; background: #fff; }
+.home-category-row > .home-category-all > span:last-child { color: #4a2618; }
+.home-category-all-label { color: #4a2618; }
+.home-category-mini-grid { box-shadow: 0 .45rem .9rem -0.65rem rgba(74,38,24,.35); }
+.home-offer-gallery { margin-top: 1.35rem; }
+.home-offer-gallery .hero-image-frame { min-height: 11.5rem; border-radius: 1.85rem; }
+.home-offer-gallery .hero-offer-caption { right: 1rem; bottom: 1rem; left: 1rem; background: linear-gradient(90deg, rgba(74,38,24,.2), rgba(74,38,24,.72)); }
+.home-featured-row { gap: .9rem; }
+.home-featured-row > * { min-width: 10.6rem; border-radius: 1.4rem; }
+.home-featured-store > img { height: 6.5rem; }
+.home-store-rating { font-size: .76rem; }
+.home-bottom-nav { border-radius: 1.85rem; box-shadow: 0 .75rem 1.7rem -1.15rem rgba(74,38,24,.38); }
+@media (max-width: 420px) {
+  header[class*="header-service-theme-"] .service-intro-panel { min-height: 7.7rem; }
+  .home-offer-gallery .hero-image-frame { min-height: 10.4rem; }
+  .home-featured-row > * { min-width: 9.7rem; }
+}
