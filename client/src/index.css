@@ -972,3 +972,21 @@ header[class*="header-service-theme-"] .service-intro-panel {
     min-height: calc(5.45rem + .5cm);
   }
 }
+
+/* عرض أسماء التصنيفات كاملة داخل بطاقات اكتشف ما تحتاجه */
+.home-category-row > .home-category-card > span:last-child {
+  overflow: visible;
+  height: auto;
+  min-height: 2.2rem;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+@media (max-width: 600px) {
+  .home-category-row > .home-category-card > span:last-child {
+    min-height: 2.05rem;
+    font-size: .58rem;
+    line-height: 1.25;
+  }
+}
