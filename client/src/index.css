@@ -1017,11 +1017,10 @@ header[class*="header-service-theme-"] .service-intro-basket img {
   width: 100% !important;
   height: 100% !important;
   border-radius: 0 !important;
-  object-fit: cover !important;
-  object-position: center top !important;
-  clip-path: inset(0 0 6% 0);
-  mix-blend-mode: multiply;
-  filter: saturate(1.06) contrast(1.02);
+  object-fit: contain !important;
+  object-position: center center !important;
+  mix-blend-mode: normal;
+  filter: none;
 }
 header[class*="header-service-theme-"] .service-intro-copy,
 header[class*="header-service-theme-"] .service-intro-dots {
