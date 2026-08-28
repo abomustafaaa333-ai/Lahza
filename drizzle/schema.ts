@@ -181,6 +181,7 @@ export const systemSettings = mysqlTable("system_settings", {
   manbijDeliveryPercent: int("manbijDeliveryPercent").notNull().default(20),
   jarabulusDeliveryPercent: int("jarabulusDeliveryPercent").notNull().default(30),
   pointsRewardPercent: int("pointsRewardPercent").notNull().default(0),
+  driverDeliveryPercent: int("driverDeliveryPercent").notNull().default(0),
   originLatE6: int("originLatE6").notNull().default(36528100),
   originLngE6: int("originLngE6").notNull().default(37954900),
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),

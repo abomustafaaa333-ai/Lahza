@@ -143,7 +143,7 @@ async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<type
   }
 }
 
-async function addDeliveryPercentColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "manbijDeliveryPercent" | "jarabulusDeliveryPercent", defaultValue: number) {
+async function addDeliveryPercentColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "manbijDeliveryPercent" | "jarabulusDeliveryPercent" | "driverDeliveryPercent", defaultValue: number) {
   try {
     await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` INT NOT NULL DEFAULT ${defaultValue}`));
   } catch (error) {
@@ -160,6 +160,7 @@ async function ensureDeliveryPercentColumns(db: NonNullable<Awaited<ReturnType<t
   );
   if (!availableColumns.has("manbijDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "manbijDeliveryPercent", 20);
   if (!availableColumns.has("jarabulusDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "jarabulusDeliveryPercent", 30);
+  if (!availableColumns.has("driverDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "driverDeliveryPercent", 0);
 }
 
 async function saveTickerSettings(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, tickerSettings: ReturnType<typeof readTickerSettings>) {
@@ -1820,13 +1821,14 @@ export const lahzaRouter = router({
           manbijPercent: settings.manbijDeliveryPercent,
           jarabulusPercent: settings.jarabulusDeliveryPercent,
           pointsRewardPercent: settings.pointsRewardPercent,
+          driverPercent: settings.driverDeliveryPercent ?? 0,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, pointsRewardPercent: deliveryPercentInput })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, pointsRewardPercent: input.pointsRewardPercent }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),
@@ -1931,6 +1933,22 @@ export const lahzaRouter = router({
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await db.update(financeEntries).set({ status: "settled", settledAt: new Date() }).where(eq(financeEntries.id, input.id));
         return { success: true };
+      }),
+    }),
+    accounting: router({
+      completedOrders: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const settings = await getSettings();
+        const rows = await db.select({ orderId: orders.id, customerName: orders.customerName, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, updatedAt: orders.updatedAt, driverName: drivers.name }).from(orders).leftJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).leftJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(eq(orders.status, "completed")).orderBy(desc(orders.updatedAt)).limit(500);
+        const percent = Math.min(100, Math.max(0, Number(settings.driverDeliveryPercent ?? 0)));
+        const items = rows.map(row => {
+          const deliveryFee = Number(row.deliveryFee ?? 0);
+          const driverFee = Math.round(deliveryFee * percent / 100);
+          return { orderId: row.orderId, customerName: row.customerName, driverName: row.driverName ?? "غير مسند", deliveryFee: toNewSyp(deliveryFee), driverFee: toNewSyp(driverFee), lahzaNet: toNewSyp(deliveryFee - driverFee), totalAmount: toNewSyp(Number(row.totalAmount ?? 0)), completedAt: row.updatedAt };
+        });
+        return { driverPercent: percent, orders: items, totals: { deliveryFee: items.reduce((sum, item) => sum + item.deliveryFee, 0), driverFee: items.reduce((sum, item) => sum + item.driverFee, 0), lahzaNet: items.reduce((sum, item) => sum + item.lahzaNet, 0) } };
       }),
     }),
     analytics: router({
