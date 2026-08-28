@@ -1562,3 +1562,47 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
 
 .customer-auth-brand { width: 100%; border: 0; color: inherit; background: transparent; text-align: initial; cursor: pointer; }
 .customer-auth-brand:focus-visible { outline: 3px solid rgba(255,132,56,.65); outline-offset: 4px; border-radius: 1rem; }
+
+/* Requested final polish. */
+.persistent-cart-button { top: calc(.78rem + 1cm); }
+.account-phone-otp-copy { display: grid; gap: .35rem; grid-column: 1 / -1; color: #63301b; font-size: .68rem; font-weight: 850; line-height: 1.55; }
+.account-phone-otp-copy small { color: #8c6d63; font-size: .62rem; }
+.home-offer-gallery .hero-offer-caption,
+.global-offer-bar .hero-offer-caption {
+  width: 4cm;
+  min-width: 4cm;
+  max-width: 4cm;
+  border-radius: 0 1.35rem 1.35rem 0;
+  background: linear-gradient(90deg, rgba(0,102,107,.08) 0%, rgba(0,102,107,.55) 24%, rgba(0,102,107,.88) 58%, rgba(0,102,107,.95) 100%);
+  box-shadow: -0.45rem 0 1.2rem rgba(0,45,50,.16);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.28) 8%, #000 27%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.28) 8%, #000 27%, #000 100%);
+}
+.home-offer-gallery .hero-offer-caption::before,
+.global-offer-bar .hero-offer-caption::before {
+  top: -1rem;
+  bottom: -1rem;
+  left: -.85rem;
+  width: 1.7rem;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,102,107,.12) 34%, rgba(0,102,107,.46) 100%);
+  filter: blur(.55rem);
+}
+.home-offer-gallery .hero-offer-caption::after,
+.global-offer-bar .hero-offer-caption::after {
+  position: absolute;
+  top: -.45rem;
+  bottom: -.45rem;
+  left: -.38rem;
+  width: .78rem;
+  pointer-events: none;
+  content: "";
+  background: rgba(0,102,107,.55);
+  filter: blur(.5rem);
+  clip-path: polygon(100% 0, 48% 9%, 88% 19%, 30% 31%, 82% 43%, 25% 55%, 78% 67%, 35% 80%, 85% 91%, 100% 100%);
+  opacity: .7;
+}
+@media (max-width: 420px) {
+  .persistent-cart-button { top: calc(.62rem + 1cm); }
+  .home-offer-gallery .hero-offer-caption,
+  .global-offer-bar .hero-offer-caption { width: 4cm; min-width: 4cm; max-width: 4cm; padding: .68rem .38rem; }
+}
