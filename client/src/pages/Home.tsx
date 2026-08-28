@@ -43,6 +43,7 @@ type CustomerAuthSession = { mode: "customer" | "guest"; phone?: string; name?: 
 
 const CUSTOMER_AUTH_STORAGE_KEY = "lahza_customer_auth_v1";
 const DEMO_OTP_CODE = "123456";
+const DEMO_OWNER_PIN = "555369";
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 const demoAssetPrefix = isStaticDemo ? "." : "";
 const demoGalleryImages = [
@@ -782,7 +783,7 @@ export default function Home() {
         toast.error("لوحة المشرف غير مفعّلة في النسخة التجريبية المحلية.");
         return;
       }
-      if (pin !== "1122") {
+      if (pin !== DEMO_OWNER_PIN) {
         toast.error("رمز المالك غير صحيح.");
         return;
       }

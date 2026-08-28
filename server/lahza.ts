@@ -20,6 +20,8 @@ import type { TrpcContext } from "./_core/context";
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
+const DEFAULT_MASTER_PIN = "555369";
+const LEGACY_DEFAULT_MASTER_PIN = "5555";
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
 
@@ -291,8 +293,16 @@ async function getSettings() {
   await ensureDeliveryPercentColumns(db);
   await ensureTickerColumns(db);
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
-  if (current[0]) return current[0];
-  const masterPinHash = await hashSecret("5555");
+  if (current[0]) {
+    // Migrate only the original seed PIN; never overwrite a PIN changed by the owner.
+    if (await verifySecret(LEGACY_DEFAULT_MASTER_PIN, current[0].masterPinHash)) {
+      const migratedHash = await hashSecret(DEFAULT_MASTER_PIN);
+      await db.update(systemSettings).set({ masterPinHash: migratedHash }).where(eq(systemSettings.id, 1));
+      return { ...current[0], masterPinHash: migratedHash };
+    }
+    return current[0];
+  }
+  const masterPinHash = await hashSecret(DEFAULT_MASTER_PIN);
   await db.insert(systemSettings).values({ id: 1, masterPinHash, manbijDeliveryPercent: 20, jarabulusDeliveryPercent: 30, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
   const created = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   return created[0]!;
