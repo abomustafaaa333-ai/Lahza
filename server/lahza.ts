@@ -22,6 +22,22 @@ const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
+
+async function getStoreRatingMap(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const rows = await db.select({
+    storeId: catalogItems.storeId,
+    completedOrders: sql<number>`count(distinct ${orders.id})`,
+  }).from(orderLines)
+    .innerJoin(orders, eq(orderLines.orderId, orders.id))
+    .innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id))
+    .where(eq(orders.status, "completed"))
+    .groupBy(catalogItems.storeId);
+  return new Map(rows.filter(row => row.storeId !== null).map(row => [row.storeId as number, {
+    completedOrders: Number(row.completedOrders ?? 0),
+    ratingStars: Math.min(5, 3 + Math.floor(Number(row.completedOrders ?? 0) / 100)),
+  }]));
+}
+
 const adminRoles = ["owner", "supervisor"] as const;
 const orderStatuses = ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"] as const;
 export type PartnerReportRow = { orderId: number; status: (typeof orderStatuses)[number]; totalAmount: number; itemName: string; quantity: string };
@@ -802,10 +818,12 @@ export const lahzaRouter = router({
       const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen }).from(partners);
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       const filteredStores = filterRestaurantStores(categoryStores, input.category, input.restaurantType);
+      const ratings = await getStoreRatingMap(db);
       return filteredStores.flatMap(store => {
-        if (!store.partnerId) return [{ ...store, storeOpen: true }];
+        const rating = ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 };
+        if (!store.partnerId) return [{ ...store, ...rating, storeOpen: true }];
         const partner = partnerById.get(store.partnerId);
-        return partner?.active ? [{ ...store, storeOpen: partner.storeOpen }] : [];
+        return partner?.active ? [{ ...store, ...rating, storeOpen: partner.storeOpen }] : [];
       });
     }),
     products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ input }) => {
@@ -901,12 +919,13 @@ export const lahzaRouter = router({
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       const storeById = new Map(activeStores.map(store => [store.id, store]));
       const productById = new Map(offerProducts.map(product => [product.id, product]));
+      const ratings = await getStoreRatingMap(db);
       return activeOffers.flatMap(offer => {
         if (featuredOnly && !canShowFeaturedOffer(offer.featuredStatus, offer.active, offer.expiresAt, now)) return [];
         const partner = partnerById.get(offer.partnerId);
         const store = offer.storeId ? storeById.get(offer.storeId) : null;
         const product = offer.catalogItemId ? productById.get(offer.catalogItemId) : null;
-        return partner && store?.partnerId === partner.id ? [{ ...offer, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: partner.storeOpen }] : [];
+        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id ? [{ ...offer, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: partner.storeOpen }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
