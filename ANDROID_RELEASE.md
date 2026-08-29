@@ -5,6 +5,7 @@
 ## بناء النسخة
 
 ```bash
+pnpm build:mobile
 pnpm build
 pnpm exec cap copy android
 cd android
