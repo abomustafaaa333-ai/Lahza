@@ -1663,3 +1663,56 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   .customer-auth-brand img { width: 10.5rem; max-height: 3.7rem; }
   .customer-auth-brand > span { font-size: .68rem; }
 }
+
+/* Clear customer-login brand lockup using the app's original icon asset. */
+.customer-auth-brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(.7rem, 3vw, 1rem);
+  direction: rtl;
+  color: #63301b;
+  line-height: 1;
+}
+.customer-auth-brand > .customer-auth-brand-lockup {
+  min-height: 4.8rem;
+  color: #63301b;
+  font-size: initial;
+  white-space: normal;
+}
+.customer-auth-brand-icon {
+  width: clamp(4.45rem, 22vw, 5.8rem) !important;
+  height: clamp(4.45rem, 22vw, 5.8rem) !important;
+  flex: 0 0 auto;
+  max-height: none !important;
+  border-radius: 1.35rem;
+  object-fit: cover !important;
+  object-position: center !important;
+  box-shadow: 0 .7rem 1.25rem rgba(255,107,43,.2);
+}
+.customer-auth-brand-wordmark {
+  display: block;
+  color: #63301b;
+  font-family: Tahoma, Arial, sans-serif;
+  font-size: clamp(2.65rem, 12vw, 4.25rem);
+  font-weight: 950;
+  letter-spacing: -.09em;
+  line-height: .95;
+  text-shadow: 0 1px 0 rgba(99,48,27,.08);
+}
+.customer-auth-brand > .customer-auth-brand-lockup + span {
+  margin-top: .1rem;
+  color: #ff6b2b;
+  font-size: clamp(.7rem, 2.5vw, .82rem);
+  font-weight: 950;
+}
+@media (max-width: 380px) {
+  .customer-auth-brand-lockup { gap: .58rem; }
+  .customer-auth-brand > .customer-auth-brand-lockup { min-height: 4.35rem; }
+  .customer-auth-brand-icon {
+    width: 4.1rem !important;
+    height: 4.1rem !important;
+    border-radius: 1.15rem;
+  }
+  .customer-auth-brand-wordmark { font-size: 2.45rem; }
+}
