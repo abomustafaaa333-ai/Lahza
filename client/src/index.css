@@ -1582,7 +1582,9 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
 .customer-auth-brand:focus-visible { outline: 3px solid rgba(255,132,56,.65); outline-offset: 4px; border-radius: 1rem; }
 
 /* Requested final polish. */
-.persistent-cart-button { top: calc(.78rem + 1cm); }
+.persistent-cart-button { top: .78rem; left: .9rem; border-color: transparent; color: #fff; background: linear-gradient(135deg, #ff742d, #ff4d18); box-shadow: 0 .65rem 1.4rem -1rem rgba(255,91,25,.9); }
+.persistent-cart-button svg { color: #fff; }
+.persistent-cart-button b { color: #ff5a1f; background: #fff; }
 .account-phone-otp-copy { display: grid; gap: .35rem; grid-column: 1 / -1; color: #63301b; font-size: .68rem; font-weight: 850; line-height: 1.55; }
 .account-phone-otp-copy small { color: #8c6d63; font-size: .62rem; }
 .home-offer-gallery .hero-offer-caption,
@@ -1620,7 +1622,7 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   opacity: .7;
 }
 @media (max-width: 420px) {
-  .persistent-cart-button { top: calc(.62rem + 1cm); }
+  .persistent-cart-button { top: .62rem; left: .55rem; }
   .home-offer-gallery .hero-offer-caption,
   .global-offer-bar .hero-offer-caption { width: 4cm; min-width: 4cm; max-width: 4cm; padding: .68rem .38rem; }
 }
