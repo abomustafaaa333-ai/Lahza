@@ -1821,3 +1821,54 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   .home-offer-gallery .hero-offer-tagline,
   .global-offer-bar .hero-offer-tagline { font-size: .56rem !important; }
 }
+
+/* Requested final size: add exactly 3cm to the current teal offer panel width. */
+.home-offer-gallery .hero-offer-caption,
+.global-offer-bar .hero-offer-caption {
+  width: min(calc(clamp(5.9rem, 28vw, 8.2rem) + 3cm), 65%);
+  min-width: min(calc(clamp(5.9rem, 28vw, 8.2rem) + 3cm), 65%);
+  max-width: min(calc(clamp(5.9rem, 28vw, 8.2rem) + 3cm), 65%);
+  padding: .68rem .56rem;
+}
+.home-offer-gallery .hero-offer-top strong,
+.global-offer-bar .hero-offer-top strong {
+  font-size: .98rem;
+  line-height: 1.35;
+}
+.home-offer-gallery .hero-offer-discount-inline,
+.global-offer-bar .hero-offer-discount-inline {
+  padding: .28rem .22rem;
+  font-size: .76rem;
+}
+.home-offer-gallery .hero-offer-meta > span:first-child,
+.global-offer-bar .hero-offer-meta > span:first-child {
+  font-size: .75rem;
+  line-height: 1.4;
+}
+.home-offer-gallery .hero-offer-prices del,
+.global-offer-bar .hero-offer-prices del,
+.home-offer-gallery .hero-offer-prices b,
+.global-offer-bar .hero-offer-prices b { font-size: .71rem; }
+.home-offer-gallery .hero-offer-tagline,
+.global-offer-bar .hero-offer-tagline { font-size: .67rem !important; }
+@media (max-width: 420px) {
+  .home-offer-gallery .hero-offer-caption,
+  .global-offer-bar .hero-offer-caption {
+    width: min(calc(clamp(5.25rem, 31vw, 7.2rem) + 3cm), 72%);
+    min-width: min(calc(clamp(5.25rem, 31vw, 7.2rem) + 3cm), 72%);
+    max-width: min(calc(clamp(5.25rem, 31vw, 7.2rem) + 3cm), 72%);
+    padding: .6rem .46rem;
+  }
+  .home-offer-gallery .hero-offer-top strong,
+  .global-offer-bar .hero-offer-top strong { font-size: .84rem; }
+  .home-offer-gallery .hero-offer-discount-inline,
+  .global-offer-bar .hero-offer-discount-inline { font-size: .68rem; }
+  .home-offer-gallery .hero-offer-meta > span:first-child,
+  .global-offer-bar .hero-offer-meta > span:first-child { font-size: .67rem; }
+  .home-offer-gallery .hero-offer-prices del,
+  .global-offer-bar .hero-offer-prices del,
+  .home-offer-gallery .hero-offer-prices b,
+  .global-offer-bar .hero-offer-prices b { font-size: .63rem; }
+  .home-offer-gallery .hero-offer-tagline,
+  .global-offer-bar .hero-offer-tagline { font-size: .6rem !important; }
+}
