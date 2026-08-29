@@ -1736,3 +1736,88 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
 @media (max-width: 380px) {
   .customer-auth-primary-logo { width: min(100%, 19rem) !important; }
 }
+
+/* Improve readability of the offer copy inside the teal overlay. */
+.home-offer-gallery .hero-offer-top strong,
+.global-offer-bar .hero-offer-top strong {
+  font-size: .82rem;
+  line-height: 1.3;
+}
+.home-offer-gallery .hero-offer-discount-inline,
+.global-offer-bar .hero-offer-discount-inline {
+  padding: .24rem .18rem;
+  font-size: .66rem;
+  line-height: 1.2;
+}
+.home-offer-gallery .hero-offer-meta > span:first-child,
+.global-offer-bar .hero-offer-meta > span:first-child {
+  font-size: .65rem;
+  line-height: 1.35;
+}
+.home-offer-gallery .hero-offer-prices del,
+.global-offer-bar .hero-offer-prices del,
+.home-offer-gallery .hero-offer-prices b,
+.global-offer-bar .hero-offer-prices b {
+  font-size: .62rem;
+  line-height: 1.3;
+}
+.home-offer-gallery .hero-offer-tagline,
+.global-offer-bar .hero-offer-tagline {
+  padding: .24rem .14rem;
+  font-size: .58rem !important;
+  line-height: 1.2;
+}
+@media (max-width: 420px) {
+  .home-offer-gallery .hero-offer-top strong,
+  .global-offer-bar .hero-offer-top strong { font-size: .74rem; }
+  .home-offer-gallery .hero-offer-discount-inline,
+  .global-offer-bar .hero-offer-discount-inline { font-size: .6rem; }
+  .home-offer-gallery .hero-offer-meta > span:first-child,
+  .global-offer-bar .hero-offer-meta > span:first-child { font-size: .59rem; }
+  .home-offer-gallery .hero-offer-prices del,
+  .global-offer-bar .hero-offer-prices del,
+  .home-offer-gallery .hero-offer-prices b,
+  .global-offer-bar .hero-offer-prices b { font-size: .56rem; }
+}
+
+/* Larger readable type for the teal offer panel. */
+.home-offer-gallery .hero-offer-caption,
+.global-offer-bar .hero-offer-caption {
+  width: clamp(5.9rem, 28vw, 8.2rem);
+  min-width: clamp(5.9rem, 28vw, 8.2rem);
+  max-width: clamp(5.9rem, 28vw, 8.2rem);
+  padding: .55rem .42rem;
+}
+.home-offer-gallery .hero-offer-top strong,
+.global-offer-bar .hero-offer-top strong { font-size: .9rem; }
+.home-offer-gallery .hero-offer-discount-inline,
+.global-offer-bar .hero-offer-discount-inline { font-size: .7rem; }
+.home-offer-gallery .hero-offer-meta > span:first-child,
+.global-offer-bar .hero-offer-meta > span:first-child { font-size: .69rem; }
+.home-offer-gallery .hero-offer-prices del,
+.global-offer-bar .hero-offer-prices del,
+.home-offer-gallery .hero-offer-prices b,
+.global-offer-bar .hero-offer-prices b { font-size: .66rem; }
+.home-offer-gallery .hero-offer-tagline,
+.global-offer-bar .hero-offer-tagline { font-size: .62rem !important; }
+@media (max-width: 420px) {
+  .home-offer-gallery .hero-offer-caption,
+  .global-offer-bar .hero-offer-caption {
+    width: clamp(5.25rem, 31vw, 7.2rem);
+    min-width: clamp(5.25rem, 31vw, 7.2rem);
+    max-width: clamp(5.25rem, 31vw, 7.2rem);
+    padding: .5rem .36rem;
+  }
+  .home-offer-gallery .hero-offer-top strong,
+  .global-offer-bar .hero-offer-top strong { font-size: .78rem; }
+  .home-offer-gallery .hero-offer-discount-inline,
+  .global-offer-bar .hero-offer-discount-inline { font-size: .63rem; }
+  .home-offer-gallery .hero-offer-meta > span:first-child,
+  .global-offer-bar .hero-offer-meta > span:first-child { font-size: .62rem; }
+  .home-offer-gallery .hero-offer-prices del,
+  .global-offer-bar .hero-offer-prices del,
+  .home-offer-gallery .hero-offer-prices b,
+  .global-offer-bar .hero-offer-prices b { font-size: .59rem; }
+  .home-offer-gallery .hero-offer-tagline,
+  .global-offer-bar .hero-offer-tagline { font-size: .56rem !important; }
+}
