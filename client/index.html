@@ -13,6 +13,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
   </head>
   <body>
+    <script>
+      (() => {
+        const remoteAppUrl = "https://lahza-production-e0af.up.railway.app/?lahza_remote=1";
+        const isNativeShell = Boolean(window.Capacitor?.isNativePlatform?.()) || window.location.protocol === "capacitor:";
+        const isRemoteBoot = new URLSearchParams(window.location.search).has("lahza_remote");
+        if (!isNativeShell || isRemoteBoot || window.location.search.includes("local=1")) return;
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 4500);
+        fetch(remoteAppUrl, { method: "HEAD", cache: "no-store", mode: "no-cors", signal: controller.signal })
+          .then(() => { window.location.replace(remoteAppUrl); })
+          .catch(() => { /* Keep the bundled local interface when offline. */ })
+          .finally(() => window.clearTimeout(timeout));
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
