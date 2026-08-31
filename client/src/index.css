@@ -2258,3 +2258,22 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   position: relative;
   top: -.5cm;
 }
+
+
+/* قصّ الجزء العلوي من القسم الفيروزي لرفع الواجهة كاملة */
+header[class*="header-service-theme-"] .service-intro-panel {
+  min-height: calc(14.5rem - .5cm);
+  padding-top: calc(2rem - .5cm);
+}
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .service-intro-panel {
+    min-height: calc(10.8rem - .5cm);
+    padding-top: calc(1.15rem - .5cm);
+  }
+}
+@media (max-width: 420px) {
+  header[class*="header-service-theme-"] .service-intro-panel {
+    min-height: calc(7.7rem - .5cm);
+    padding-top: calc(1.15rem - .5cm);
+  }
+}
