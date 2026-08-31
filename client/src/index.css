@@ -2314,3 +2314,9 @@ header[class*="header-service-theme-"] .header-search-wrap {
 header[class*="header-service-theme-"] .current-location-button {
   top: -1cm;
 }
+
+
+/* تنزيل شريط الأيقونات السفلي نصف سنتيمتر إضافي */
+.home-bottom-nav {
+  bottom: calc(.7rem - .5cm);
+}
