@@ -6,7 +6,8 @@ const config: CapacitorConfig = {
   webDir: 'dist/public',
   server: {
     url: 'https://lahza-production-e0af.up.railway.app/',
-    cleartext: false
+    cleartext: false,
+    allowNavigation: ['lahza-production-e0af.up.railway.app']
   }
 };
 
