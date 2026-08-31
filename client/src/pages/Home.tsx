@@ -469,11 +469,11 @@ export default function Home() {
     onError: error => toast.error(error.message),
   });
   const partnerLogin = trpc.lahza.partner.login.useMutation({
-    onSuccess: result => {
-      utils.lahza.partner.session.invalidate();
+    onSuccess: async result => {
+      await utils.lahza.partner.session.invalidate();
       setSecretOpen(false);
       toast.success(`أهلاً بك في متجر ${result.name}`);
-      setLocation("/");
+      setLocation("/partner/store");
     },
     onError: error => toast.error(error.message),
   });
@@ -868,8 +868,11 @@ export default function Home() {
   };
 
   if (!customerAuthReady) return <main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ تجهيز لحظتك...</span></main>;
+  const staffSessionLoading = !isStaticDemo && (adminSessionQuery.isLoading || partnerSessionQuery.isLoading);
+  const hasStaffSession = Boolean(adminSessionQuery.data?.role || partnerSessionQuery.data);
+  if (!customerAuth && staffSessionLoading) return <main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ التحقق من الحساب...</span></main>;
   const adminAccessDialog = <AdminAccessDialog open={secretOpen} onOpenChange={setSecretOpen} secretRole={secretRole} setSecretRole={setSecretRole} pin={pin} setPin={setPin} username={username} setUsername={setUsername} password={password} setPassword={setPassword} onLogin={handleAdminLogin} adminPending={adminLogin.isPending} partnerPending={partnerLogin.isPending} />;
-  if (!customerAuth) return <><CustomerAuthScreen onAuthenticated={completeCustomerAuth} onSecret={() => setSecretOpen(true)} />{adminAccessDialog}</>;
+  if (!customerAuth && !hasStaffSession) return <><CustomerAuthScreen onAuthenticated={completeCustomerAuth} onSecret={() => setSecretOpen(true)} />{adminAccessDialog}</>;
 
   return (
     <main dir="rtl" className="lahza-app-shell min-h-screen text-slate-950" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
@@ -960,7 +963,7 @@ export default function Home() {
       {screen === "offerQuantity" && selectedOffer ? <OfferQuantityScreen offer={selectedOffer} onBack={() => setScreen(selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers")} onAdd={quantity => { void addFromStore(selectedOffer.storeId, () => { const category = selectedOffer.storeCategory && selectedOffer.storeCategory in categoryMeta ? selectedOffer.storeCategory as LahzaCategory : "offers"; addLine({ category, catalogItemId: selectedOffer.catalogItemId ?? undefined, itemName: selectedOffer.productName ?? selectedOffer.text, quantity, unit: selectedOffer.productUnit ?? "وحدة", unitPrice: selectedOffer.productPrice ?? 0, priceKnown: Boolean(selectedOffer.productPrice && selectedOffer.productPrice > 0) }, selectedStore && selectedOffer.storeId === selectedStore.id ? "storeOffers" : "offers"); }); }} /> : null}
 
       {screen === "orderTracking" && submittedOrder ? <OrderTrackingScreen order={orderTrackingQuery.data ? { id: orderTrackingQuery.data.id, customerPhone: orderTrackingQuery.data.customerPhone, orderType: orderTrackingQuery.data.orderType, customerName: orderTrackingQuery.data.customerName, status: orderTrackingQuery.data.status, totalAmount: orderTrackingQuery.data.totalAmount, deliveryFee: orderTrackingQuery.data.deliveryFee, deliveryAddress: orderTrackingQuery.data.locationText || submittedOrder.deliveryAddress, paymentMethod: orderTrackingQuery.data.paymentMethod, eta: submittedOrder.eta, lines: orderTrackingQuery.data.lines.map(line => ({ id: String(line.id), catalogItemId: line.catalogItemId ?? undefined, category: "groceries" as LahzaCategory, itemName: line.itemName, quantity: Number(line.quantity), unit: line.unit, unitPrice: line.unitPrice, priceKnown: line.priceKnown })), notes: orderTrackingQuery.data.notes || submittedOrder.notes } : submittedOrder} loading={orderTrackingQuery.isLoading} onHome={goHome} onOpenCart={openCart} /> : null}
-      {screen === "account" ? <CustomerAccountScreen session={customerAuth} onBack={goHome} onLogout={logoutCustomer} onPhoneSubmit={newPhone => { if (customerAuth?.mode === "customer" && customerAuth.phone) updateCustomerPhone.mutate({ currentPhone: customerAuth.phone, newPhone }); }} savingPhone={updateCustomerPhone.isPending} onOpenOrder={submittedOrder ? () => setScreen("orderTracking") : undefined} /> : null}
+      {screen === "account" && customerAuth ? <CustomerAccountScreen session={customerAuth} onBack={goHome} onLogout={logoutCustomer} onPhoneSubmit={newPhone => { if (customerAuth.mode === "customer" && customerAuth.phone) updateCustomerPhone.mutate({ currentPhone: customerAuth.phone, newPhone }); }} savingPhone={updateCustomerPhone.isPending} onOpenOrder={submittedOrder ? () => setScreen("orderTracking") : undefined} /> : null}
 
       {screen === "checkout" ? (
         <>

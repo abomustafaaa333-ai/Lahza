@@ -27,7 +27,7 @@ export default function PartnerPortal() {
   const utils = trpc.useUtils();
   const sessionQuery = trpc.lahza.partner.session.useQuery();
   const [password, setPassword] = useState("");
-  const login = trpc.lahza.partner.login.useMutation({ onSuccess: result => { utils.lahza.partner.session.invalidate(); toast.success(`أهلاً بك في متجر ${result.name}`); setLocation("/partner/store"); }, onError: error => toast.error(error.message) });
+  const login = trpc.lahza.partner.login.useMutation({ onSuccess: async result => { await utils.lahza.partner.session.invalidate(); toast.success(`أهلاً بك في متجر ${result.name}`); setLocation("/partner/store"); }, onError: error => toast.error(error.message) });
   const logout = trpc.lahza.partner.logout.useMutation({ onSuccess: () => { utils.lahza.partner.session.setData(undefined, null); setLocation("/"); }, onError: error => toast.error(error.message) });
 
   if (sessionQuery.isLoading) return <Loading text="جارٍ فتح لوحة الشريك..." />;
