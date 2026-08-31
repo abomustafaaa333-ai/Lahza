@@ -2503,3 +2503,68 @@ header[class*="header-service-theme-"] .header-search-wrap {
   .home-offer-gallery .hero-offer-caption,
   .offers-page-gallery .hero-offer-caption { right: .7rem; bottom: .7rem; left: .7rem; max-width: calc(100% - 1.4rem); }
 }
+
+
+/* ترتيب بطاقة العرض حسب الطلب الأخير */
+.global-offer-bar .hero-offer-caption,
+.home-offer-gallery .hero-offer-caption,
+.offers-page-gallery .hero-offer-caption {
+  direction: rtl;
+  text-align: right;
+  justify-items: end;
+  align-items: end;
+}
+.global-offer-bar .hero-offer-store-badge,
+.home-offer-gallery .hero-offer-store-badge,
+.offers-page-gallery .hero-offer-store-badge {
+  top: .8rem;
+  right: .8rem;
+  color: #ffffff !important;
+  background: #00666b !important;
+  border: 1px solid rgba(255,255,255,.3);
+}
+.global-offer-bar .hero-offer-discount-inline,
+.home-offer-gallery .hero-offer-discount-inline,
+.offers-page-gallery .hero-offer-discount-inline {
+  top: .8rem;
+  left: .8rem;
+  color: #ffffff !important;
+  background: #f28c28 !important;
+  font-weight: 900;
+}
+.global-offer-bar .hero-offer-copy-badge,
+.home-offer-gallery .hero-offer-copy-badge,
+.offers-page-gallery .hero-offer-copy-badge {
+  color: #ffffff !important;
+  font-weight: 950;
+  text-shadow: 0 1px 3px rgba(0,0,0,.45);
+}
+.global-offer-bar .hero-offer-prices,
+.home-offer-gallery .hero-offer-prices,
+.offers-page-gallery .hero-offer-prices {
+  direction: rtl;
+  justify-content: flex-start;
+  font-weight: 900;
+}
+.global-offer-bar .hero-offer-price-badge b,
+.home-offer-gallery .hero-offer-price-badge b,
+.offers-page-gallery .hero-offer-price-badge b {
+  color: #ffffff !important;
+  font-size: 1.08rem !important;
+  font-weight: 950;
+  text-shadow: 0 1px 3px rgba(0,0,0,.42);
+}
+.global-offer-bar .hero-offer-price-badge del,
+.home-offer-gallery .hero-offer-price-badge del,
+.offers-page-gallery .hero-offer-price-badge del {
+  color: rgba(255,255,255,.82) !important;
+  font-weight: 800;
+  text-decoration-thickness: 2px;
+}
+.global-offer-bar .hero-offer-cta,
+.home-offer-gallery .hero-offer-cta,
+.offers-page-gallery .hero-offer-cta {
+  color: #ffffff !important;
+  background: #00666b !important;
+  font-weight: 950;
+}
