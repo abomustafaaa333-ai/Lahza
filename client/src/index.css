@@ -1874,3 +1874,46 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   .home-offer-gallery .hero-offer-tagline,
   .global-offer-bar .hero-offer-tagline { font-size: .6rem !important; }
 }
+
+/* User-requested mobile navigation contrast */
+.home-bottom-nav {
+  border-color: #b8d9da;
+  background: #e7f3f3;
+  box-shadow: 0 16px 34px -18px rgba(0, 84, 89, .34), 0 0 0 1px rgba(0, 102, 107, .08);
+}
+.home-bottom-nav button { color: #477074; }
+.home-bottom-nav button:hover { color: #00666B; background: #ffffff; }
+.home-bottom-nav button.home-bottom-nav-active,
+.home-bottom-nav button.home-bottom-nav-active:hover {
+  color: #ffffff;
+  background: #FF6B2B;
+  box-shadow: 0 8px 18px -10px rgba(255, 107, 43, .72);
+}
+.home-bottom-nav::before {
+  background: linear-gradient(120deg, rgba(0, 102, 107, .16), transparent 40%, rgba(255, 107, 43, .12));
+}
+
+/* Download CTA is intentionally removed from the customer home interface. */
+
+/* Offer image treatment: preserve the uploaded image and add a phosphor glow above it. */
+.hero-offer-image {
+  object-fit: contain;
+  background: #eef8f6;
+}
+.hero-offer-phosphor-layer,
+.lahza-offer-phosphor-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(151, 255, 216, .3), transparent 28%),
+    linear-gradient(135deg, rgba(0, 255, 185, .14), rgba(0, 102, 107, .1) 48%, rgba(255, 107, 43, .12));
+  box-shadow: inset 0 0 3.2rem rgba(111, 255, 215, .22);
+  mix-blend-mode: screen;
+  opacity: .72;
+}
+.lahza-offer-artwork-product { isolation: isolate; }
+.lahza-offer-artwork-product img { position: relative; z-index: 0; }
+.lahza-offer-artwork-product .lahza-offer-phosphor-layer { z-index: 1; }

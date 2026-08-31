@@ -23,8 +23,8 @@ const PARTNER_COOKIE = "lahza_partner_session";
 const DEMO_CUSTOMER_PHONE = "+963997311078";
 const DEMO_CUSTOMER_NAME = "عميل لحظة التجريبي";
 const internationalPhoneSchema = z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل رقم هاتف دولياً صحيحاً مع رمز الدولة");
-const DEFAULT_MASTER_PIN = "555369";
-const LEGACY_DEFAULT_MASTER_PIN = "5555";
+const DEFAULT_MASTER_PIN = "1212";
+const LEGACY_DEFAULT_MASTER_PIN = "555369";
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
 
