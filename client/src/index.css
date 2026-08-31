@@ -2291,3 +2291,16 @@ header[class*="header-service-theme-"] .service-intro-panel {
   top: -1cm;
   margin-bottom: -1cm;
 }
+
+
+/* ضبط مواضع البحث وخدمة الزبائن والشريط السفلي */
+header[class*="header-service-theme-"] .header-search-wrap {
+  margin-top: .25rem;
+}
+header[class*="header-service-theme-"] .current-location-button {
+  position: relative;
+  top: -.5cm;
+}
+.home-bottom-nav {
+  bottom: .7rem;
+}
