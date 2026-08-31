@@ -852,7 +852,7 @@ export const lahzaRouter = router({
         : null;
       if (input.category === "other" && !customCategory) return [];
       const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true), ...(customCategory ? [eq(stores.customCategoryId, customCategory.id)] : []))).orderBy(stores.sortOrder, stores.name);
-      const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen }).from(partners);
+      const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, imageUrl: partners.imageUrl }).from(partners);
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       const filteredStores = filterRestaurantStores(categoryStores, input.category, input.restaurantType);
       const ratings = await getStoreRatingMap(db);
@@ -860,7 +860,7 @@ export const lahzaRouter = router({
         const rating = ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 };
         if (!store.partnerId) return [{ ...store, ...rating, storeOpen: true }];
         const partner = partnerById.get(store.partnerId);
-        return partner?.active ? [{ ...store, ...rating, storeOpen: partner.storeOpen }] : [];
+        return partner?.active ? [{ ...store, ...rating, imageUrl: partner.imageUrl || store.imageUrl, storeOpen: partner.storeOpen }] : [];
       });
     }),
     popularProducts: publicProcedure.query(async () => {
@@ -900,13 +900,15 @@ export const lahzaRouter = router({
       const store = found[0];
       if (!store) throw new Error("هذا المتجر غير متاح حالياً");
       let storeOpen = true;
+      let storeImageUrl = store.imageUrl;
       if (store.partnerId) {
-        const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
+        const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen, imageUrl: partners.imageUrl }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
         if (!partner[0]?.active) throw new Error("هذا المتجر غير متاح حالياً");
         storeOpen = partner[0].storeOpen;
+        storeImageUrl = partner[0].imageUrl || storeImageUrl;
       }
       const products = await db.select().from(catalogItems).where(and(eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name);
-      return { store: { ...store, storeOpen }, products };
+      return { store: { ...store, imageUrl: storeImageUrl, storeOpen }, products };
     }),
     searchProducts: publicProcedure.input(z.object({ query: z.string().trim().min(2, "اكتب حرفين على الأقل للبحث").max(80) })).query(async ({ input }) => {
       const db = await getDb();
@@ -923,6 +925,7 @@ export const lahzaRouter = router({
         storeId: stores.id,
         storeName: stores.name,
         storeCategory: stores.category,
+        storeImageUrl: stores.imageUrl,
         storeOpen: partners.storeOpen,
       }).from(catalogItems)
         .innerJoin(stores, eq(catalogItems.storeId, stores.id))

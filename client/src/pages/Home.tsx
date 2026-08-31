@@ -38,7 +38,7 @@ type StoreOption = { id: number; name: string; category: LahzaCategory; imageUrl
 type CustomDeliveryCategory = { id: number; slug: string; title: string; subtitle: string };
 type StoreProduct = { id: number; name: string; unit: string; unitPrice: number; available: boolean; imageUrl?: string | null };
 type CustomerOffer = { id: number; text: string; partnerName: string; ratingStars?: number; completedOrders?: number; storeName?: string | null; storeId?: number | null; storeCategory?: string | null; catalogItemId?: number | null; productName?: string | null; productUnit?: string | null; productPrice?: number | null; originalProductPrice?: number | null; productImageUrl?: string | null; discountPercent?: number; offerPrice?: number; imageUrl?: string | null; storeOpen?: boolean | null; featuredStatus?: "none" | "pending" | "approved" | "rejected" };
-type ProductSearchResult = { id: number; name: string; unit: string; price: number; available: boolean; storeId: number; storeName: string; storeCategory: LahzaCategory; storeOpen: boolean };
+type ProductSearchResult = { id: number; name: string; unit: string; price: number; available: boolean; storeId: number; storeName: string; storeCategory: LahzaCategory; storeImageUrl?: string | null; storeOpen: boolean };
 type SupportContact = { id: number; label: string; phone: string; callEnabled: boolean; whatsappEnabled: boolean };
 type CustomerAuthSession = { mode: "customer" | "guest"; phone?: string; name?: string; remember?: boolean };
 
@@ -455,7 +455,7 @@ export default function Home() {
     if (!sharedStore || selectedStore?.id === sharedStore.id) return;
     setActiveCategory(sharedStore.category as LahzaCategory);
     if (!isStaticDemo) trackStoreVisit.mutate({ storeId: sharedStore.id, source: "qr" });
-    setSelectedStore({ id: sharedStore.id, name: sharedStore.name, category: sharedStore.category as LahzaCategory, storeOpen: sharedStore.storeOpen });
+    setSelectedStore({ id: sharedStore.id, name: sharedStore.name, category: sharedStore.category as LahzaCategory, imageUrl: sharedStore.imageUrl, storeOpen: sharedStore.storeOpen });
     setScreen("store");
   }, [sharedStoreQuery.data, selectedStore?.id]);
   const adminLogin = trpc.lahza.admin.login.useMutation({
@@ -828,7 +828,7 @@ export default function Home() {
     setActiveCategory(result.storeCategory);
     setActiveCustomCategory(null);
     setSelectedProduct(null);
-    setSelectedStore({ id: result.storeId, name: result.storeName, category: result.storeCategory, storeOpen: result.storeOpen });
+    setSelectedStore({ id: result.storeId, name: result.storeName, category: result.storeCategory, imageUrl: result.storeImageUrl, storeOpen: result.storeOpen });
     setScreen("store");
   };
 
