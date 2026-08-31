@@ -2179,3 +2179,58 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
     min-height: calc(10.4rem + 1cm);
   }
 }
+
+
+/* تصغير شريط اكتشف ما تحتاجه وإبراز عنوان العروض الحالية */
+.home-category-row > .home-category-card {
+  width: 5.65rem;
+  min-width: 5.65rem;
+  height: 6.65rem;
+  min-height: 6.65rem;
+  gap: .35rem;
+  padding: .35rem .4rem .28rem;
+}
+.home-category-emoji {
+  width: 2.8rem;
+  height: 2.8rem;
+  font-size: 2.25rem;
+}
+.home-category-all-grid {
+  width: 2.8rem;
+  height: 2.8rem;
+  gap: .24rem;
+}
+.home-category-all-grid > span {
+  width: 1rem;
+  height: 1rem;
+  border-radius: .35rem;
+}
+.home-category-row > .home-category-card > span:last-child,
+.home-category-row > .home-category-all > .home-category-all-label {
+  min-height: 1.85rem;
+  font-size: .7rem;
+  line-height: 1.2;
+}
+.home-offers-heading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: .55rem;
+  margin: .9rem .5cm .15rem;
+  color: #4a2618;
+}
+.home-offers-heading svg { color: #e85f22; stroke-width: 2.7; }
+.home-offers-heading h2 { margin: 0; font-size: 1.05rem; font-weight: 900; }
+@media (max-width: 600px) {
+  .home-category-row > .home-category-card {
+    width: 5.15rem;
+    min-width: 5.15rem;
+    height: 6.15rem;
+    min-height: 6.15rem;
+  }
+  .home-category-emoji { width: 2.45rem; height: 2.45rem; font-size: 2rem; }
+  .home-category-all-grid { width: 2.45rem; height: 2.45rem; }
+  .home-category-all-grid > span { width: .86rem; height: .86rem; }
+  .home-category-row > .home-category-card > span:last-child,
+  .home-category-row > .home-category-all > .home-category-all-label { font-size: .64rem; }
+}
