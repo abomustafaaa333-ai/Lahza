@@ -78,8 +78,7 @@ const minimumDeliveryOrderSyp = MINIMUM_DELIVERY_ORDER_NEW_SYP;
 
 const homeDiscoverCategories: { key: string; title: string; icon: string; category?: LahzaCategory }[] = [
   { key: "restaurants", title: "مطاعم", icon: "🍔", category: "restaurants" },
-  { key: "groceries", title: "سوبرماركت", icon: "🧺", category: "groceries" },
-  { key: "household", title: "بقالة", icon: "🛍️", category: "household" },
+  { key: "groceries", title: "بقوليات ومواد غذائية", icon: "🛍️", category: "groceries" },
   { key: "sweets", title: "حلويات", icon: "🍰", category: "sweets" },
   { key: "gifts", title: "زهور وهدايا", icon: "🌸", category: "beauty_personal_care" },
   { key: "services", title: "خدمات", icon: "🔧" },
@@ -904,8 +903,8 @@ export default function Home() {
           <section className="app-shell pb-10 home-discover-section">
             <div className="home-section-heading"><div><p className="section-eyebrow">تسوّق حسب الفئة</p><h2 className="section-title">اكتشف ما تحتاجه</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div>
             <div className="home-category-row" dir="rtl" aria-label="أقسام لحظة">
-              <button type="button" className="home-category-card home-category-all" onClick={() => setScreen("delivery")}><span className="home-category-all-grid" aria-hidden="true"><span /><span /><span /><span /></span><span className="home-category-all-label">الكل</span></button>
               {homeDiscoverCategories.map(item => <button key={item.key} type="button" className="home-category-card" onClick={() => { if (!item.category) { setScreen("delivery"); return; } setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(null); setActiveCategory(item.category); setScreen("stores"); }}><span className="home-category-emoji" aria-hidden="true">{item.icon}</span><span>{item.title}</span></button>)}
+              <button type="button" className="home-category-card home-category-all" onClick={() => setScreen("delivery")}><span className="home-category-all-grid" aria-hidden="true"><span /><span /><span /><span /></span><span className="home-category-all-label">الكل</span></button>
             </div>
             <div className="global-offer-bar home-offer-gallery"><PartnerOfferGallery slides={partnerGallerySlides} onOpen={openFeaturedOffers} /></div>
             <section className="home-showcase-block"><div className="home-section-heading"><div><p className="section-eyebrow">اختيارات لحظة</p><h2 className="section-title">المتاجر المميزة</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div><div className="home-featured-row">{featuredStoreCards.length ? featuredStoreCards.map(store => <button key={`${store.id}-${store.name}`} type="button" className="home-featured-store" onClick={() => { setActiveCategory(store.category); setActiveCustomCategory(null); setSelectedProduct(null); setSelectedStore({ id: store.id, name: store.name, category: store.category, storeOpen: store.storeOpen }); setScreen("store"); window.scrollTo({ top: 0, behavior: "smooth" }); }}><img src={categoryImageByKey[store.category]} alt="" loading="lazy" /><strong>{store.name}</strong><span className="home-store-rating" aria-label={`تقييم ${store.ratingStars ?? 3} من 5`}>{"★".repeat(store.ratingStars ?? 3)}{"☆".repeat(5 - (store.ratingStars ?? 3))}</span><small>{store.note}</small><span className="home-store-open">لديه عروض</span></button>) : <div className="home-featured-empty">لا توجد متاجر لديها عروض مميزة حالياً</div>}</div></section>

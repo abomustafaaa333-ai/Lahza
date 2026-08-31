@@ -2029,13 +2029,13 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   flex: 0 0 8.8rem;
   width: 8.8rem;
   min-width: 8.8rem;
-  height: 9.55rem;
-  min-height: 9.55rem;
+  height: 8.65rem;
+  min-height: 8.65rem;
   justify-content: center;
-  gap: .8rem;
+  gap: .45rem;
   border: 1px solid #f0ebe7;
   border-radius: 1.55rem;
-  padding: .85rem .7rem .75rem;
+  padding: .45rem .7rem .35rem;
   background: linear-gradient(145deg, #fffefd 0%, #faf7f3 100%);
   box-shadow: 0 .85rem 1.35rem -1rem rgba(74, 38, 24, .3);
   transition: transform .18s cubic-bezier(.23, 1, .32, 1), box-shadow .18s ease;
@@ -2055,15 +2055,15 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
 }
 .home-category-row > .home-category-card > span:last-child {
   width: 100%;
-  min-height: auto;
+  min-height: 2.3rem;
   overflow: visible;
   color: #1d1715;
-  font-size: .98rem;
+  font-size: .92rem;
   font-weight: 850;
   line-height: 1.2;
   text-align: center;
   text-overflow: clip;
-  white-space: nowrap;
+  white-space: normal;
 }
 .home-category-row > .home-category-all {
   border-color: #8e1026;
@@ -2105,15 +2105,15 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
     flex-basis: 6.9rem;
     width: 6.9rem;
     min-width: 6.9rem;
-    height: 8.4rem;
-    min-height: 8.4rem;
-    gap: .55rem;
+    height: 7.55rem;
+    min-height: 7.55rem;
+    gap: .3rem;
     border-radius: 1.3rem;
-    padding: .7rem .45rem .65rem;
+    padding: .35rem .45rem .3rem;
   }
   .home-category-emoji { width: 3.55rem; height: 3.55rem; font-size: 2.85rem; }
   .home-category-row > .home-category-card > span:last-child,
-  .home-category-row > .home-category-all > .home-category-all-label { font-size: .78rem; }
+  .home-category-row > .home-category-all > .home-category-all-label { min-height: 2.1rem; font-size: .75rem; }
   .home-category-all-grid { width: 3.25rem; height: 3.25rem; gap: .27rem; }
   .home-category-all-grid > span { width: 1.15rem; height: 1.15rem; border-radius: .4rem; }
 }
