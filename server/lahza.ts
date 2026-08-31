@@ -992,7 +992,7 @@ export const lahzaRouter = router({
       await cleanExpiredOffers();
       const now = new Date();
       const featuredOnly = !input?.storeId && !input?.includeRegular;
-      const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)), ...(input?.storeId ? [eq(partnerOffers.storeId, input.storeId)] : featuredOnly ? [eq(partnerOffers.featuredStatus, "approved")] : []))).orderBy(desc(partnerOffers.createdAt));
+      const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)), ...(!input?.storeId && featuredOnly ? [eq(partnerOffers.featuredStatus, "approved")] : []))).orderBy(desc(partnerOffers.createdAt));
       await ensureProfileImageColumns(db);
       const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours }).from(partners).where(eq(partners.active, true));
       const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
@@ -1005,9 +1005,11 @@ export const lahzaRouter = router({
       return activeOffers.flatMap(offer => {
         if (featuredOnly && !canShowFeaturedOffer(offer.featuredStatus, offer.active, offer.expiresAt, now)) return [];
         const partner = partnerById.get(offer.partnerId);
-        const store = offer.storeId ? storeById.get(offer.storeId) : null;
         const product = offer.catalogItemId ? productById.get(offer.catalogItemId) : null;
-        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id ? [{ ...offer, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
+        const resolvedStoreId = offer.storeId ?? product?.storeId ?? null;
+        const store = resolvedStoreId ? storeById.get(resolvedStoreId) : null;
+        if (input?.storeId && resolvedStoreId !== input.storeId) return [];
+        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id ? [{ ...offer, storeId: resolvedStoreId, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
