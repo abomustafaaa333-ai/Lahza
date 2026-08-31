@@ -2154,3 +2154,28 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   .store-closed-banner strong { font-size: .82rem; }
   .store-closed-banner span { font-size: .7rem; }
 }
+
+
+/* ضبط المسافات النهائية وفق طلب المستخدم */
+.home-discover-section .home-category-row {
+  margin-inline: .5cm;
+  padding-bottom: calc(1rem - .5cm);
+}
+.home-bottom-nav {
+  bottom: .7rem !important;
+}
+.offers-page-gallery {
+  margin-top: .25rem;
+  margin-bottom: 1rem;
+}
+.offers-page-gallery .hero-image-frame {
+  height: calc(11.5rem + 1cm);
+  min-height: calc(11.5rem + 1cm);
+}
+@media (max-width: 640px) {
+  .home-discover-section .home-category-row { margin-inline: .5cm; }
+  .offers-page-gallery .hero-image-frame {
+    height: calc(10.4rem + 1cm);
+    min-height: calc(10.4rem + 1cm);
+  }
+}
