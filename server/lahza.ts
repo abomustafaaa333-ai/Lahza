@@ -1522,7 +1522,7 @@ export const lahzaRouter = router({
       const resolvedStoreId = offer.storeId ?? product?.storeId ?? null;
       const store = resolvedStoreId ? storeById.get(resolvedStoreId) : undefined;
       const rating = resolvedStoreId ? ratings.get(resolvedStoreId) ?? { completedOrders: 0, ratingStars: 3 } : { completedOrders: 0, ratingStars: 3 };
-      return { ...offer, storeId: resolvedStoreId, storeName: store?.name ?? "متجر مميز", storeCategory: store?.category ?? product?.category ?? "other", partnerName: partnerById.get(offer.partnerId) ?? "شريك لحظة", ratingStars: rating.ratingStars, completedOrders: rating.completedOrders, product };
+      return { ...offer, storeId: resolvedStoreId, storeName: store?.name ?? "متجر مميز", storeCategory: store?.category ?? product?.category ?? "other", partnerName: partnerById.get(offer.partnerId) ?? "شريك لحظة", ratingStars: rating.ratingStars, completedOrders: rating.completedOrders, originalProductPrice: product?.unitPrice ?? offer.offerPrice, product };
     });
   }),
   admin: router({
