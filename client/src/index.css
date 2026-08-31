@@ -2277,3 +2277,9 @@ header[class*="header-service-theme-"] .service-intro-panel {
     padding-top: calc(1.15rem - .5cm);
   }
 }
+
+
+/* تعديل القص الحالي: رفع القسم الفيروزي وما يليه نصف سنتيمتر إضافي */
+header[class*="header-service-theme-"] .service-intro-panel {
+  margin-top: calc(.65rem - .5cm);
+}
