@@ -2304,3 +2304,13 @@ header[class*="header-service-theme-"] .current-location-button {
 .home-bottom-nav {
   bottom: .7rem;
 }
+
+
+/* رفع إضافي لعناصر الرأس حسب الطلب */
+header[class*="header-service-theme-"] .header-search-wrap {
+  position: relative;
+  top: -.5cm;
+}
+header[class*="header-service-theme-"] .current-location-button {
+  top: -1cm;
+}
