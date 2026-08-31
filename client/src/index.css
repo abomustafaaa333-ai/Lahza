@@ -2698,3 +2698,55 @@ header[class*="header-service-theme-"] .header-search-wrap {
     max-width: min(74%, 16rem) !important;
   }
 }
+
+
+/* محاذاة عربية صريحة: المجموعة أسفل اسم المتجر وعلى أقصى اليمين */
+.global-offer-bar .hero-offer-caption,
+.home-offer-gallery .hero-offer-caption,
+.offers-page-gallery .hero-offer-caption {
+  position: absolute !important;
+  inset-inline-start: auto !important;
+  inset-inline-end: .85rem !important;
+  left: auto !important;
+  right: .85rem !important;
+  width: min(72%, 18rem) !important;
+  max-width: min(72%, 18rem) !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  place-items: end !important;
+  justify-content: end !important;
+  justify-items: end !important;
+  align-items: end !important;
+  direction: rtl !important;
+  text-align: right !important;
+  transform: none !important;
+}
+.global-offer-bar .hero-offer-caption > *,
+.home-offer-gallery .hero-offer-caption > *,
+.offers-page-gallery .hero-offer-caption > * {
+  grid-column: 1 !important;
+  justify-self: end !important;
+  align-self: end !important;
+  direction: rtl !important;
+  text-align: right !important;
+  margin-inline-start: 0 !important;
+  margin-inline-end: 0 !important;
+}
+.global-offer-bar .hero-offer-prices,
+.home-offer-gallery .hero-offer-prices,
+.offers-page-gallery .hero-offer-prices {
+  justify-content: flex-start !important;
+  justify-self: end !important;
+  direction: rtl !important;
+  text-align: right !important;
+}
+@media (max-width: 420px) {
+  .global-offer-bar .hero-offer-caption,
+  .home-offer-gallery .hero-offer-caption,
+  .offers-page-gallery .hero-offer-caption {
+    inset-inline-end: .7rem !important;
+    right: .7rem !important;
+    width: min(74%, 16rem) !important;
+    max-width: min(74%, 16rem) !important;
+  }
+}
