@@ -1912,3 +1912,17 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
 .home-offer-gallery .hero-offer-caption::after,
 .global-offer-bar .hero-offer-caption::before,
 .global-offer-bar .hero-offer-caption::after { display: none !important; }
+
+/* Final offer-gallery position: move the existing-size gallery upward only. */
+.home-discover-section > .home-offer-gallery {
+  position: relative;
+  top: -1cm;
+  margin-top: 1.35rem;
+  margin-bottom: -1cm;
+}
+/* The teal treatment remains only behind offer copy (description, store, prices). */
+.home-discover-section > .home-offer-gallery .hero-offer-caption {
+  background: #00666B !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
