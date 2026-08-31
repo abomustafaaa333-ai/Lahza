@@ -2283,3 +2283,14 @@ header[class*="header-service-theme-"] .service-intro-panel {
 header[class*="header-service-theme-"] .service-intro-panel {
   margin-top: calc(.65rem - .5cm);
 }
+
+
+/* قص إضافي من أعلى القسم الفيروزي ورفع شريط المتاجر المميزة */
+header[class*="header-service-theme-"] .service-intro-panel {
+  margin-top: calc(.65rem - 1cm);
+}
+.home-offer-gallery + .home-showcase-block {
+  position: relative;
+  top: -1cm;
+  margin-bottom: -1cm;
+}
