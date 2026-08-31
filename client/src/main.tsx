@@ -18,6 +18,8 @@ const trpcClient = trpc.createClient({
       fetch(input, init) {
         const headers = new Headers(init?.headers);
         headers.set("x-lahza-auth-runtime", getAuthRuntimeId());
+        const selectedCity = window.sessionStorage.getItem("lahza_selected_city");
+        if (selectedCity === "manbij" || selectedCity === "jarabulus") headers.set("x-lahza-city", selectedCity);
         return globalThis.fetch(input, { ...(init ?? {}), credentials: "include", headers });
       },
     }),

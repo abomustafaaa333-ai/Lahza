@@ -1,4 +1,5 @@
 import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { CITY_KEYS } from "../shared/cities";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -22,6 +23,7 @@ export const partners = mysqlTable("partners", {
   storeOpen: boolean("storeOpen").notNull().default(true),
   preparationMinutes: int("preparationMinutes").notNull().default(20),
   workHours: text("workHours"),
+  city: mysqlEnum("city", CITY_KEYS).notNull().default("manbij"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -47,10 +49,10 @@ export const stores = mysqlTable("stores", {
   imageUrl: varchar("imageUrl", { length: 500 }),
   active: boolean("active").notNull().default(true),
   sortOrder: int("sortOrder").notNull().default(0),
+  city: mysqlEnum("city", CITY_KEYS).notNull().default("manbij"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
-
 export const storeTrafficEvents = mysqlTable("store_traffic_events", {
   id: int("id").autoincrement().primaryKey(),
   storeId: int("storeId").notNull().references(() => stores.id, { onDelete: "cascade" }),
@@ -195,10 +197,10 @@ export const supervisors = mysqlTable("supervisors", {
   username: varchar("username", { length: 64 }).notNull().unique(),
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   active: boolean("active").notNull().default(true),
+  city: mysqlEnum("city", CITY_KEYS).notNull().default("manbij"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
-
 export const lahzaEmployees = mysqlTable("lahza_employees", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 80 }).notNull(),

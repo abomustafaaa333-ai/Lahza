@@ -14,6 +14,7 @@ import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partn
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, formatNewSyp, formatSyp, restaurantTypeMeta, toLegacySyp, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
+import { CITY_LABELS, CITY_KEYS, type CityKey } from "@shared/cities";
 import { ArrowLeft, BadgePercent, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Fuel, HandCoins, LayoutDashboard, Loader2, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
@@ -41,6 +42,10 @@ type CustomerOffer = { id: number; text: string; partnerName: string; ratingStar
 type ProductSearchResult = { id: number; name: string; unit: string; price: number; available: boolean; storeId: number; storeName: string; storeCategory: LahzaCategory; storeImageUrl?: string | null; storeOpen: boolean };
 type SupportContact = { id: number; label: string; phone: string; callEnabled: boolean; whatsappEnabled: boolean };
 type CustomerAuthSession = { mode: "customer" | "guest"; phone?: string; name?: string; remember?: boolean };
+
+function CitySelectionGate({ onSelect }: { onSelect: (city: CityKey) => void }) {
+  return <main dir="rtl" className="city-selection-gate min-h-screen bg-[#fffaf6] px-5 py-10 text-[#4a2618]"><section className="mx-auto flex min-h-[78vh] max-w-lg flex-col items-center justify-center rounded-[2rem] border border-orange-100 bg-white p-6 text-center shadow-[0_20px_60px_rgba(99,48,27,0.12)]"><img src="/assets/lahza-logo.svg" alt="لحظة" className="h-20 w-44 object-contain" /><p className="mt-6 text-sm font-bold text-red-600">مرحبًا بك في لحظة</p><h1 className="mt-2 text-2xl font-black">اختر مدينتك</h1><p className="mt-3 max-w-sm text-sm leading-7 text-slate-500">اختر المدينة التي تريد تصفح متاجرها وعروضها. لن يظهر تبديل المدن بعد الدخول إلى التطبيق.</p><div className="mt-8 grid w-full gap-4 sm:grid-cols-2">{CITY_KEYS.map(city => <button key={city} type="button" onClick={() => onSelect(city)} className="group rounded-3xl border-2 border-orange-100 bg-orange-50/60 p-6 text-right transition hover:border-[#ff7a33] hover:bg-white hover:shadow-lg active:scale-[.98]"><span className="block text-xs font-bold text-[#ff7a33]">لحظة</span><strong className="mt-2 block text-2xl font-black text-[#4a2618]">{CITY_LABELS[city]}</strong><span className="mt-2 block text-xs leading-6 text-slate-500">متاجر وعروض وتوصيل {CITY_LABELS[city]}</span></button>)}</div></section></main>;
+}
 
 const CUSTOMER_AUTH_STORAGE_KEY = "lahza_customer_auth_v1";
 const DEMO_OTP_CODE = "123456";
@@ -322,6 +327,7 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
   const [customerAuthReady, setCustomerAuthReady] = useState(false);
   const [customerAuth, setCustomerAuth] = useState<CustomerAuthSession | null>(null);
+  const [selectedCity, setSelectedCity] = useState<CityKey | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
@@ -881,6 +887,7 @@ export default function Home() {
   if (!customerAuth && staffSessionLoading) return <main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ التحقق من الحساب...</span></main>;
   const adminAccessDialog = <AdminAccessDialog open={secretOpen} onOpenChange={setSecretOpen} secretRole={secretRole} setSecretRole={setSecretRole} pin={pin} setPin={setPin} username={username} setUsername={setUsername} password={password} setPassword={setPassword} onLogin={handleAdminLogin} adminPending={adminLogin.isPending} partnerPending={partnerLogin.isPending} />;
   if (!customerAuth && !hasStaffSession) return <><CustomerAuthScreen onAuthenticated={completeCustomerAuth} onSecret={() => setSecretOpen(true)} />{adminAccessDialog}</>;
+  if (customerAuth && !selectedCity) return <CitySelectionGate onSelect={city => { window.sessionStorage.setItem("lahza_selected_city", city); setSelectedCity(city); }} />;
 
   return (
     <main dir="rtl" className="lahza-app-shell min-h-screen text-slate-950" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>

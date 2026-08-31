@@ -7,6 +7,7 @@ import { z } from "zod";
 import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
+import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
 import { demoProductImages, demoProductTemplates, type DemoStoreCategory } from "./demoCatalog";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -281,7 +282,7 @@ async function requirePartner(ctx: TrpcContext) {
 
 async function requirePartnerStore(ctx: TrpcContext, storeId: number) {
   const { db, partner } = await requirePartner(ctx);
-  const found = await db.select().from(stores).where(and(eq(stores.id, storeId), eq(stores.partnerId, partner.id), eq(stores.active, true))).limit(1);
+  const found = await db.select().from(stores).where(and(eq(stores.id, storeId), eq(stores.partnerId, partner.id), eq(stores.active, true), eq(stores.city, partner.city))).limit(1);
   if (!found[0]) throw new Error("هذا المتجر غير معيّن لحسابك أو غير متاح حالياً");
   return { db, partner, store: found[0] };
 }
@@ -449,6 +450,7 @@ export const storeInput = z.object({
   active: z.boolean().default(true),
   sortOrder: z.number().int().min(0).max(10_000).default(0),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
+  city: z.enum(CITY_KEYS).optional(),
 });
 
 const customCategoryInput = z.object({
@@ -463,6 +465,7 @@ const partnerAccountInput = z.object({
   phone: z.string().trim().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سورياً صحيحاً يبدأ بـ +9639"),
   password: passwordSchema,
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
+  city: z.enum(CITY_KEYS).optional(),
 });
 
 export const supportContactInput = z.object({
@@ -850,16 +853,16 @@ export const lahzaRouter = router({
     }),
   }),
   storefront: router({
-    stores: publicProcedure.input(z.object({ category: z.enum(categories), restaurantType: z.enum(restaurantTypes).optional(), customCategorySlug: z.string().trim().max(80).optional() })).query(async ({ input }) => {
+    stores: publicProcedure.input(z.object({ category: z.enum(categories), restaurantType: z.enum(restaurantTypes).optional(), customCategorySlug: z.string().trim().max(80).optional() })).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const customCategory = input.category === "other" && input.customCategorySlug
         ? (await db.select().from(customCategories).where(and(eq(customCategories.slug, input.customCategorySlug), eq(customCategories.active, true))).limit(1))[0]
         : null;
       if (input.category === "other" && !customCategory) return [];
-      const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true), ...(customCategory ? [eq(stores.customCategoryId, customCategory.id)] : []))).orderBy(stores.sortOrder, stores.name);
+      const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true), eq(stores.city, ctx.city), ...(customCategory ? [eq(stores.customCategoryId, customCategory.id)] : []))).orderBy(stores.sortOrder, stores.name);
       await ensureProfileImageColumns(db);
-      const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours, imageUrl: partners.imageUrl }).from(partners);
+      const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours, imageUrl: partners.imageUrl, city: partners.city }).from(partners);
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       const filteredStores = filterRestaurantStores(categoryStores, input.category, input.restaurantType);
       const ratings = await getStoreRatingMap(db);
@@ -867,7 +870,7 @@ export const lahzaRouter = router({
         const rating = ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 };
         if (!store.partnerId) return [{ ...store, ...rating, storeOpen: true }];
         const partner = partnerById.get(store.partnerId);
-        return partner?.active ? [{ ...store, ...rating, imageUrl: partner.imageUrl || store.imageUrl, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
+        return partner?.active && partner.city === ctx.city ? [{ ...store, ...rating, imageUrl: partner.imageUrl || store.imageUrl, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
     popularProducts: publicProcedure.query(async () => {
@@ -900,10 +903,10 @@ export const lahzaRouter = router({
         .slice(0, 6)
         .map(product => ({ ...product, note: `${product.quantity % 1 === 0 ? product.quantity : product.quantity.toFixed(1)} طلب مكتمل` }));
     }),
-    products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ input }) => {
+    products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true))).limit(1);
+      const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true), eq(stores.city, ctx.city))).limit(1);
       const store = found[0];
       if (!store) throw new Error("هذا المتجر غير متاح حالياً");
       let storeOpen = true;
@@ -918,7 +921,7 @@ export const lahzaRouter = router({
       const products = await db.select().from(catalogItems).where(and(eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name);
       return { store: { ...store, imageUrl: storeImageUrl, storeOpen }, products };
     }),
-    searchProducts: publicProcedure.input(z.object({ query: z.string().trim().min(2, "اكتب حرفين على الأقل للبحث").max(80) })).query(async ({ input }) => {
+    searchProducts: publicProcedure.input(z.object({ query: z.string().trim().min(2, "اكتب حرفين على الأقل للبحث").max(80) })).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const normalizedQuery = normalizeProductSearchText(input.query);
@@ -942,6 +945,7 @@ export const lahzaRouter = router({
         .where(and(
           eq(catalogItems.deleted, false),
           eq(stores.active, true),
+          eq(stores.city, ctx.city),
           or(isNull(stores.partnerId), eq(partners.active, true)),
           or(sql`LOWER(${catalogItems.name}) LIKE LOWER(${pattern})`, sql`LOWER(${stores.name}) LIKE LOWER(${pattern})`),
         ))
@@ -949,10 +953,10 @@ export const lahzaRouter = router({
         .limit(30);
       return results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen === null ? true : effectiveStoreOpen(result.storeOpen, result.workHours) }));
     }),
-    availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ input }) => {
+    availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const found = await db.select({ partnerId: stores.partnerId, active: stores.active }).from(stores).where(eq(stores.id, input.storeId)).limit(1);
+      const found = await db.select({ partnerId: stores.partnerId, active: stores.active, city: stores.city }).from(stores).where(and(eq(stores.id, input.storeId), eq(stores.city, ctx.city))).limit(1);
       const store = found[0];
       if (!store?.active) throw new Error("هذا المتجر غير متاح حالياً");
       if (!store.partnerId) return { storeOpen: true };
@@ -974,19 +978,19 @@ export const lahzaRouter = router({
       linkedOrders.forEach(order => { if (order.tripId) reservedByTrip.set(order.tripId, (reservedByTrip.get(order.tripId) ?? 0) + 1); });
       return trips.map(trip => ({ ...trip, reservedCount: reservedByTrip.get(trip.id) ?? 0 }));
     }),
-    products: publicProcedure.query(async () => {
+    products: publicProcedure.query(async ({ ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const items = await db.select().from(catalogItems).where(and(eq(catalogItems.deleted, false), eq(catalogItems.available, true)));
       await ensureProfileImageColumns(db);
-      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours }).from(partners).where(eq(partners.active, true));
+      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours, city: partners.city }).from(partners).where(and(eq(partners.active, true), eq(partners.city, ctx.city)));
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       return items.flatMap(item => {
         const partner = item.partnerId ? partnerById.get(item.partnerId) : null;
         return partner ? [{ ...item, partnerName: partner.name, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
-    offers: publicProcedure.input(z.object({ storeId: z.number().int().positive().optional(), includeRegular: z.boolean().optional() }).optional()).query(async ({ input }) => {
+    offers: publicProcedure.input(z.object({ storeId: z.number().int().positive().optional(), includeRegular: z.boolean().optional() }).optional()).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await cleanExpiredOffers();
@@ -994,8 +998,8 @@ export const lahzaRouter = router({
       const featuredOnly = !input?.storeId && !input?.includeRegular;
       const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)), ...(!input?.storeId && featuredOnly ? [eq(partnerOffers.featuredStatus, "approved")] : []))).orderBy(desc(partnerOffers.createdAt));
       await ensureProfileImageColumns(db);
-      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours }).from(partners).where(eq(partners.active, true));
-      const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
+      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours, city: partners.city }).from(partners).where(and(eq(partners.active, true), eq(partners.city, ctx.city)));
+      const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId, city: stores.city }).from(stores).where(and(eq(stores.active, true), eq(stores.city, ctx.city)));
       const offerProductIds = activeOffers.flatMap(offer => offer.catalogItemId ? [offer.catalogItemId] : []);
       const offerProducts = offerProductIds.length ? await db.select({ id: catalogItems.id, name: catalogItems.name, unit: catalogItems.unit, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl, storeId: catalogItems.storeId, partnerId: catalogItems.partnerId }).from(catalogItems).where(and(inArray(catalogItems.id, offerProductIds), eq(catalogItems.deleted, false), eq(catalogItems.available, true))) : [];
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
@@ -1009,7 +1013,7 @@ export const lahzaRouter = router({
         const resolvedStoreId = offer.storeId ?? product?.storeId ?? null;
         const store = resolvedStoreId ? storeById.get(resolvedStoreId) : null;
         if (input?.storeId && resolvedStoreId !== input.storeId) return [];
-        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id ? [{ ...offer, storeId: resolvedStoreId, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
+        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id && partner.city === ctx.city && store.city === ctx.city ? [{ ...offer, storeId: resolvedStoreId, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
@@ -1502,27 +1506,29 @@ export const lahzaRouter = router({
       return { success: true };
     }),
   }),
-  publicFeaturedOffers: publicProcedure.query(async () => {
+  publicFeaturedOffers: publicProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
     await cleanExpiredOffers();
     const now = new Date();
     const rows = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)))).orderBy(desc(partnerOffers.createdAt));
     const [storeRows, partnerRows, productRows] = await Promise.all([
-      db.select({ id: stores.id, name: stores.name, category: stores.category }).from(stores),
-      db.select({ id: partners.id, name: partners.name }).from(partners),
+      db.select({ id: stores.id, name: stores.name, category: stores.category, city: stores.city }).from(stores),
+      db.select({ id: partners.id, name: partners.name, city: partners.city }).from(partners),
       db.select({ id: catalogItems.id, name: catalogItems.name, available: catalogItems.available, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl, storeId: catalogItems.storeId, category: catalogItems.category }).from(catalogItems).where(eq(catalogItems.deleted, false)),
     ]);
     const storeById = new Map(storeRows.map(store => [store.id, store]));
-    const partnerById = new Map(partnerRows.map(partner => [partner.id, partner.name]));
+    const partnerById = new Map(partnerRows.map(partner => [partner.id, partner]));
     const productById = new Map(productRows.map(product => [product.id, product]));
     const ratings = await getStoreRatingMap(db);
-    return rows.map(offer => {
+    return rows.flatMap(offer => {
       const product = offer.catalogItemId ? productById.get(offer.catalogItemId) ?? null : null;
       const resolvedStoreId = offer.storeId ?? product?.storeId ?? null;
       const store = resolvedStoreId ? storeById.get(resolvedStoreId) : undefined;
+      const partner = partnerById.get(offer.partnerId);
+      if (store?.city !== ctx.city || partner?.city !== ctx.city) return [];
       const rating = resolvedStoreId ? ratings.get(resolvedStoreId) ?? { completedOrders: 0, ratingStars: 3 } : { completedOrders: 0, ratingStars: 3 };
-      return { ...offer, storeId: resolvedStoreId, storeName: store?.name ?? "متجر مميز", storeCategory: store?.category ?? product?.category ?? "other", partnerName: partnerById.get(offer.partnerId) ?? "شريك لحظة", ratingStars: rating.ratingStars, completedOrders: rating.completedOrders, originalProductPrice: product?.unitPrice ?? offer.offerPrice, product };
+      return [{ ...offer, storeId: resolvedStoreId, storeName: store?.name ?? "متجر مميز", storeCategory: store?.category ?? product?.category ?? "other", partnerName: partner?.name ?? "شريك لحظة", ratingStars: rating.ratingStars, completedOrders: rating.completedOrders, originalProductPrice: product?.unitPrice ?? offer.offerPrice, product }];
     });
   }),
   admin: router({
@@ -1573,7 +1579,7 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureProfileImageColumns(db);
-        return db.select().from(stores).orderBy(stores.category, stores.sortOrder, stores.name);
+        return db.select().from(stores).where(eq(stores.city, ctx.city)).orderBy(stores.category, stores.sortOrder, stores.name);
       }),
       create: publicProcedure.input(storeInput).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
@@ -1586,7 +1592,7 @@ export const lahzaRouter = router({
         const customCategory = input.category === "other" ? await getActiveCustomCategory(db, input.customCategoryId) : null;
         if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
         await ensureProfileImageColumns(db);
-        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", customCategoryId: customCategory?.id ?? null, partnerId: input.partnerId ?? null, imageUrl: input.imageUrl || null, active: input.active, sortOrder: input.sortOrder });
+        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", customCategoryId: customCategory?.id ?? null, partnerId: input.partnerId ?? null, imageUrl: input.imageUrl || null, active: input.active, sortOrder: input.sortOrder, city: input.city ?? ctx.city });
         return { success: true };
       }),
       update: publicProcedure.input(storeInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -1600,8 +1606,8 @@ export const lahzaRouter = router({
         const customCategory = input.category === "other" ? await getActiveCustomCategory(db, input.customCategoryId) : null;
         if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
         await ensureProfileImageColumns(db);
-        const { id, category, restaurantType, customCategoryId: _customCategoryId, imageUrl, ...patch } = input;
-        await db.update(stores).set({ ...patch, imageUrl: imageUrl || null, category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null }).where(eq(stores.id, id));
+        const { id, category, restaurantType, customCategoryId: _customCategoryId, imageUrl, city: requestedCity, ...patch } = input;
+        await db.update(stores).set({ ...patch, imageUrl: imageUrl || null, category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null, city: requestedCity ?? ctx.city }).where(and(eq(stores.id, id), eq(stores.city, ctx.city)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -1623,7 +1629,7 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureProfileImageColumns(db);
-        return db.select({ id: partners.id, name: partners.name, username: partners.username, imageUrl: partners.imageUrl, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes, createdAt: partners.createdAt }).from(partners).orderBy(desc(partners.createdAt));
+        return db.select({ id: partners.id, name: partners.name, username: partners.username, imageUrl: partners.imageUrl, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes, city: partners.city, createdAt: partners.createdAt }).from(partners).where(eq(partners.city, ctx.city)).orderBy(desc(partners.createdAt));
       }),
       create: publicProcedure.input(partnerAccountInput).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
@@ -1632,15 +1638,15 @@ export const lahzaRouter = router({
         const exists = await db.select({ id: partners.id }).from(partners).where(eq(partners.username, input.phone)).limit(1);
         if (exists[0]) throw new Error("رقم هاتف الشريك مستخدم بالفعل");
         await ensureProfileImageColumns(db);
-        await db.insert(partners).values({ name: input.name, username: input.phone, imageUrl: input.imageUrl || null, passwordHash: await hashSecret(input.password), active: true, storeOpen: true, preparationMinutes: 20 });
+        await db.insert(partners).values({ name: input.name, username: input.phone, imageUrl: input.imageUrl || null, passwordHash: await hashSecret(input.password), active: true, storeOpen: true, preparationMinutes: 20, city: input.city ?? ctx.city });
         return { success: true };
       }),
-      update: publicProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(120), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")), active: z.boolean(), storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(120), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")), active: z.boolean(), storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440), city: z.enum(CITY_KEYS).optional() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureProfileImageColumns(db);
-        await db.update(partners).set({ name: input.name, imageUrl: input.imageUrl || null, active: input.active, storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes }).where(eq(partners.id, input.id));
+        await db.update(partners).set({ name: input.name, imageUrl: input.imageUrl || null, active: input.active, storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, city: input.city ?? ctx.city }).where(and(eq(partners.id, input.id), eq(partners.city, ctx.city)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
