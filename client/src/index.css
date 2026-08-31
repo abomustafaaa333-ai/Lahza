@@ -2234,3 +2234,16 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   .home-category-row > .home-category-card > span:last-child,
   .home-category-row > .home-category-all > .home-category-all-label { font-size: .64rem; }
 }
+
+
+/* تصغير مربع البطاقة فقط مع تثبيت الحجم البصري للأيقونة الداخلية */
+.home-category-row > .home-category-card {
+  transform: scale(.88);
+}
+.home-category-row > .home-category-card:active {
+  transform: translateY(1px) scale(.85);
+}
+.home-category-row > .home-category-card .home-category-emoji,
+.home-category-row > .home-category-card .home-category-all-grid {
+  transform: scale(1.13636);
+}
