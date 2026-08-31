@@ -2326,3 +2326,9 @@ header[class*="header-service-theme-"] .current-location-button {
 header[class*="header-service-theme-"] .header-search-wrap {
   top: -.9cm;
 }
+
+
+/* تنزيل شريط الأيقونات السفلي 0.30 سنتيمتر من موضعه الحالي */
+.home-bottom-nav {
+  bottom: calc(.7rem - .3cm) !important;
+}
