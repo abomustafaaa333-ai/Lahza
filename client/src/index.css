@@ -2320,3 +2320,9 @@ header[class*="header-service-theme-"] .current-location-button {
 .home-bottom-nav {
   bottom: calc(.7rem - .5cm);
 }
+
+
+/* رفع مربع البحث العلوي 0.40 سنتيمتر إضافي */
+header[class*="header-service-theme-"] .header-search-wrap {
+  top: -.9cm;
+}
