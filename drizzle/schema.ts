@@ -21,6 +21,7 @@ export const partners = mysqlTable("partners", {
   active: boolean("active").notNull().default(true),
   storeOpen: boolean("storeOpen").notNull().default(true),
   preparationMinutes: int("preparationMinutes").notNull().default(20),
+  workHours: text("workHours"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

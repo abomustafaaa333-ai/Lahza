@@ -6,7 +6,7 @@ import { parse } from "cookie";
 import { z } from "zod";
 import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
-import { isStoreClosedForCustomer } from "../shared/storeAvailability";
+import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { getDb } from "./db";
 import { demoProductImages, demoProductTemplates, type DemoStoreCategory } from "./demoCatalog";
 import { getSessionCookieOptions } from "./_core/cookies";
@@ -76,6 +76,9 @@ const passwordSchema = z.string().min(4, "يجب أن تتكون كلمة الم
 const coordinateSchema = z.number().finite("إحداثيات الموقع غير صالحة");
 const newSypMoneyInput = z.number().finite("أدخل سعراً صالحاً").int("أدخل مبلغاً صحيحاً من دون كسور").min(0).max(10_000_000);
 const deliveryPercentInput = z.number().finite("أدخل نسبة صالحة").int("أدخل نسبة صحيحة").min(0).max(100);
+const storeDayHoursSchema = z.object({ closed: z.boolean(), from: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/), to: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/) });
+const storeHoursSchema = z.object({ sunday: storeDayHoursSchema, monday: storeDayHoursSchema, tuesday: storeDayHoursSchema, wednesday: storeDayHoursSchema, thursday: storeDayHoursSchema, friday: storeDayHoursSchema, saturday: storeDayHoursSchema });
+function effectiveStoreOpen(storeOpen: boolean | null | undefined, workHours: unknown) { return !isStoreClosedForCustomer(storeOpen, parseStoreHours(workHours)); }
 
 export function calculateDeliveryFee(distanceMeters: number, pricePerKm: number) {
   const billableKm = Math.max(1, Math.ceil(Math.max(0, distanceMeters) / 1000));
@@ -143,6 +146,9 @@ async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<type
     const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
     if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` VARCHAR(500) NULL`));
   }
+  const [partnerColumns] = await db.execute(sql.raw("SHOW COLUMNS FROM `partners`"));
+  const present = new Set(Array.isArray(partnerColumns) ? partnerColumns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+  if (!present.has("workHours")) await db.execute(sql.raw("ALTER TABLE `partners` ADD COLUMN `workHours` TEXT NULL"));
 }
 
 async function addDeliveryPercentColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "manbijDeliveryPercent" | "jarabulusDeliveryPercent" | "driverDeliveryPercent", defaultValue: number) {
@@ -852,7 +858,8 @@ export const lahzaRouter = router({
         : null;
       if (input.category === "other" && !customCategory) return [];
       const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true), ...(customCategory ? [eq(stores.customCategoryId, customCategory.id)] : []))).orderBy(stores.sortOrder, stores.name);
-      const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, imageUrl: partners.imageUrl }).from(partners);
+      await ensureProfileImageColumns(db);
+      const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours, imageUrl: partners.imageUrl }).from(partners);
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       const filteredStores = filterRestaurantStores(categoryStores, input.category, input.restaurantType);
       const ratings = await getStoreRatingMap(db);
@@ -860,7 +867,7 @@ export const lahzaRouter = router({
         const rating = ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 };
         if (!store.partnerId) return [{ ...store, ...rating, storeOpen: true }];
         const partner = partnerById.get(store.partnerId);
-        return partner?.active ? [{ ...store, ...rating, imageUrl: partner.imageUrl || store.imageUrl, storeOpen: partner.storeOpen }] : [];
+        return partner?.active ? [{ ...store, ...rating, imageUrl: partner.imageUrl || store.imageUrl, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
     popularProducts: publicProcedure.query(async () => {
@@ -902,9 +909,10 @@ export const lahzaRouter = router({
       let storeOpen = true;
       let storeImageUrl = store.imageUrl;
       if (store.partnerId) {
-        const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen, imageUrl: partners.imageUrl }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
+        await ensureProfileImageColumns(db);
+        const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours, imageUrl: partners.imageUrl }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
         if (!partner[0]?.active) throw new Error("هذا المتجر غير متاح حالياً");
-        storeOpen = partner[0].storeOpen;
+        storeOpen = effectiveStoreOpen(partner[0].storeOpen, partner[0].workHours);
         storeImageUrl = partner[0].imageUrl || storeImageUrl;
       }
       const products = await db.select().from(catalogItems).where(and(eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name);
@@ -927,6 +935,7 @@ export const lahzaRouter = router({
         storeCategory: stores.category,
         storeImageUrl: stores.imageUrl,
         storeOpen: partners.storeOpen,
+        workHours: partners.workHours,
       }).from(catalogItems)
         .innerJoin(stores, eq(catalogItems.storeId, stores.id))
         .leftJoin(partners, eq(stores.partnerId, partners.id))
@@ -938,7 +947,7 @@ export const lahzaRouter = router({
         ))
         .orderBy(desc(catalogItems.available), stores.name, catalogItems.name)
         .limit(30);
-      return results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen ?? true }));
+      return results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen === null ? true : effectiveStoreOpen(result.storeOpen, result.workHours) }));
     }),
     availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ input }) => {
       const db = await getDb();
@@ -947,9 +956,10 @@ export const lahzaRouter = router({
       const store = found[0];
       if (!store?.active) throw new Error("هذا المتجر غير متاح حالياً");
       if (!store.partnerId) return { storeOpen: true };
-      const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
+      await ensureProfileImageColumns(db);
+      const partner = await db.select({ active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours }).from(partners).where(eq(partners.id, store.partnerId)).limit(1);
       if (!partner[0]?.active) throw new Error("هذا المتجر غير متاح حالياً");
-      return { storeOpen: partner[0].storeOpen };
+      return { storeOpen: effectiveStoreOpen(partner[0].storeOpen, partner[0].workHours) };
     }),
   }),
   intercity: router({
@@ -968,11 +978,12 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const items = await db.select().from(catalogItems).where(and(eq(catalogItems.deleted, false), eq(catalogItems.available, true)));
-      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
+      await ensureProfileImageColumns(db);
+      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours }).from(partners).where(eq(partners.active, true));
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
       return items.flatMap(item => {
         const partner = item.partnerId ? partnerById.get(item.partnerId) : null;
-        return partner ? [{ ...item, partnerName: partner.name, storeOpen: partner.storeOpen }] : [];
+        return partner ? [{ ...item, partnerName: partner.name, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
     offers: publicProcedure.input(z.object({ storeId: z.number().int().positive().optional(), includeRegular: z.boolean().optional() }).optional()).query(async ({ input }) => {
@@ -982,7 +993,8 @@ export const lahzaRouter = router({
       const now = new Date();
       const featuredOnly = !input?.storeId && !input?.includeRegular;
       const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)), ...(input?.storeId ? [eq(partnerOffers.storeId, input.storeId)] : featuredOnly ? [eq(partnerOffers.featuredStatus, "approved")] : []))).orderBy(desc(partnerOffers.createdAt));
-      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen }).from(partners).where(eq(partners.active, true));
+      await ensureProfileImageColumns(db);
+      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours }).from(partners).where(eq(partners.active, true));
       const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId }).from(stores).where(eq(stores.active, true));
       const offerProductIds = activeOffers.flatMap(offer => offer.catalogItemId ? [offer.catalogItemId] : []);
       const offerProducts = offerProductIds.length ? await db.select({ id: catalogItems.id, name: catalogItems.name, unit: catalogItems.unit, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl, storeId: catalogItems.storeId, partnerId: catalogItems.partnerId }).from(catalogItems).where(and(inArray(catalogItems.id, offerProductIds), eq(catalogItems.deleted, false), eq(catalogItems.available, true))) : [];
@@ -995,7 +1007,7 @@ export const lahzaRouter = router({
         const partner = partnerById.get(offer.partnerId);
         const store = offer.storeId ? storeById.get(offer.storeId) : null;
         const product = offer.catalogItemId ? productById.get(offer.catalogItemId) : null;
-        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id ? [{ ...offer, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: partner.storeOpen }] : [];
+        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id ? [{ ...offer, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
@@ -1100,10 +1112,10 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureProfileImageColumns(db);
-      const found = await db.select({ id: partners.id, name: partners.name, username: partners.username, imageUrl: partners.imageUrl, active: partners.active, storeOpen: partners.storeOpen, preparationMinutes: partners.preparationMinutes }).from(partners).where(eq(partners.id, session.partnerId)).limit(1);
+      const found = await db.select({ id: partners.id, name: partners.name, username: partners.username, imageUrl: partners.imageUrl, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours, preparationMinutes: partners.preparationMinutes }).from(partners).where(eq(partners.id, session.partnerId)).limit(1);
       if (!found[0] || !found[0].active) return null;
       const assignedStores = await db.select().from(stores).where(eq(stores.partnerId, found[0].id)).orderBy(stores.category, stores.sortOrder, stores.name);
-      return { ...found[0], stores: assignedStores };
+      return { ...found[0], workHours: parseStoreHours(found[0].workHours), stores: assignedStores };
     }),
     login: publicProcedure.input(z.object({ password: passwordSchema })).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
@@ -1148,10 +1160,10 @@ export const lahzaRouter = router({
       return { periodStart, periodEnd, stores: assignedStores, current: summarize(currentRows), previous: summarize(previousRows), visits: traffic.length, qrVisits, directVisits: traffic.length - qrVisits };
     }),
     store: router({
-      update: publicProcedure.input(z.object({ storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")), workHours: storeHoursSchema.optional() })).mutation(async ({ ctx, input }) => {
         const { db, partner } = await requirePartner(ctx);
         await ensureProfileImageColumns(db);
-        await db.update(partners).set({ storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, imageUrl: input.imageUrl || null }).where(eq(partners.id, partner.id));
+        await db.update(partners).set({ storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, imageUrl: input.imageUrl || null, workHours: input.workHours ? JSON.stringify(input.workHours) : undefined }).where(eq(partners.id, partner.id));
         return { success: true };
       }),
       uploadImage: publicProcedure.input(z.object({ dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
@@ -1313,9 +1325,10 @@ export const lahzaRouter = router({
       const productMap = new Map(products.map(product => [product.id, product]));
       const partnerIds = Array.from(new Set(products.flatMap(product => product.partnerId ? [product.partnerId] : [])));
       if (partnerIds.length) {
-        const productPartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen }).from(partners).where(inArray(partners.id, partnerIds));
+        await ensureProfileImageColumns(db);
+        const productPartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours }).from(partners).where(inArray(partners.id, partnerIds));
         const partnerById = new Map(productPartners.map(partner => [partner.id, partner]));
-        if (products.some(product => product.partnerId && (!partnerById.get(product.partnerId)?.active || isStoreClosedForCustomer(partnerById.get(product.partnerId)?.storeOpen)))) {
+        if (products.some(product => product.partnerId && (!partnerById.get(product.partnerId)?.active || isStoreClosedForCustomer(partnerById.get(product.partnerId)?.storeOpen, partnerById.get(product.partnerId)?.workHours)))) {
           throw new Error("المتجر مغلق حالياً");
         }
       }
