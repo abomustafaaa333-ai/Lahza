@@ -2117,3 +2117,40 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   .home-category-all-grid { width: 3.25rem; height: 3.25rem; gap: .27rem; }
   .home-category-all-grid > span { width: 1.15rem; height: 1.15rem; border-radius: .4rem; }
 }
+
+
+/* حالة المتجر المغلق: التصفح متاح والإضافة إلى السلة متوقفة */
+.store-closed-banner {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  margin-bottom: 1rem;
+  border: 1px solid #f2c6a6;
+  border-radius: 1.25rem;
+  padding: .85rem 1rem;
+  color: #7c2d12;
+  background: linear-gradient(135deg, #fff7ed, #ffedd5);
+}
+.store-closed-banner::before {
+  content: "×";
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  background: #c2410c;
+  font-size: 1.25rem;
+  font-weight: 900;
+}
+.store-closed-banner strong { font-size: .9rem; white-space: nowrap; }
+.store-closed-banner span { font-size: .75rem; line-height: 1.6; }
+.store-hero-avatar { overflow: hidden; }
+.store-hero-avatar img { width: 100%; height: 100%; object-fit: cover; }
+@media (max-width: 600px) {
+  .store-closed-banner { align-items: flex-start; padding: .75rem .8rem; }
+  .store-closed-banner::before { width: 1.75rem; height: 1.75rem; font-size: 1.1rem; }
+  .store-closed-banner strong { font-size: .82rem; }
+  .store-closed-banner span { font-size: .7rem; }
+}
