@@ -2247,3 +2247,14 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
 .home-category-row > .home-category-card .home-category-all-grid {
   transform: scale(1.13636);
 }
+
+
+/* تقريب شريط الاكتشاف وعنوان العروض من الأعلى */
+.home-discover-section .home-category-row {
+  position: relative;
+  top: -.5cm;
+}
+.home-offers-heading {
+  position: relative;
+  top: -.5cm;
+}
