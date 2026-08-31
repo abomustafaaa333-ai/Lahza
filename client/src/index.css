@@ -2568,3 +2568,88 @@ header[class*="header-service-theme-"] .header-search-wrap {
   background: #00666b !important;
   font-weight: 950;
 }
+
+
+/* تنسيق أسفل بطاقة العرض: نصوص بيضاء بلا تعبئة */
+.global-offer-bar .hero-offer-caption,
+.home-offer-gallery .hero-offer-caption,
+.offers-page-gallery .hero-offer-caption {
+  justify-items: end;
+  align-items: end;
+  text-align: right;
+  background: linear-gradient(180deg, transparent 0%, rgba(8,18,18,.54) 58%, rgba(8,18,18,.86) 100%) !important;
+}
+.global-offer-bar .hero-offer-copy-badge,
+.home-offer-gallery .hero-offer-copy-badge,
+.offers-page-gallery .hero-offer-copy-badge {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  font-size: 1.08rem !important;
+  font-weight: 950;
+  text-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+.global-offer-bar .hero-offer-prices,
+.home-offer-gallery .hero-offer-prices,
+.offers-page-gallery .hero-offer-prices {
+  display: flex;
+  width: auto;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: .65rem;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  direction: rtl;
+}
+.global-offer-bar .hero-offer-price-badge,
+.home-offer-gallery .hero-offer-price-badge,
+.offers-page-gallery .hero-offer-price-badge,
+.global-offer-bar .hero-offer-price-badge del,
+.home-offer-gallery .hero-offer-price-badge del,
+.offers-page-gallery .hero-offer-price-badge del,
+.global-offer-bar .hero-offer-price-badge b,
+.home-offer-gallery .hero-offer-price-badge b,
+.offers-page-gallery .hero-offer-price-badge b {
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.global-offer-bar .hero-offer-price-badge b,
+.home-offer-gallery .hero-offer-price-badge b,
+.offers-page-gallery .hero-offer-price-badge b {
+  color: #ffffff !important;
+  font-size: 1.12rem !important;
+  font-weight: 950;
+  text-shadow: 0 1px 3px rgba(0,0,0,.5);
+}
+.global-offer-bar .hero-offer-price-badge del,
+.home-offer-gallery .hero-offer-price-badge del,
+.offers-page-gallery .hero-offer-price-badge del {
+  color: #ffffff !important;
+  font-size: .72rem !important;
+  font-weight: 700;
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+  text-decoration-color: rgba(255,255,255,.9);
+}
+.global-offer-bar .hero-offer-cta,
+.home-offer-gallery .hero-offer-cta,
+.offers-page-gallery .hero-offer-cta {
+  margin-top: .18rem;
+  padding: .32rem .82rem;
+  border: 1px solid #ffffff !important;
+  border-radius: .6rem;
+  color: #ffffff !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: .7rem;
+  font-weight: 900;
+  text-shadow: 0 1px 2px rgba(0,0,0,.4);
+}
