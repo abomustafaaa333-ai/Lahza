@@ -76,7 +76,7 @@ const passwordSchema = z.string().min(4, "يجب أن تتكون كلمة الم
 const coordinateSchema = z.number().finite("إحداثيات الموقع غير صالحة");
 const newSypMoneyInput = z.number().finite("أدخل سعراً صالحاً").int("أدخل مبلغاً صحيحاً من دون كسور").min(0).max(10_000_000);
 const deliveryPercentInput = z.number().finite("أدخل نسبة صالحة").int("أدخل نسبة صحيحة").min(0).max(100);
-const storeDayHoursSchema = z.object({ closed: z.boolean(), from: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/), to: z.string().regex(/^([01]\\d|2[0-3]):[0-5]\\d$/) });
+const storeDayHoursSchema = z.object({ closed: z.boolean(), from: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), to: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) });
 const storeHoursSchema = z.object({ sunday: storeDayHoursSchema, monday: storeDayHoursSchema, tuesday: storeDayHoursSchema, wednesday: storeDayHoursSchema, thursday: storeDayHoursSchema, friday: storeDayHoursSchema, saturday: storeDayHoursSchema });
 function effectiveStoreOpen(storeOpen: boolean | null | undefined, workHours: unknown) { return !isStoreClosedForCustomer(storeOpen, parseStoreHours(workHours)); }
 
