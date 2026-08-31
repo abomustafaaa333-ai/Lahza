@@ -2285,10 +2285,7 @@ header[class*="header-service-theme-"] .service-intro-panel {
 }
 
 
-/* قص إضافي من أعلى القسم الفيروزي ورفع شريط المتاجر المميزة */
-header[class*="header-service-theme-"] .service-intro-panel {
-  margin-top: calc(.65rem - 1cm);
-}
+/* رفع شريط المتاجر المميزة مع إبقاء القسم الفيروزي على موضعه السابق */
 .home-offer-gallery + .home-showcase-block {
   position: relative;
   top: -1cm;
