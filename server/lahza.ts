@@ -23,6 +23,7 @@ const PARTNER_COOKIE = "lahza_partner_session";
 const DEMO_CUSTOMER_PHONE = "+963997311078";
 const DEMO_CUSTOMER_NAME = "عميل لحظة التجريبي";
 const internationalPhoneSchema = z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل رقم هاتف دولياً صحيحاً مع رمز الدولة");
+const syrianCustomerPhoneSchema = z.string().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سوري صحيحاً يبدأ بـ 9 بعد النداء +963");
 const DEFAULT_MASTER_PIN = "1212";
 const LEGACY_DEFAULT_MASTER_PIN = "555369";
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
@@ -357,6 +358,10 @@ const demoStoreNames: Record<(typeof customerDeliveryCategories)[number], string
 };
 
 async function ensureDemoStores(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  // Seed demo stores only on an empty database. Do not recreate a store
+  // after the owner deliberately deletes it.
+  const anyExistingStore = await db.select({ id: stores.id }).from(stores).limit(1);
+  if (anyExistingStore.length) return;
   for (const category of customerDeliveryCategories) {
     const existing = await db.select({ id: stores.id }).from(stores).where(eq(stores.category, category)).orderBy(stores.sortOrder, stores.id).limit(5);
     if (existing.length >= 5) continue;
@@ -616,7 +621,7 @@ export const orderInputSchema = z.object({
   orderType: z.enum(["delivery", "taxi"]),
   intercityTripId: z.number().int().positive().optional(),
   customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
-  customerPhone: internationalPhoneSchema,
+  customerPhone: syrianCustomerPhoneSchema,
   locationMode: z.enum(["gps", "manual"]).default("gps"),
   locationText: z.string().trim().min(3, "اكتب وصفاً واضحاً لموقعك").max(280).optional(),
   locationUrl: z.string().url("رابط الموقع غير صالح").max(500).optional(),
@@ -842,7 +847,6 @@ export const lahzaRouter = router({
     stores: publicProcedure.input(z.object({ category: z.enum(categories), restaurantType: z.enum(restaurantTypes).optional(), customCategorySlug: z.string().trim().max(80).optional() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await ensureDemoStores(db);
       const customCategory = input.category === "other" && input.customCategorySlug
         ? (await db.select().from(customCategories).where(and(eq(customCategories.slug, input.customCategorySlug), eq(customCategories.active, true))).limit(1))[0]
         : null;
@@ -1551,7 +1555,6 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureProfileImageColumns(db);
-        await ensureDemoStores(db);
         return db.select().from(stores).orderBy(stores.category, stores.sortOrder, stores.name);
       }),
       create: publicProcedure.input(storeInput).mutation(async ({ ctx, input }) => {

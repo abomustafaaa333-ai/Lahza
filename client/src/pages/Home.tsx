@@ -892,7 +892,7 @@ export default function Home() {
       <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className={`screen-transition ${screen === "home" ? "screen-transition-home" : "screen-transition-internal"}`}>
       {screen === "home" ? (
         <>
-          <section className="app-shell pb-10">
+          <section className="app-shell pb-10 home-discover-section">
             <div className="home-section-heading"><div><p className="section-eyebrow">تسوّق حسب الفئة</p><h2 className="section-title">اكتشف ما تحتاجه</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div>
             <div className="home-category-row" aria-label="أقسام لحظة">
               <button type="button" className="home-category-card home-category-all" onClick={() => setScreen("delivery")}><span className="home-category-mini-grid" aria-hidden="true"><span><img src={categoryImageByKey.restaurants} alt="" /></span><span><img src={categoryImageByKey.groceries} alt="" /></span><span><img src={categoryImageByKey.pharmacy} alt="" /></span><span><img src={categoryImageByKey.bakery} alt="" /></span></span><span className="home-category-all-label">الكل</span></button>
