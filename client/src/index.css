@@ -2653,3 +2653,48 @@ header[class*="header-service-theme-"] .header-search-wrap {
   font-weight: 900;
   text-shadow: 0 1px 2px rgba(0,0,0,.4);
 }
+
+
+/* تثبيت محتوى العرض في أسفل يمين الصورة */
+.global-offer-bar .hero-offer-caption,
+.home-offer-gallery .hero-offer-caption,
+.offers-page-gallery .hero-offer-caption {
+  right: .85rem !important;
+  left: auto !important;
+  width: min(72%, 18rem) !important;
+  max-width: min(72%, 18rem) !important;
+  margin-left: 0;
+  margin-right: 0;
+  justify-items: end !important;
+  align-items: end !important;
+  text-align: right !important;
+  direction: rtl !important;
+}
+.global-offer-bar .hero-offer-caption > *,
+.home-offer-gallery .hero-offer-caption > *,
+.offers-page-gallery .hero-offer-caption > * {
+  justify-self: end !important;
+  text-align: right !important;
+}
+.global-offer-bar .hero-offer-prices,
+.home-offer-gallery .hero-offer-prices,
+.offers-page-gallery .hero-offer-prices {
+  justify-self: end !important;
+  margin-right: 0;
+  margin-left: 0;
+}
+.global-offer-bar .hero-offer-cta,
+.home-offer-gallery .hero-offer-cta,
+.offers-page-gallery .hero-offer-cta {
+  justify-self: end !important;
+  align-self: end !important;
+}
+@media (max-width: 420px) {
+  .global-offer-bar .hero-offer-caption,
+  .home-offer-gallery .hero-offer-caption,
+  .offers-page-gallery .hero-offer-caption {
+    right: .7rem !important;
+    width: min(74%, 16rem) !important;
+    max-width: min(74%, 16rem) !important;
+  }
+}
