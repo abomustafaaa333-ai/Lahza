@@ -2750,3 +2750,49 @@ header[class*="header-service-theme-"] .header-search-wrap {
     max-width: min(74%, 16rem) !important;
   }
 }
+
+
+/* تصحيح نهائي بأولوية أعلى لبطاقة الواجهة الرئيسية: أسفل يمين الصورة */
+.home-discover-section > .home-offer-gallery .hero-image-frame .hero-offer-caption,
+.home-discover-section > .global-offer-bar .hero-image-frame .hero-offer-caption,
+.global-offer-bar .hero-image-frame .hero-offer-caption,
+.offers-page-gallery .hero-image-frame .hero-offer-caption {
+  position: absolute !important;
+  top: auto !important;
+  bottom: .75rem !important;
+  right: .75rem !important;
+  left: auto !important;
+  width: 48% !important;
+  max-width: 48% !important;
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-end !important;
+  justify-content: flex-end !important;
+  gap: .2rem !important;
+  padding: 1.8rem 0 0 !important;
+  direction: rtl !important;
+  text-align: right !important;
+  transform: none !important;
+}
+.home-discover-section > .home-offer-gallery .hero-image-frame .hero-offer-caption > *,
+.home-discover-section > .global-offer-bar .hero-image-frame .hero-offer-caption > *,
+.global-offer-bar .hero-image-frame .hero-offer-caption > *,
+.offers-page-gallery .hero-image-frame .hero-offer-caption > * {
+  width: auto !important;
+  max-width: 100% !important;
+  align-self: flex-end !important;
+  text-align: right !important;
+  direction: rtl !important;
+}
+@media (max-width: 420px) {
+  .home-discover-section > .home-offer-gallery .hero-image-frame .hero-offer-caption,
+  .home-discover-section > .global-offer-bar .hero-image-frame .hero-offer-caption,
+  .global-offer-bar .hero-image-frame .hero-offer-caption,
+  .offers-page-gallery .hero-image-frame .hero-offer-caption {
+    right: .6rem !important;
+    bottom: .6rem !important;
+    width: 56% !important;
+    max-width: 56% !important;
+  }
+}
