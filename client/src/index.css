@@ -1926,3 +1926,90 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   -webkit-mask-image: none !important;
   mask-image: none !important;
 }
+
+/* Offer copy badges: teal fill only around the text, like the orange labels. */
+.home-discover-section > .home-offer-gallery .hero-offer-caption {
+  top: auto;
+  right: .7rem;
+  bottom: .7rem;
+  left: .7rem;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: .3rem;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+  text-shadow: none;
+}
+.home-discover-section > .home-offer-gallery .hero-offer-top,
+.home-discover-section > .home-offer-gallery .hero-offer-meta {
+  width: auto;
+  align-items: flex-end;
+  gap: .28rem;
+}
+.home-discover-section > .home-offer-gallery .hero-offer-copy-badge,
+.home-discover-section > .home-offer-gallery .hero-offer-store-badge,
+.home-discover-section > .home-offer-gallery .hero-offer-price-badge,
+.home-discover-section > .home-offer-gallery .hero-offer-discount-inline,
+.home-discover-section > .home-offer-gallery .hero-offer-tagline {
+  display: inline-flex;
+  width: fit-content;
+  max-width: min(78vw, 15rem);
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,.72);
+  border-radius: 999px;
+  padding: .22rem .55rem;
+  color: #FFFDF8 !important;
+  background: #00666B !important;
+  font-size: .68rem !important;
+  font-weight: 900;
+  line-height: 1.35;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 !important;
+  white-space: nowrap;
+}
+.home-discover-section > .home-offer-gallery .hero-offer-copy-badge {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-discover-section > .home-offer-gallery .hero-offer-discount-inline,
+.home-discover-section > .home-offer-gallery .hero-offer-tagline {
+  background: #FF6B2B !important;
+}
+.home-discover-section > .home-offer-gallery .hero-offer-prices {
+  width: fit-content;
+  flex-direction: row;
+  align-items: center;
+  gap: .35rem;
+  overflow: visible !important;
+  white-space: nowrap;
+}
+.home-discover-section > .home-offer-gallery .hero-offer-price-badge del,
+.home-discover-section > .home-offer-gallery .hero-offer-price-badge b {
+  color: #FFFDF8 !important;
+  font-size: .64rem !important;
+  font-weight: 900;
+  text-shadow: none !important;
+  -webkit-text-stroke: 0 !important;
+}
+@media (max-width: 420px) {
+  .home-discover-section > .home-offer-gallery .hero-offer-copy-badge,
+  .home-discover-section > .home-offer-gallery .hero-offer-store-badge,
+  .home-discover-section > .home-offer-gallery .hero-offer-price-badge,
+  .home-discover-section > .home-offer-gallery .hero-offer-discount-inline,
+  .home-discover-section > .home-offer-gallery .hero-offer-tagline {
+    max-width: 68vw;
+    padding: .18rem .45rem;
+    font-size: .58rem !important;
+  }
+}
