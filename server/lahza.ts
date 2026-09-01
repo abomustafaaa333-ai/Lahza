@@ -966,6 +966,22 @@ export const lahzaRouter = router({
         return partner?.active && partner.city === store.city ? [{ ...store, ...rating, imageUrl: partner.imageUrl || store.imageUrl, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
+    gatewayStores: publicProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      if (ctx.city !== "jarabulus") return [];
+      await ensureJarabulusGatewaySchema(db);
+      await ensureProfileImageColumns(db);
+      const rows = await db.select().from(stores).where(and(eq(stores.city, "manbij"), eq(stores.active, true), eq(stores.jarabulusGatewayEnabled, true))).orderBy(stores.sortOrder, stores.name);
+      const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours, imageUrl: partners.imageUrl }).from(partners);
+      const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
+      const ratings = await getStoreRatingMap(db);
+      return rows.flatMap(store => {
+        const partner = store.partnerId ? partnerById.get(store.partnerId) : null;
+        if (store.partnerId && (!partner?.active || !partner)) return [];
+        return [{ ...store, ...(ratings.get(store.id) ?? { ratingStars: 3, completedOrders: 0 }), imageUrl: partner?.imageUrl || store.imageUrl, storeOpen: partner ? effectiveStoreOpen(partner.storeOpen, partner.workHours) : true }];
+      });
+    }),
     popularProducts: publicProcedure.query(async ({ ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
