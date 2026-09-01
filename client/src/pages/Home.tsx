@@ -908,7 +908,8 @@ export default function Home() {
       <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className={`screen-transition ${screen === "home" ? "screen-transition-home" : "screen-transition-internal"}`}>
       {screen === "home" ? (
         <>
-          <div className="city-welcome-ticker" role="status"><div className="city-welcome-ticker-track"><span>{interfaceSettingsQuery.data?.tickerSecondary ?? `لحظة — ${CITY_LABELS[selectedCity ?? "manbij"]} بين يديك`}</span><span>{interfaceSettingsQuery.data?.tickerSecondary ?? `لحظة — ${CITY_LABELS[selectedCity ?? "manbij"]} بين يديك`}</span></div></div>
+          <div className="city-welcome-ticker" role="status"><div className="city-welcome-ticker-track"><span>{interfaceSettingsQuery.data?.tickerPrimary ?? "لم يفوتك أي جديد"}</span><span>{interfaceSettingsQuery.data?.tickerSecondary ?? `اهلا بكم في مدينة ${CITY_LABELS[selectedCity ?? "manbij"]}`}</span><span>{interfaceSettingsQuery.data?.tickerPrimary ?? "لم يفوتك أي جديد"}</span></div></div>
+          <div className="city-service-banner"><span>لحظة — {CITY_LABELS[selectedCity ?? "manbij"]} بين يديك</span></div>
           <section className="app-shell pb-10 home-discover-section">
             <div className="home-section-heading"><div><h2 className="section-title">اكتشف ما تحتاجه</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div>
             <div className="home-category-row" dir="rtl" aria-label="أقسام لحظة">

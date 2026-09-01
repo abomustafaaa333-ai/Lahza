@@ -679,7 +679,8 @@ export const lahzaRouter = router({
     get: publicProcedure.query(async ({ ctx }) => {
       ctx.res.setHeader("Cache-Control", "no-store, max-age=0");
       const settings = await getSettings();
-      return readTickerSettings(settings);
+      const cityLabel = ctx.city === "jarabulus" ? "جرابلس" : "منبج";
+      return { ...readTickerSettings(settings), tickerPrimary: "لم يفوتك أي جديد", tickerSecondary: `اهلا بكم في مدينة ${cityLabel}` };
     }),
   }),
   deliveryFees: router({
