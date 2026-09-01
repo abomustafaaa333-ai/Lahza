@@ -3203,3 +3203,13 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   .customer-auth-brand { top: .75rem !important; right: .9rem !important; }
   .customer-auth-primary-logo { width: 3.55rem !important; }
 }
+
+/* إعادة مستطيل نموذج الدخول إلى موضعه السابق؛ الشعار فقط يبقى في الأعلى */
+.customer-auth-form,
+.customer-auth-otp-panel {
+  transform: translateY(1.7rem) !important;
+}
+@media (max-height: 700px) {
+  .customer-auth-form,
+  .customer-auth-otp-panel { transform: translateY(1rem) !important; }
+}
