@@ -2833,3 +2833,39 @@ header[class*="header-service-theme-"] .header-search-wrap {
     max-width: none !important;
   }
 }
+
+/* تثبيت بطاقة وصف العرض على الحافة اليمنى للصورة مع دعم RTL */
+.global-offer-bar .hero-image-frame .hero-offer-caption,
+.home-offer-gallery .hero-image-frame .hero-offer-caption,
+.offers-page-gallery .hero-image-frame .hero-offer-caption {
+  inset-inline-start: .75rem !important;
+  inset-inline-end: auto !important;
+  right: .75rem !important;
+  left: auto !important;
+  width: min(68%, 25rem) !important;
+  max-width: min(68%, 25rem) !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: flex-end !important;
+  text-align: right !important;
+}
+.global-offer-bar .hero-image-frame .hero-offer-caption > *,
+.home-offer-gallery .hero-image-frame .hero-offer-caption > *,
+.offers-page-gallery .hero-image-frame .hero-offer-caption > * {
+  margin-inline-start: 0 !important;
+  margin-inline-end: 0 !important;
+  align-self: flex-end !important;
+  text-align: right !important;
+}
+@media (max-width: 420px) {
+  .global-offer-bar .hero-image-frame .hero-offer-caption,
+  .home-offer-gallery .hero-image-frame .hero-offer-caption,
+  .offers-page-gallery .hero-image-frame .hero-offer-caption {
+    inset-inline-start: .6rem !important;
+    inset-inline-end: auto !important;
+    right: .6rem !important;
+    left: auto !important;
+    width: 72% !important;
+    max-width: 72% !important;
+  }
+}
