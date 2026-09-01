@@ -3060,3 +3060,29 @@ header[class*="header-service-theme-"] .service-gateway-button:hover { filter: b
   header[class*="header-service-theme-"] .service-intro-offer-mark { width: 9rem; }
   header[class*="header-service-theme-"] .service-gateway-button { font-size: .72rem; }
 }
+
+/* إظهار أربعة تصنيفات في العرض الأول على الهاتف */
+@media (max-width: 600px) {
+  .home-category-row { gap: .35rem; }
+  .home-category-row > .home-category-card {
+    flex: 0 0 4.15rem;
+    width: 4.15rem;
+    min-width: 4.15rem;
+    height: 5.35rem;
+    min-height: 5.35rem;
+    padding: .3rem .2rem;
+    border-radius: .85rem;
+    gap: .2rem;
+  }
+  .home-category-row > .home-category-card .home-category-mini-grid,
+  .home-category-row > .home-category-card .home-category-icon,
+  .home-category-row > .home-category-card .home-category-icon-photo {
+    width: 1.95rem;
+    height: 1.95rem;
+  }
+  .home-category-row > .home-category-card > span:last-child,
+  .home-category-all-label {
+    font-size: .55rem;
+    line-height: 1.2;
+  }
+}
