@@ -2796,3 +2796,9 @@ header[class*="header-service-theme-"] .header-search-wrap {
     max-width: 56% !important;
   }
 }
+
+.city-welcome-ticker { overflow: hidden; border-bottom: 1px solid #f4c3a6; color: #fffaf6; background: linear-gradient(90deg, #63301b, #a84d20, #63301b); font-size: .78rem; font-weight: 900; white-space: nowrap; }
+.city-welcome-ticker-track { display: flex; width: max-content; gap: 5rem; padding: .52rem 0; animation: city-welcome-scroll 18s linear infinite; }
+.city-welcome-ticker-track span { display: inline-flex; align-items: center; padding-inline: 2rem; }
+@keyframes city-welcome-scroll { from { transform: translateX(0); } to { transform: translateX(50%); } }
+@media (prefers-reduced-motion: reduce) { .city-welcome-ticker-track { animation: none; width: 100%; justify-content: center; } }
