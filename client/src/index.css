@@ -3086,3 +3086,14 @@ header[class*="header-service-theme-"] .service-gateway-button:hover { filter: b
     line-height: 1.2;
   }
 }
+
+/* تثبيت ظهور زر اطلب من منبج أسفل شارة العروض في شاشة جرابلس */
+header[class*="header-service-theme-"] .service-intro-panel { overflow: visible; }
+header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: visible; }
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .service-intro-panel { min-height: 10.2rem; }
+  header[class*="header-service-theme-"] .service-intro-offer-mark { top: 47%; }
+}
+@media (max-width: 420px) {
+  header[class*="header-service-theme-"] .service-intro-panel { min-height: 9.6rem; }
+}
