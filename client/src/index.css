@@ -3036,3 +3036,27 @@ header[class*="header-service-theme-"] .header-search-wrap {
   .customer-auth-primary, .customer-auth-secondary, .customer-auth-guest { min-height: 2.45rem !important; padding-top: .5rem !important; padding-bottom: .5rem !important; }
   .customer-auth-note { display: none !important; }
 }
+
+/* زر بوابة منبج داخل القسم الفيروزي */
+header[class*="header-service-theme-"] .service-gateway-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .25rem;
+  margin-top: .55rem;
+  min-height: 2.35rem;
+  padding: .45rem .75rem;
+  border: 1px solid rgba(255,255,255,.5);
+  border-radius: .85rem;
+  color: #fff;
+  background: linear-gradient(135deg, #ff8a3d, #f45f22);
+  box-shadow: 0 .35rem .8rem rgba(87,34,12,.28);
+  font-size: .78rem;
+  font-weight: 950;
+  cursor: pointer;
+}
+header[class*="header-service-theme-"] .service-gateway-button:hover { filter: brightness(1.06); transform: translateY(-1px); }
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .service-intro-offer-mark { width: 9rem; }
+  header[class*="header-service-theme-"] .service-gateway-button { font-size: .72rem; }
+}
