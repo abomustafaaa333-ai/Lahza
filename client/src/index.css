@@ -3097,3 +3097,49 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
 @media (max-width: 420px) {
   header[class*="header-service-theme-"] .service-intro-panel { min-height: 9.6rem; }
 }
+
+/* شاشة دخول لحظة الجديدة: هوية فيروزية وشعار برتقالي صغير */
+.customer-auth-page {
+  min-height: 100svh !important;
+  height: 100svh !important;
+  overflow: hidden !important;
+  background: linear-gradient(145deg, #087f82 0%, #075c67 52%, #064653 100%) !important;
+  color: #fff !important;
+}
+.customer-auth-card {
+  min-height: 100svh !important;
+  height: 100svh !important;
+  max-width: 34rem !important;
+  margin: 0 auto !important;
+  padding: clamp(1.5rem, 6svh, 4rem) 1.25rem 1.25rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  background: transparent !important;
+}
+.customer-auth-brand { color: #fff !important; }
+.customer-auth-brand-lockup { display: block !important; margin-bottom: .45rem !important; }
+.customer-auth-primary-logo { width: 5rem !important; height: auto !important; filter: drop-shadow(0 .35rem .5rem rgba(0,0,0,.25)); }
+.customer-auth-brand > span:not(.customer-auth-brand-lockup) { display: block !important; color: #ff9a52 !important; font-size: 1.05rem !important; font-weight: 950 !important; }
+.customer-auth-brand > small { display: block !important; margin-top: .2rem !important; color: rgba(255,255,255,.8) !important; font-size: .78rem !important; }
+.customer-auth-art { display: none !important; }
+.customer-auth-heading p { color: #ff9a52 !important; }
+.customer-auth-heading h1 { color: #fff !important; }
+.customer-auth-heading span, .customer-auth-demo-hint { color: rgba(255,255,255,.78) !important; }
+.customer-auth-actions { width: 100% !important; }
+.customer-auth-primary { background: linear-gradient(135deg,#ff9147,#f66b28) !important; color: #fff !important; border: 0 !important; box-shadow: 0 .8rem 1.4rem rgba(0,0,0,.2) !important; }
+.customer-auth-secondary { background: rgba(255,255,255,.12) !important; color: #fff !important; border: 1px solid rgba(255,255,255,.28) !important; }
+.customer-auth-guest { color: #ffbd83 !important; background: transparent !important; }
+.customer-auth-note { color: rgba(255,255,255,.68) !important; }
+.customer-auth-form, .customer-auth-otp-panel { width: 100% !important; padding: 1rem !important; border: 1px solid rgba(255,255,255,.2) !important; border-radius: 1.5rem !important; background: rgba(0,35,43,.25) !important; box-shadow: 0 1rem 2rem rgba(0,0,0,.12) !important; }
+.customer-auth-form label > span, .customer-auth-otp-field > span, .customer-auth-remember { color: #fff !important; }
+.customer-auth-form input, .customer-auth-form select, .customer-auth-otp-panel input { border-color: rgba(255,255,255,.3) !important; background: rgba(255,255,255,.95) !important; }
+.customer-auth-back, .customer-auth-resend { color: #ffbd83 !important; }
+.customer-auth-error { color: #ffd0b1 !important; }
+@media (max-height: 700px) {
+  .customer-auth-card { padding-top: 1rem !important; padding-bottom: .75rem !important; }
+  .customer-auth-brand-lockup { margin-bottom: .2rem !important; }
+  .customer-auth-primary-logo { width: 4rem !important; }
+  .customer-auth-heading h1 { font-size: 1.45rem !important; }
+  .customer-auth-heading span { font-size: .75rem !important; }
+}
