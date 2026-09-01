@@ -197,7 +197,10 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
 }
 
 async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
-  await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`customer_accounts\` (\`id\` INT NOT NULL AUTO_INCREMENT, \`phone\` VARCHAR(24) NOT NULL, \`name\` VARCHAR(80) NOT NULL, \`status\` VARCHAR(20) NOT NULL DEFAULT 'pending', \`verifiedAt\` TIMESTAMP NULL DEFAULT NULL, \`verifiedBy\` VARCHAR(80) NULL DEFAULT NULL, \`rejectionReason\` VARCHAR(300) NULL DEFAULT NULL, \`lastOrderId\` INT NULL DEFAULT NULL, \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, \`updatedAt\` TIMESTAMP NULL DEFAULT NULL, PRIMARY KEY (\`id\`), UNIQUE KEY \`customer_accounts_phone_unique\` (\`phone\`))`));
+  await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`customer_accounts\` (\`id\` INT NOT NULL AUTO_INCREMENT, \`phone\` VARCHAR(24) NOT NULL, \`name\` VARCHAR(80) NOT NULL, \`city\` VARCHAR(20) NOT NULL DEFAULT 'منبج', \`status\` VARCHAR(20) NOT NULL DEFAULT 'pending', \`verifiedAt\` TIMESTAMP NULL DEFAULT NULL, \`verifiedBy\` VARCHAR(80) NULL DEFAULT NULL, \`rejectionReason\` VARCHAR(300) NULL DEFAULT NULL, \`lastOrderId\` INT NULL DEFAULT NULL, \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, \`updatedAt\` TIMESTAMP NULL DEFAULT NULL, PRIMARY KEY (\`id\`), UNIQUE KEY \`customer_accounts_phone_unique\` (\`phone\`))`));
+  const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `customer_accounts`"));
+  const availableColumns = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+  if (!availableColumns.has("city")) await db.execute(sql.raw("ALTER TABLE `customer_accounts` ADD COLUMN `city` VARCHAR(20) NOT NULL DEFAULT 'منبج' AFTER `name`"));
   const demo = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, DEMO_CUSTOMER_PHONE)).limit(1))[0];
   if (!demo) await db.insert(customerAccounts).values({ phone: DEMO_CUSTOMER_PHONE, name: DEMO_CUSTOMER_NAME, status: "approved", verifiedAt: new Date(), verifiedBy: "بيئة التطوير" });
 }
@@ -1146,16 +1149,16 @@ export const lahzaRouter = router({
     }),
   }),
   customerAccounts: router({
-    register: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم واتساب سورياً صحيحاً"), name: z.string().trim().min(2).max(80) })).mutation(async ({ input }) => {
+    register: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم واتساب سورياً صحيحاً"), name: z.string().trim().min(2).max(80), city: z.enum(["منبج", "جرابلس"]) })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCustomerAccountsTable(db);
       const existing = (await db.select().from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
       if (!existing) {
-        await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, status: "pending" });
+        await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, city: input.city, status: "pending" });
         return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
       }
-      if (existing.name !== input.name && existing.status !== "approved") await db.update(customerAccounts).set({ name: input.name }).where(eq(customerAccounts.id, existing.id));
+      if (existing.status !== "approved" && (existing.name !== input.name || existing.city !== input.city)) await db.update(customerAccounts).set({ name: input.name, city: input.city }).where(eq(customerAccounts.id, existing.id));
       if (existing.status === "approved") return { status: "approved" as const, message: "الحساب موثق ويمكنك متابعة الطلب" };
       if (existing.status === "rejected") return { status: "rejected" as const, message: "تم رفض الحساب، تواصل مع فريق لحظة عبر واتساب" };
       return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
@@ -1164,7 +1167,7 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCustomerAccountsTable(db);
-      const found = (await db.select({ status: customerAccounts.status, name: customerAccounts.name }).from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
+      const found = (await db.select({ status: customerAccounts.status, name: customerAccounts.name, city: customerAccounts.city }).from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
       return found ?? { status: "new" as const, name: "" };
     }),
     updatePhone: publicProcedure.input(z.object({ currentPhone: internationalPhoneSchema, newPhone: internationalPhoneSchema })).mutation(async ({ input }) => {

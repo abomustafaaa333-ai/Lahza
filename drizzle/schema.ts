@@ -245,6 +245,7 @@ export const customerAccounts = mysqlTable("customer_accounts", {
   id: int("id").autoincrement().primaryKey(),
   phone: varchar("phone", { length: 24 }).notNull().unique(),
   name: varchar("name", { length: 80 }).notNull(),
+  city: mysqlEnum("city", ["منبج", "جرابلس"]).notNull().default("منبج"),
   status: mysqlEnum("status", ["pending", "approved", "rejected", "suspended"]).notNull().default("pending"),
   verifiedAt: timestamp("verifiedAt"),
   verifiedBy: varchar("verifiedBy", { length: 80 }),
