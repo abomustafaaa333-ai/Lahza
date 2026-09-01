@@ -4,8 +4,8 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
-import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
+import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
@@ -109,6 +109,67 @@ export function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSe
 
 function isDuplicateColumnError(error: unknown) {
   return error instanceof Error && /duplicate column name/i.test(error.message);
+}
+
+export const DEFAULT_JARABULUS_MINIMUM_ORDER_SYP = 500;
+export const DEFAULT_JARABULUS_PREPARATION_MINUTES = 120;
+export const JARABULUS_DISTANCE_DELIVERY_NOTE = "رسوم التوصيل إلى جرابلس أعلى من المعتاد بسبب المسافة من منبج.";
+
+async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const ensureColumn = async (table: "stores" | "orders" | "system_settings", name: string, definition: string) => {
+    const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
+    const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+    if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` ${definition}`));
+  };
+  await ensureColumn("stores", "jarabulusGatewayEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+  await ensureColumn("orders", "orderCity", "ENUM('manbij', 'jarabulus') NOT NULL DEFAULT 'manbij'");
+  await ensureColumn("orders", "fulfillmentScope", "ENUM('local', 'manbij_to_jarabulus') NOT NULL DEFAULT 'local'");
+  await ensureColumn("orders", "preparationMinutes", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("system_settings", "jarabulusMinimumOrder", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_MINIMUM_ORDER_SYP}`);
+  await ensureColumn("system_settings", "jarabulusPreparationMinutes", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_PREPARATION_MINUTES}`);
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `order_notifications` (`id` INT NOT NULL AUTO_INCREMENT, `orderId` INT NOT NULL, `customerPhone` VARCHAR(24) NOT NULL, `status` ENUM('pending','confirmed','preparing','on_the_way','completed','cancelled','rejected') NOT NULL, `title` VARCHAR(120) NOT NULL, `body` VARCHAR(300) NOT NULL, `readAt` TIMESTAMP NULL DEFAULT NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), CONSTRAINT `order_notifications_orderId_orders_id_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE CASCADE)"));
+}
+
+export function isStoreVisibleInCustomerCity(store: { city: CityKey; jarabulusGatewayEnabled: boolean }, city: CityKey) {
+  return city === "jarabulus"
+    ? store.city === "manbij" && store.jarabulusGatewayEnabled
+    : store.city === city;
+}
+
+function customerStoreVisibilityCondition(city: CityKey) {
+  return city === "jarabulus"
+    ? and(eq(stores.city, "manbij"), eq(stores.jarabulusGatewayEnabled, true))
+    : eq(stores.city, city);
+}
+
+export function jarabulusOrderMinimum(settings: { jarabulusMinimumOrder?: number | null }) {
+  return Math.max(1, Number(settings.jarabulusMinimumOrder) || DEFAULT_JARABULUS_MINIMUM_ORDER_SYP);
+}
+
+export function jarabulusOrderPreparationMinutes(settings: { jarabulusPreparationMinutes?: number | null }) {
+  return Math.max(0, Number(settings.jarabulusPreparationMinutes) || DEFAULT_JARABULUS_PREPARATION_MINUTES);
+}
+
+type OrderNotificationStatus = (typeof orderStatuses)[number];
+export function buildOrderStatusNotification(order: { id: number; fulfillmentScope: "local" | "manbij_to_jarabulus"; preparationMinutes: number }, status: OrderNotificationStatus) {
+  const gateway = order.fulfillmentScope === "manbij_to_jarabulus";
+  const orderReference = `طلبك #${order.id}${gateway ? " من منبج إلى جرابلس" : ""}`;
+  const preparation = order.preparationMinutes > 0 ? ` مدة التجهيز التقديرية ${order.preparationMinutes} دقيقة.` : "";
+  const messages: Record<OrderNotificationStatus, { title: string; body: string }> = {
+    pending: { title: "تم استلام طلبك", body: `${orderReference} وصل إلى فريق لحظة وسنتابع تأكيده.${gateway ? ` ${JARABULUS_DISTANCE_DELIVERY_NOTE}` : ""}${preparation}` },
+    confirmed: { title: "تم تأكيد طلبك", body: `${orderReference} تم تأكيده وسيبدأ التجهيز قريباً.${preparation}` },
+    preparing: { title: "طلبك قيد التجهيز", body: `${orderReference} جارٍ تجهيزه الآن.${preparation}` },
+    on_the_way: { title: "طلبك في الطريق", body: `${orderReference} أصبح في الطريق إليك.` },
+    completed: { title: "اكتمل طلبك", body: `${orderReference} تم تسليمه. شكراً لاختيارك لحظة.` },
+    cancelled: { title: "تم إلغاء الطلب", body: `${orderReference} تم إلغاؤه. تواصل مع فريق لحظة عند الحاجة.` },
+    rejected: { title: "تعذر تأكيد الطلب", body: `${orderReference} لم يتم قبوله. راجع سبب الحالة أو تواصل مع فريق لحظة.` },
+  };
+  return messages[status];
+}
+
+async function createOrderStatusNotification(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, order: { id: number; customerPhone: string; fulfillmentScope: "local" | "manbij_to_jarabulus"; preparationMinutes: number }, status: OrderNotificationStatus) {
+  const message = buildOrderStatusNotification(order, status);
+  await db.insert(orderNotifications).values({ orderId: order.id, customerPhone: order.customerPhone, status, title: message.title, body: message.body });
 }
 
 async function addTickerColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "tickerPrimary" | "tickerSecondary", defaultValue: string) {
@@ -312,6 +373,7 @@ function setPartnerCookie(ctx: TrpcContext, token: string) {
 async function getSettings() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+  await ensureJarabulusGatewaySchema(db);
   await ensureDeliveryPercentColumns(db);
   await ensureTickerColumns(db);
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
@@ -325,7 +387,7 @@ async function getSettings() {
     return current[0];
   }
   const masterPinHash = await hashSecret(DEFAULT_MASTER_PIN);
-  await db.insert(systemSettings).values({ id: 1, masterPinHash, manbijDeliveryPercent: 20, jarabulusDeliveryPercent: 30, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
+  await db.insert(systemSettings).values({ id: 1, masterPinHash, manbijDeliveryPercent: 20, jarabulusDeliveryPercent: 30, jarabulusMinimumOrder: DEFAULT_JARABULUS_MINIMUM_ORDER_SYP, jarabulusPreparationMinutes: DEFAULT_JARABULUS_PREPARATION_MINUTES, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
   const created = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   return created[0]!;
 }
@@ -407,6 +469,7 @@ async function ensureDemoProducts(db: NonNullable<Awaited<ReturnType<typeof getD
 export async function ensureDemoStoresSeed() {
   const db = await getDb();
   if (!db) return;
+  await ensureJarabulusGatewaySchema(db);
   await ensureDemoStores(db);
   await ensureDemoProducts(db);
 }
@@ -414,6 +477,7 @@ export async function ensureDemoStoresSeed() {
 async function ensureCatalogSeed() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+  await ensureJarabulusGatewaySchema(db);
   const existing = await db.select({ id: catalogItems.id }).from(catalogItems).limit(1);
   if (existing.length) return db;
   for (const item of catalogSeed) {
@@ -636,6 +700,7 @@ async function getActiveCustomCategory(db: NonNullable<Awaited<ReturnType<typeof
 
 export const orderInputSchema = z.object({
   orderType: z.enum(["delivery", "taxi"]),
+  orderCity: z.enum(CITY_KEYS).optional(),
   intercityTripId: z.number().int().positive().optional(),
   customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
   customerPhone: syrianCustomerPhoneSchema,
@@ -684,9 +749,15 @@ export const lahzaRouter = router({
     }),
   }),
   deliveryFees: router({
-    get: publicProcedure.query(async () => {
+    get: publicProcedure.query(async ({ ctx }) => {
       const settings = await getSettings();
-      return { manbijPercent: settings.manbijDeliveryPercent, jarabulusPercent: settings.jarabulusDeliveryPercent };
+      return {
+        manbijPercent: settings.manbijDeliveryPercent,
+        jarabulusPercent: settings.jarabulusDeliveryPercent,
+        jarabulusMinimumOrder: jarabulusOrderMinimum(settings),
+        jarabulusPreparationMinutes: jarabulusOrderPreparationMinutes(settings),
+        jarabulusDistanceNotice: ctx.city === "jarabulus" ? JARABULUS_DISTANCE_DELIVERY_NOTE : null,
+      };
     }),
   }),
   support: router({
@@ -697,6 +768,18 @@ export const lahzaRouter = router({
     }),
   }),
   notifications: router({
+    orderFeed: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema, unreadOnly: z.boolean().optional() })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureJarabulusGatewaySchema(db);
+      return db.select().from(orderNotifications).where(and(eq(orderNotifications.customerPhone, input.customerPhone), ...(input.unreadOnly ? [isNull(orderNotifications.readAt)] : []))).orderBy(desc(orderNotifications.createdAt)).limit(30);
+    }),
+    markOrderRead: publicProcedure.input(z.object({ id: z.number().int().positive(), customerPhone: internationalPhoneSchema })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await db.update(orderNotifications).set({ readAt: new Date() }).where(and(eq(orderNotifications.id, input.id), eq(orderNotifications.customerPhone, input.customerPhone)));
+      return { success: true };
+    }),
     feed: publicProcedure.input(z.object({ deviceId: deviceIdSchema })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
@@ -869,7 +952,8 @@ export const lahzaRouter = router({
         ? (await db.select().from(customCategories).where(and(eq(customCategories.slug, input.customCategorySlug), eq(customCategories.active, true))).limit(1))[0]
         : null;
       if (input.category === "other" && !customCategory) return [];
-      const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true), eq(stores.city, ctx.city), ...(customCategory ? [eq(stores.customCategoryId, customCategory.id)] : []))).orderBy(stores.sortOrder, stores.name);
+      await ensureJarabulusGatewaySchema(db);
+      const categoryStores = await db.select().from(stores).where(and(eq(stores.category, input.category), eq(stores.active, true), customerStoreVisibilityCondition(ctx.city), ...(customCategory ? [eq(stores.customCategoryId, customCategory.id)] : []))).orderBy(stores.sortOrder, stores.name);
       await ensureProfileImageColumns(db);
       const activePartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours, imageUrl: partners.imageUrl, city: partners.city }).from(partners);
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
@@ -879,12 +963,13 @@ export const lahzaRouter = router({
         const rating = ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 };
         if (!store.partnerId) return [{ ...store, ...rating, storeOpen: true }];
         const partner = partnerById.get(store.partnerId);
-        return partner?.active && partner.city === ctx.city ? [{ ...store, ...rating, imageUrl: partner.imageUrl || store.imageUrl, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
+        return partner?.active && partner.city === store.city ? [{ ...store, ...rating, imageUrl: partner.imageUrl || store.imageUrl, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
-    popularProducts: publicProcedure.query(async () => {
+    popularProducts: publicProcedure.query(async ({ ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureJarabulusGatewaySchema(db);
       const rows = await db.select({
         catalogItemId: orderLines.catalogItemId,
         itemName: orderLines.itemName,
@@ -894,7 +979,8 @@ export const lahzaRouter = router({
       }).from(orderLines)
         .innerJoin(orders, eq(orderLines.orderId, orders.id))
         .leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id))
-        .where(eq(orders.status, "completed"));
+        .leftJoin(stores, eq(catalogItems.storeId, stores.id))
+        .where(and(eq(orders.status, "completed"), customerStoreVisibilityCondition(ctx.city)));
 
       const totals = new Map<string, { catalogItemId: number | null; name: string; category: LahzaCategory; quantity: number; imageUrl: string | null }>();
       for (const row of rows) {
@@ -915,7 +1001,8 @@ export const lahzaRouter = router({
     products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true), eq(stores.city, ctx.city))).limit(1);
+      await ensureJarabulusGatewaySchema(db);
+      const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true), customerStoreVisibilityCondition(ctx.city))).limit(1);
       const store = found[0];
       if (!store) throw new Error("هذا المتجر غير متاح حالياً");
       let storeOpen = true;
@@ -954,7 +1041,7 @@ export const lahzaRouter = router({
         .where(and(
           eq(catalogItems.deleted, false),
           eq(stores.active, true),
-          eq(stores.city, ctx.city),
+          customerStoreVisibilityCondition(ctx.city),
           or(isNull(stores.partnerId), eq(partners.active, true)),
           or(sql`LOWER(${catalogItems.name}) LIKE LOWER(${pattern})`, sql`LOWER(${stores.name}) LIKE LOWER(${pattern})`),
         ))
@@ -965,7 +1052,8 @@ export const lahzaRouter = router({
     availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const found = await db.select({ partnerId: stores.partnerId, active: stores.active, city: stores.city }).from(stores).where(and(eq(stores.id, input.storeId), eq(stores.city, ctx.city))).limit(1);
+      await ensureJarabulusGatewaySchema(db);
+      const found = await db.select({ partnerId: stores.partnerId, active: stores.active, city: stores.city }).from(stores).where(and(eq(stores.id, input.storeId), customerStoreVisibilityCondition(ctx.city))).limit(1);
       const store = found[0];
       if (!store?.active) throw new Error("هذا المتجر غير متاح حالياً");
       if (!store.partnerId) return { storeOpen: true };
@@ -1007,8 +1095,9 @@ export const lahzaRouter = router({
       const featuredOnly = !input?.storeId && !input?.includeRegular;
       const activeOffers = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)), ...(!input?.storeId && featuredOnly ? [eq(partnerOffers.featuredStatus, "approved")] : []))).orderBy(desc(partnerOffers.createdAt));
       await ensureProfileImageColumns(db);
-      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours, city: partners.city }).from(partners).where(and(eq(partners.active, true), eq(partners.city, ctx.city)));
-      const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId, city: stores.city }).from(stores).where(and(eq(stores.active, true), eq(stores.city, ctx.city)));
+      await ensureJarabulusGatewaySchema(db);
+      const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours, city: partners.city }).from(partners).where(eq(partners.active, true));
+      const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId, city: stores.city, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled }).from(stores).where(and(eq(stores.active, true), customerStoreVisibilityCondition(ctx.city)));
       const offerProductIds = activeOffers.flatMap(offer => offer.catalogItemId ? [offer.catalogItemId] : []);
       const offerProducts = offerProductIds.length ? await db.select({ id: catalogItems.id, name: catalogItems.name, unit: catalogItems.unit, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl, storeId: catalogItems.storeId, partnerId: catalogItems.partnerId }).from(catalogItems).where(and(inArray(catalogItems.id, offerProductIds), eq(catalogItems.deleted, false), eq(catalogItems.available, true))) : [];
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
@@ -1022,7 +1111,7 @@ export const lahzaRouter = router({
         const resolvedStoreId = offer.storeId ?? product?.storeId ?? null;
         const store = resolvedStoreId ? storeById.get(resolvedStoreId) : null;
         if (input?.storeId && resolvedStoreId !== input.storeId) return [];
-        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id && partner.city === ctx.city && store.city === ctx.city ? [{ ...offer, storeId: resolvedStoreId, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
+        const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id && partner.city === store.city ? [{ ...offer, storeId: resolvedStoreId, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
     createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
@@ -1333,19 +1422,30 @@ export const lahzaRouter = router({
       const discountAmount = Math.min(itemsTotal, Math.max(0, Math.floor(itemsTotal * percent / 100)));
       return { code: referral.code, kind: "referral" as const, percent, discountAmount, itemsTotal };
     }),
-    create: publicProcedure.input(orderInputSchema).mutation(async ({ input }) => {
+    create: publicProcedure.input(orderInputSchema).mutation(async ({ ctx, input }) => {
       const db = await ensureCatalogSeed();
+      const orderCity = ctx.city;
+      if (input.orderCity && input.orderCity !== orderCity) throw new Error("المدينة المختارة للطلب غير مطابقة لواجهة التطبيق");
+      if (input.orderType === "taxi" && orderCity === "jarabulus") throw new Error("خدمة سيارات الأجرة المحلية غير متاحة في بوابة جرابلس حالياً");
       const ids = input.lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
       const products = ids.length ? await db.select().from(catalogItems).where(inArray(catalogItems.id, ids)) : [];
       const productMap = new Map(products.map(product => [product.id, product]));
+      const productStoreIds = Array.from(new Set(products.flatMap(product => product.storeId ? [product.storeId] : [])));
+      const productStores = productStoreIds.length ? await db.select({ id: stores.id, city: stores.city, active: stores.active, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled }).from(stores).where(inArray(stores.id, productStoreIds)) : [];
+      const storeById = new Map(productStores.map(store => [store.id, store]));
+      if (input.orderType === "delivery" && orderCity === "jarabulus" && products.some(product => !product.storeId || !isStoreVisibleInCustomerCity(storeById.get(product.storeId) ?? { city: "jarabulus", jarabulusGatewayEnabled: false }, "jarabulus"))) {
+        throw new Error("يمكن طلب منتجات متاجر منبج المعتمدة لبوابة جرابلس فقط");
+      }
       const partnerIds = Array.from(new Set(products.flatMap(product => product.partnerId ? [product.partnerId] : [])));
+      let partnerPreparationMinutes = 0;
       if (partnerIds.length) {
         await ensureProfileImageColumns(db);
-        const productPartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours }).from(partners).where(inArray(partners.id, partnerIds));
+        const productPartners = await db.select({ id: partners.id, active: partners.active, storeOpen: partners.storeOpen, workHours: partners.workHours, preparationMinutes: partners.preparationMinutes }).from(partners).where(inArray(partners.id, partnerIds));
         const partnerById = new Map(productPartners.map(partner => [partner.id, partner]));
         if (products.some(product => product.partnerId && (!partnerById.get(product.partnerId)?.active || isStoreClosedForCustomer(partnerById.get(product.partnerId)?.storeOpen, partnerById.get(product.partnerId)?.workHours)))) {
           throw new Error("المتجر مغلق حالياً");
         }
+        partnerPreparationMinutes = Math.max(0, ...productPartners.map(partner => partner.preparationMinutes));
       }
       let totalAmount = 0;
       const resolvedLines = input.lines.map(line => {
@@ -1394,13 +1494,18 @@ export const lahzaRouter = router({
       }
       const finalItemsTotal = discountedItemsTotal - pointsRewardAmount;
       const initialStatus = initialCustomerOrderStatus(input.orderType, resolvedLines);
-      if (input.orderType === "delivery" && !meetsMinimumDeliveryOrder(finalItemsTotal)) {
-        throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(MINIMUM_DELIVERY_ORDER_SYP)}`);
+      const minimumOrder = orderCity === "jarabulus" ? jarabulusOrderMinimum(settings) : MINIMUM_DELIVERY_ORDER_SYP;
+      if (input.orderType === "delivery" && toNewSyp(finalItemsTotal) < minimumOrder) {
+        throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumOrder)}`);
       }
       let deliveryDistanceMeters = 0;
       let deliveryFee = 0;
       let deliveryPricingPending = false;
       let intercityTrip: typeof intercityTrips.$inferSelect | null = null;
+      const fulfillmentScope = orderCity === "jarabulus" && input.orderType === "delivery" ? "manbij_to_jarabulus" as const : "local" as const;
+      const preparationMinutes = fulfillmentScope === "manbij_to_jarabulus"
+        ? jarabulusOrderPreparationMinutes(settings)
+        : partnerPreparationMinutes;
       if (input.intercityTripId) {
         const foundTrips = await db.select().from(intercityTrips).where(and(eq(intercityTrips.id, input.intercityTripId), eq(intercityTrips.active, true))).limit(1);
         intercityTrip = foundTrips[0] ?? null;
@@ -1412,13 +1517,15 @@ export const lahzaRouter = router({
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.jarabulusDeliveryPercent);
         totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "delivery") {
-        deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.manbijDeliveryPercent);
+        deliveryFee = calculatePercentageDeliveryFee(itemsTotal, orderCity === "jarabulus" ? settings.jarabulusDeliveryPercent : settings.manbijDeliveryPercent);
         totalAmount = finalItemsTotal + deliveryFee;
       }
 
       const created = await db.insert(orders).values({
         orderType: input.orderType,
         status: initialStatus,
+        orderCity,
+        fulfillmentScope,
         intercityTripId: intercityTrip?.id ?? null,
         customerName: input.customerName,
         customerPhone: input.customerPhone,
@@ -1431,6 +1538,7 @@ export const lahzaRouter = router({
         pointsRewardPercent,
         deliveryDistanceMeters,
         deliveryFee,
+        preparationMinutes,
         taxiType: input.taxiType ?? null,
         pickupLocation: input.pickupLocation ?? null,
         destination: input.destination ?? null,
@@ -1439,9 +1547,10 @@ export const lahzaRouter = router({
         locationUrl: input.locationUrl ?? null,
         locationLat: input.locationLat === undefined ? null : Math.round(input.locationLat * 1_000_000),
         locationLng: input.locationLng === undefined ? null : Math.round(input.locationLng * 1_000_000),
-        notes: [input.notes, intercityTrip ? `حجز جرابلس: ${intercityTrip.title} · ${intercityTrip.bookingCloseLabel} · ${intercityTrip.arrivalLabel}` : "", deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
+        notes: [input.notes, intercityTrip ? `حجز جرابلس قديم: ${intercityTrip.title} · ${intercityTrip.bookingCloseLabel} · ${intercityTrip.arrivalLabel}` : "", fulfillmentScope === "manbij_to_jarabulus" ? JARABULUS_DISTANCE_DELIVERY_NOTE : "", deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
       });
       const orderId = Number(created[0].insertId);
+      await createOrderStatusNotification(db, { id: orderId, customerPhone: input.customerPhone, fulfillmentScope, preparationMinutes }, initialStatus);
       if (pointsUsed) {
         const spent = await db.update(customerPoints).set({ balance: sql`${customerPoints.balance} - 10` }).where(and(eq(customerPoints.customerPhone, input.customerPhone), gte(customerPoints.balance, 10)));
         if (!spent[0]?.affectedRows) throw new Error("تعذر استخدام النقاط، أعد المحاولة");
@@ -1463,7 +1572,7 @@ export const lahzaRouter = router({
           notes: line.notes ?? null,
         })));
       }
-      return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending };
+      return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending, orderCity, fulfillmentScope, preparationMinutes, minimumOrder };
     }),
     track: publicProcedure.input(z.object({ orderId: z.number().int().positive(), customerPhone: internationalPhoneSchema })).query(async ({ input }) => {
       const db = await getDb();
@@ -1474,20 +1583,28 @@ export const lahzaRouter = router({
       return { ...order, lines };
     }),
     list: publicProcedure.query(async ({ ctx }) => {
-      await requireAdmin(ctx);
+      const session = await requireAdmin(ctx);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await cleanExpiredOrders();
-      const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
+      await ensureJarabulusGatewaySchema(db);
+      const allOrders = await db.select().from(orders).where(or(
+        and(eq(orders.fulfillmentScope, "local"), eq(orders.orderCity, session.role === "owner" ? ctx.city : session.city ?? ctx.city)),
+        eq(orders.fulfillmentScope, "manbij_to_jarabulus"),
+      )).orderBy(desc(orders.createdAt));
       const ids = allOrders.map(order => order.id);
       const lines = ids.length ? await db.select().from(orderLines).where(inArray(orderLines.orderId, ids)) : [];
       return allOrders.map(order => ({ ...order, archived: isOrderArchived(order.createdAt), lines: lines.filter(line => line.orderId === order.id) }));
     }),
     updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(orderStatuses), reason: z.string().trim().min(2).max(300).optional() })).mutation(async ({ ctx, input }) => {
-      await requireAdmin(ctx);
+      const session = await requireAdmin(ctx);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureJarabulusGatewaySchema(db);
+      const existing = (await db.select().from(orders).where(eq(orders.id, input.id)).limit(1))[0];
+      if (!existing || (session.role !== "owner" && existing.fulfillmentScope !== "manbij_to_jarabulus" && existing.orderCity !== (session.city ?? ctx.city))) throw new Error("لا يمكنك تحديث طلب تابع لمدينة أخرى");
       await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date() }).where(eq(orders.id, input.id));
+      if (existing.status !== input.status) await createOrderStatusNotification(db, existing, input.status);
       if (input.status === "completed") {
         const order = (await db.select({ customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.id)).limit(1))[0];
         if (order) {
@@ -1518,11 +1635,12 @@ export const lahzaRouter = router({
   publicFeaturedOffers: publicProcedure.query(async ({ ctx }) => {
     const db = await getDb();
     if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+    await ensureJarabulusGatewaySchema(db);
     await cleanExpiredOffers();
     const now = new Date();
     const rows = await db.select().from(partnerOffers).where(and(eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now)))).orderBy(desc(partnerOffers.createdAt));
     const [storeRows, partnerRows, productRows] = await Promise.all([
-      db.select({ id: stores.id, name: stores.name, category: stores.category, city: stores.city }).from(stores),
+      db.select({ id: stores.id, name: stores.name, category: stores.category, city: stores.city, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled }).from(stores).where(customerStoreVisibilityCondition(ctx.city)),
       db.select({ id: partners.id, name: partners.name, city: partners.city }).from(partners),
       db.select({ id: catalogItems.id, name: catalogItems.name, available: catalogItems.available, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl, storeId: catalogItems.storeId, category: catalogItems.category }).from(catalogItems).where(eq(catalogItems.deleted, false)),
     ]);
@@ -1535,7 +1653,7 @@ export const lahzaRouter = router({
       const resolvedStoreId = offer.storeId ?? product?.storeId ?? null;
       const store = resolvedStoreId ? storeById.get(resolvedStoreId) : undefined;
       const partner = partnerById.get(offer.partnerId);
-      if (store?.city !== ctx.city || partner?.city !== ctx.city) return [];
+      if (!store || partner?.city !== store.city) return [];
       const rating = resolvedStoreId ? ratings.get(resolvedStoreId) ?? { completedOrders: 0, ratingStars: 3 } : { completedOrders: 0, ratingStars: 3 };
       return [{ ...offer, storeId: resolvedStoreId, storeName: store?.name ?? "متجر مميز", storeCategory: store?.category ?? product?.category ?? "other", partnerName: partner?.name ?? "شريك لحظة", ratingStars: rating.ratingStars, completedOrders: rating.completedOrders, originalProductPrice: product?.unitPrice ?? offer.offerPrice, product }];
     });
@@ -1587,6 +1705,7 @@ export const lahzaRouter = router({
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await ensureJarabulusGatewaySchema(db);
         await ensureProfileImageColumns(db);
         return db.select().from(stores).where(eq(stores.city, ctx.city)).orderBy(stores.category, stores.sortOrder, stores.name);
       }),
@@ -1601,6 +1720,7 @@ export const lahzaRouter = router({
         const customCategory = input.category === "other" ? await getActiveCustomCategory(db, input.customCategoryId) : null;
         if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
         await ensureProfileImageColumns(db);
+        await ensureJarabulusGatewaySchema(db);
         await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", customCategoryId: customCategory?.id ?? null, partnerId: input.partnerId ?? null, imageUrl: input.imageUrl || null, active: input.active, sortOrder: input.sortOrder, city: input.city ?? ctx.city });
         return { success: true };
       }),
@@ -1633,6 +1753,17 @@ export const lahzaRouter = router({
         const store = await db.select({ id: stores.id }).from(stores).where(and(eq(stores.id, input.storeId), eq(stores.city, ctx.city))).limit(1);
         if (!store[0]) throw new Error("لا يمكنك تعديل متجر تابع لمدينة أخرى");
         return uploadOfferImage(input.dataUrl, input.storeId, `store-${randomBytes(12).toString("hex")}`);
+      }),
+      setJarabulusGateway: publicProcedure.input(z.object({ id: z.number().int().positive(), enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
+        const session = await requireAdmin(ctx);
+        if (session.role !== "owner" && (session.city ?? ctx.city) !== "manbij") throw new Error("فقط المالك أو مشرف منبج يمكنه اعتماد متاجر بوابة جرابلس");
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await ensureJarabulusGatewaySchema(db);
+        const store = (await db.select({ id: stores.id, city: stores.city }).from(stores).where(eq(stores.id, input.id)).limit(1))[0];
+        if (!store || store.city !== "manbij") throw new Error("بوابة جرابلس تقبل متاجر منبج فقط");
+        await db.update(stores).set({ jarabulusGatewayEnabled: input.enabled }).where(eq(stores.id, input.id));
+        return { success: true };
       }),
     }),
     partners: router({
@@ -1861,15 +1992,18 @@ export const lahzaRouter = router({
         return {
           manbijPercent: settings.manbijDeliveryPercent,
           jarabulusPercent: settings.jarabulusDeliveryPercent,
+          jarabulusMinimumOrder: jarabulusOrderMinimum(settings),
+          jarabulusPreparationMinutes: jarabulusOrderPreparationMinutes(settings),
           pointsRewardPercent: settings.pointsRewardPercent,
           driverPercent: settings.driverDeliveryPercent ?? 0,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent }).where(eq(systemSettings.id, 1));
+        await ensureJarabulusGatewaySchema(db);
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),

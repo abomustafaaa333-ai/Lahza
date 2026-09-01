@@ -50,6 +50,9 @@ export const stores = mysqlTable("stores", {
   active: boolean("active").notNull().default(true),
   sortOrder: int("sortOrder").notNull().default(0),
   city: mysqlEnum("city", CITY_KEYS).notNull().default("manbij"),
+  // A Manbij store can be deliberately published in the Jarabulus gateway.
+  // It remains a Manbij store for all local operations.
+  jarabulusGatewayEnabled: boolean("jarabulusGatewayEnabled").notNull().default(false),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -135,6 +138,8 @@ export const intercityOrders = mysqlTable("intercity_orders", {
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
   orderType: mysqlEnum("orderType", ["delivery", "taxi"]).notNull(),
+  orderCity: mysqlEnum("orderCity", CITY_KEYS).notNull().default("manbij"),
+  fulfillmentScope: mysqlEnum("fulfillmentScope", ["local", "manbij_to_jarabulus"]).notNull().default("local"),
   intercityTripId: int("intercityTripId").references(() => intercityTrips.id, { onDelete: "set null" }),
   customerName: varchar("customerName", { length: 80 }).notNull(),
   customerPhone: varchar("customerPhone", { length: 24 }).notNull(),
@@ -147,6 +152,7 @@ export const orders = mysqlTable("orders", {
   pointsRewardPercent: int("pointsRewardPercent").notNull().default(0),
   deliveryDistanceMeters: int("deliveryDistanceMeters").notNull().default(0),
   deliveryFee: int("deliveryFee").notNull().default(0),
+  preparationMinutes: int("preparationMinutes").notNull().default(0),
   status: mysqlEnum("status", ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"]).notNull().default("pending"),
   taxiType: mysqlEnum("taxiType", ["standard", "van"]),
   pickupLocation: varchar("pickupLocation", { length: 220 }),
@@ -183,6 +189,8 @@ export const systemSettings = mysqlTable("system_settings", {
   deliveryPricePerKm: int("deliveryPricePerKm").notNull().default(2),
   manbijDeliveryPercent: int("manbijDeliveryPercent").notNull().default(20),
   jarabulusDeliveryPercent: int("jarabulusDeliveryPercent").notNull().default(30),
+  jarabulusMinimumOrder: int("jarabulusMinimumOrder").notNull().default(500),
+  jarabulusPreparationMinutes: int("jarabulusPreparationMinutes").notNull().default(120),
   pointsRewardPercent: int("pointsRewardPercent").notNull().default(0),
   driverDeliveryPercent: int("driverDeliveryPercent").notNull().default(0),
   originLatE6: int("originLatE6").notNull().default(36528100),
@@ -366,6 +374,18 @@ export const customerNotifications = mysqlTable("customer_notifications", {
   deliveredAt: timestamp("deliveredAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, table => ({ campaignDeviceUnique: uniqueIndex("customer_notifications_campaign_device_unique").on(table.campaignId, table.deviceId) }));
+
+/** A durable in-app notification trail for an individual customer order. */
+export const orderNotifications = mysqlTable("order_notifications", {
+  id: int("id").autoincrement().primaryKey(),
+  orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }),
+  customerPhone: varchar("customerPhone", { length: 24 }).notNull(),
+  status: mysqlEnum("status", ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"]).notNull(),
+  title: varchar("title", { length: 120 }).notNull(),
+  body: varchar("body", { length: 300 }).notNull(),
+  readAt: timestamp("readAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
