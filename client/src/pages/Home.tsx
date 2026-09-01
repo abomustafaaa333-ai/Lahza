@@ -327,8 +327,15 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("home");
   const [customerAuthReady, setCustomerAuthReady] = useState(false);
   const [customerAuth, setCustomerAuth] = useState<CustomerAuthSession | null>(null);
-  const [selectedCity, setSelectedCity] = useState<CityKey | null>(null);
+  const [selectedCity, setSelectedCity] = useState<CityKey | null>(() => {
+    const saved = typeof window !== "undefined" ? window.sessionStorage.getItem("lahza_selected_city") : null;
+    return saved === "manbij" || saved === "jarabulus" ? saved : null;
+  });
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { retry: false });
+  useEffect(() => {
+    if (!selectedCity || isStaticDemo) return;
+    void utils.invalidate();
+  }, [selectedCity]);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
@@ -888,7 +895,7 @@ export default function Home() {
   if (!customerAuth && staffSessionLoading) return <main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ التحقق من الحساب...</span></main>;
   const adminAccessDialog = <AdminAccessDialog open={secretOpen} onOpenChange={setSecretOpen} secretRole={secretRole} setSecretRole={setSecretRole} pin={pin} setPin={setPin} username={username} setUsername={setUsername} password={password} setPassword={setPassword} onLogin={handleAdminLogin} adminPending={adminLogin.isPending} partnerPending={partnerLogin.isPending} />;
   if (!customerAuth && !hasStaffSession) return <><CustomerAuthScreen onAuthenticated={completeCustomerAuth} onSecret={() => setSecretOpen(true)} />{adminAccessDialog}</>;
-  if (customerAuth && !selectedCity) return <CitySelectionGate onSelect={city => { window.sessionStorage.setItem("lahza_selected_city", city); setSelectedCity(city); }} />;
+  if (customerAuth && !selectedCity) return <CitySelectionGate onSelect={city => { window.sessionStorage.setItem("lahza_selected_city", city); setSelectedCity(city); void utils.invalidate(); }} />;
 
   return (
     <main dir="rtl" className="lahza-app-shell min-h-screen text-slate-950" onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
