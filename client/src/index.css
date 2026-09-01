@@ -3143,3 +3143,19 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   .customer-auth-heading h1 { font-size: 1.45rem !important; }
   .customer-auth-heading span { font-size: .75rem !important; }
 }
+
+/* تحسين وضوح شعار الدخول وإبراز رمز الدولة في نموذج الهاتف */
+.customer-auth-brand {
+  align-self: flex-start !important;
+  text-align: right !important;
+  padding: .35rem .55rem .55rem !important;
+  border-radius: 1rem !important;
+  background: rgba(255,255,255,.1) !important;
+}
+.customer-auth-brand-lockup { display: inline-flex !important; align-items: center !important; justify-content: center !important; padding: .28rem .5rem !important; border-radius: .7rem !important; background: #ff7a32 !important; }
+.customer-auth-primary-logo { display: block !important; width: 4.8rem !important; filter: brightness(0) invert(1) !important; }
+.customer-auth-phone select { min-width: 7.2rem !important; color: #4a2618 !important; background: #fff !important; font-weight: 800 !important; }
+@media (max-width: 600px) {
+  .customer-auth-brand { margin-inline-start: .15rem !important; }
+  .customer-auth-primary-logo { width: 4.35rem !important; }
+}
