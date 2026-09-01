@@ -2802,3 +2802,34 @@ header[class*="header-service-theme-"] .header-search-wrap {
 .city-welcome-ticker-track span { display: inline-flex; align-items: center; padding-inline: 2rem; }
 @keyframes city-welcome-scroll { from { transform: translateX(0); } to { transform: translateX(50%); } }
 @media (prefers-reduced-motion: reduce) { .city-welcome-ticker-track { animation: none; width: 100%; justify-content: center; } }
+
+/* محاذاة محتوى صورة العرض فوق عنوان المتاجر المميزة في الواجهتين */
+.global-offer-bar .hero-image-frame .hero-offer-caption,
+.home-offer-gallery .hero-image-frame .hero-offer-caption,
+.offers-page-gallery .hero-image-frame .hero-offer-caption {
+  right: .75rem !important;
+  left: .75rem !important;
+  bottom: .75rem !important;
+  width: auto !important;
+  max-width: none !important;
+  align-items: flex-end !important;
+  text-align: right !important;
+  direction: rtl !important;
+}
+.global-offer-bar .hero-image-frame .hero-offer-caption > *,
+.home-offer-gallery .hero-image-frame .hero-offer-caption > *,
+.offers-page-gallery .hero-image-frame .hero-offer-caption > * {
+  align-self: flex-end !important;
+  text-align: right !important;
+}
+@media (max-width: 420px) {
+  .global-offer-bar .hero-image-frame .hero-offer-caption,
+  .home-offer-gallery .hero-image-frame .hero-offer-caption,
+  .offers-page-gallery .hero-image-frame .hero-offer-caption {
+    right: .6rem !important;
+    left: .6rem !important;
+    bottom: .6rem !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+}
