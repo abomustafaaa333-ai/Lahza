@@ -3213,3 +3213,40 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   .customer-auth-form,
   .customer-auth-otp-panel { transform: translateY(1rem) !important; }
 }
+
+/* موضع نهائي لشاشة الدخول: الشعار في الأعلى والبطاقة أسفل الترحيب */
+.customer-auth-brand {
+  top: .8rem !important;
+  right: 50% !important;
+  left: auto !important;
+  transform: translateX(50%) !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+.customer-auth-brand-lockup {
+  width: 1.5cm !important;
+  height: 1cm !important;
+  padding: .12rem .2rem !important;
+  border-radius: .45rem !important;
+}
+.customer-auth-primary-logo { width: 1.5cm !important; height: 1cm !important; object-fit: contain !important; }
+.customer-auth-services-card {
+  order: 3;
+  width: 100%;
+  margin: 1rem auto 1.1rem;
+  padding: .85rem 1rem;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 1.2rem;
+  text-align: center;
+  background: rgba(0,35,43,.28);
+  box-shadow: 0 .7rem 1.4rem rgba(0,0,0,.12);
+}
+.customer-auth-services-card strong { display: block; color: #ff9a52; font-size: 1.05rem; font-weight: 950; }
+.customer-auth-services-card small { display: block; margin-top: .2rem; color: rgba(255,255,255,.82); font-size: .75rem; }
+.customer-auth-heading { order: 2; }
+.customer-auth-actions { order: 4; }
+.customer-auth-note { order: 5; }
+@media (max-width: 600px) {
+  .customer-auth-brand { top: .65rem !important; }
+  .customer-auth-services-card { margin-top: .85rem; margin-bottom: .85rem; padding: .65rem .8rem; }
+}
