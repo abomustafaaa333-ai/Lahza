@@ -407,6 +407,9 @@ export default function Home() {
     if (session.mode === "customer" && session.city) {
       window.sessionStorage.setItem("lahza_selected_city", session.city);
       setSelectedCity(session.city);
+    } else if (session.mode === "guest") {
+      window.sessionStorage.removeItem("lahza_selected_city");
+      setSelectedCity(null);
     }
     setCustomerAuth(session);
   };
@@ -737,6 +740,8 @@ export default function Home() {
   const openAccount = () => setScreen("account");
   const logoutCustomer = () => {
     window.localStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
+    window.sessionStorage.removeItem("lahza_selected_city");
+    setSelectedCity(null);
     setCustomerAuth(null);
     setScreen("home");
   };
