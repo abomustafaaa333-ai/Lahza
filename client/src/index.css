@@ -3250,3 +3250,23 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   .customer-auth-brand { top: .65rem !important; }
   .customer-auth-services-card { margin-top: .85rem; margin-bottom: .85rem; padding: .65rem .8rem; }
 }
+
+/* Login logo: keep the approved mark clean and slightly larger. */
+.customer-auth-brand-lockup {
+  background: transparent !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  width: auto !important;
+  height: auto !important;
+}
+.customer-auth-primary-logo {
+  width: min(100%, 6.5rem) !important;
+  height: auto !important;
+  max-height: none !important;
+  object-fit: contain !important;
+  filter: none !important;
+}
+@media (max-width: 420px) {
+  .customer-auth-primary-logo { width: 6rem !important; }
+}
