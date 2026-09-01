@@ -3159,3 +3159,20 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   .customer-auth-brand { margin-inline-start: .15rem !important; }
   .customer-auth-primary-logo { width: 4.35rem !important; }
 }
+
+/* وضوح النص داخل خانات تسجيل الدخول والتسجيل */
+.customer-auth-form input,
+.customer-auth-form select,
+.customer-auth-otp-panel input,
+.customer-auth-phone input {
+  color: #111827 !important;
+  caret-color: #111827 !important;
+  -webkit-text-fill-color: #111827 !important;
+}
+.customer-auth-form input::placeholder,
+.customer-auth-otp-panel input::placeholder,
+.customer-auth-phone input::placeholder {
+  color: #4b5563 !important;
+  opacity: 1 !important;
+}
+.customer-auth-phone select option { color: #111827 !important; background: #fff !important; }
