@@ -3270,3 +3270,16 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
 @media (max-width: 420px) {
   .customer-auth-primary-logo { width: 6rem !important; }
 }
+
+/* Keep session verification, but remove the intrusive black loading screen. */
+.customer-auth-loading {
+  min-height: 100svh !important;
+  background: #ffffff !important;
+  color: transparent !important;
+  gap: 0 !important;
+}
+.customer-auth-loading img,
+.customer-auth-loading span {
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
