@@ -2869,3 +2869,31 @@ header[class*="header-service-theme-"] .header-search-wrap {
     max-width: 72% !important;
   }
 }
+
+/* تصحيح RTL: flex-start هو أقصى اليمين عند ترتيب العمود من اليمين لليسار */
+.global-offer-bar .hero-image-frame .hero-offer-caption,
+.home-offer-gallery .hero-image-frame .hero-offer-caption,
+.offers-page-gallery .hero-image-frame .hero-offer-caption {
+  right: .75rem !important;
+  left: auto !important;
+  align-items: flex-start !important;
+  justify-items: start !important;
+  text-align: right !important;
+}
+.global-offer-bar .hero-image-frame .hero-offer-caption > *,
+.home-offer-gallery .hero-image-frame .hero-offer-caption > *,
+.offers-page-gallery .hero-image-frame .hero-offer-caption > * {
+  align-self: flex-start !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  text-align: right !important;
+}
+@media (max-width: 420px) {
+  .global-offer-bar .hero-image-frame .hero-offer-caption,
+  .home-offer-gallery .hero-image-frame .hero-offer-caption,
+  .offers-page-gallery .hero-image-frame .hero-offer-caption {
+    right: .6rem !important;
+    left: auto !important;
+    align-items: flex-start !important;
+  }
+}
