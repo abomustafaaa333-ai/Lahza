@@ -3176,3 +3176,30 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   opacity: 1 !important;
 }
 .customer-auth-phone select option { color: #111827 !important; background: #fff !important; }
+
+/* وضع شعار لحظة فوق مستطيل النموذج بعرض يقارب ١.٥ سم */
+.customer-auth-card { position: relative !important; }
+.customer-auth-brand {
+  position: absolute !important;
+  top: 1rem !important;
+  right: 1.1rem !important;
+  left: auto !important;
+  z-index: 3 !important;
+  padding: .2rem !important;
+  background: transparent !important;
+}
+.customer-auth-brand-lockup { padding: .2rem .35rem !important; border-radius: .55rem !important; }
+.customer-auth-primary-logo { width: 3.55rem !important; }
+.customer-auth-form input[name="name"],
+.customer-auth-form input[autocomplete="name"],
+.customer-auth-phone input,
+.customer-auth-phone select,
+.customer-auth-otp-panel input {
+  color: #000 !important;
+  font-weight: 700 !important;
+  -webkit-text-fill-color: #000 !important;
+}
+@media (max-width: 600px) {
+  .customer-auth-brand { top: .75rem !important; right: .9rem !important; }
+  .customer-auth-primary-logo { width: 3.55rem !important; }
+}
