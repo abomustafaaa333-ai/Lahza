@@ -3000,3 +3000,39 @@ header[class*="header-service-theme-"] .header-search-wrap {
   .customer-auth-art-tile-light { right: 1.1rem; }
   .customer-auth-art-tile-rose { right: 1.7rem; }
 }
+
+/* ملاءمة شاشة الهاتف: كل شاشة الدخول ثابتة ضمن ارتفاع الجهاز دون سحب */
+.customer-auth-page,
+.customer-auth-card {
+  height: 100svh !important;
+  min-height: 0 !important;
+  max-height: 100svh !important;
+}
+.customer-auth-page { overflow: hidden !important; }
+.customer-auth-card { display: flex !important; justify-content: flex-start !important; }
+.customer-auth-art {
+  flex: 0 1 auto !important;
+  height: clamp(10.5rem, 32svh, 20rem) !important;
+  min-height: 0 !important;
+  margin: clamp(.8rem, 2.8svh, 2rem) -.2rem clamp(.35rem, 1.5svh, 1rem) !important;
+}
+.customer-auth-art-orb-pink { width: clamp(5rem, 18vw, 8rem) !important; height: clamp(5rem, 18vw, 8rem) !important; }
+.customer-auth-art-orb-blue { width: clamp(3.8rem, 13vw, 5.8rem) !important; height: clamp(3.8rem, 13vw, 5.8rem) !important; }
+.customer-auth-art-tile { font-size: clamp(2.5rem, 8vw, 4.5rem) !important; }
+.customer-auth-art-tile-teal { width: clamp(6.5rem, 29vw, 9.8rem) !important; height: clamp(6rem, 27vw, 9rem) !important; }
+.customer-auth-art-tile-light { width: clamp(5.8rem, 25vw, 8.4rem) !important; height: clamp(6rem, 27vw, 9rem) !important; }
+.customer-auth-art-tile-rose { width: clamp(7rem, 31vw, 10.5rem) !important; height: clamp(6.8rem, 29vw, 10rem) !important; }
+.customer-auth-art-icon { width: 42% !important; height: 42% !important; color: #fff !important; stroke-width: 1.8 !important; }
+.customer-auth-art-icon-small { width: 25% !important; height: 25% !important; margin-top: -4rem !important; margin-left: 3rem !important; color: #ffe3c9 !important; }
+.customer-auth-heading { flex: 0 0 auto !important; margin-top: 0 !important; }
+.customer-auth-heading h1 { font-size: clamp(1.65rem, 7vw, 2.7rem) !important; }
+.customer-auth-actions { flex: 0 0 auto !important; margin-top: clamp(.65rem, 2svh, 1.4rem) !important; }
+.customer-auth-note { margin-top: .45rem !important; margin-bottom: 0 !important; }
+@media (max-height: 700px) {
+  .customer-auth-art { height: 9.5rem !important; margin-top: .55rem !important; margin-bottom: .3rem !important; }
+  .customer-auth-heading h1 { font-size: 1.55rem !important; }
+  .customer-auth-heading span { font-size: .78rem !important; }
+  .customer-auth-actions { gap: .35rem !important; margin-top: .55rem !important; }
+  .customer-auth-primary, .customer-auth-secondary, .customer-auth-guest { min-height: 2.45rem !important; padding-top: .5rem !important; padding-bottom: .5rem !important; }
+  .customer-auth-note { display: none !important; }
+}
