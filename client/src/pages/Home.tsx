@@ -85,8 +85,8 @@ const homeDiscoverCategories: { key: string; title: string; icon: string; catego
   { key: "restaurants", title: "مطاعم", icon: "🍔", category: "restaurants" },
   { key: "groceries", title: "بقوليات ومواد غذائية", icon: "🛍️", category: "groceries" },
   { key: "sweets", title: "حلويات", icon: "🍰", category: "sweets" },
-  { key: "gifts", title: "زهور وهدايا", icon: "🌸", category: "beauty_personal_care" },
-  { key: "services", title: "خدمات", icon: "🔧" },
+  { key: "pharmacy", title: "صيدليات", icon: "💊", category: "pharmacy" },
+  { key: "household", title: "مستلزمات منزلية", icon: "🏠", category: "household" },
 ];
 
 const staticDemoProducts: { id: number; name: string; category: LahzaCategory; unit: string; unitPrice: number; available: boolean }[] = [
