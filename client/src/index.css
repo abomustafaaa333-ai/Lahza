@@ -6,8 +6,8 @@
 
 * { box-sizing: border-box; }
 html { width: 100%; max-width: 100%; overflow-x: clip; scroll-behavior: smooth; background: #ffffff; }
-body { width: 100%; max-width: 100%; margin: 0; min-width: 320px; overflow-x: clip; font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; }
-#root { width: 100%; max-width: 100%; overflow-x: clip; }
+body { width: 100%; max-width: 100%; margin: 0; min-width: 320px; overflow-x: clip; font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; background: #FFFFFF; }
+#root { width: 100%; max-width: 100%; overflow-x: clip; background: #FFFFFF; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .55; }
