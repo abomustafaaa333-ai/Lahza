@@ -3283,3 +3283,76 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   visibility: hidden !important;
   opacity: 0 !important;
 }
+
+/* استبدال صور أقسام المتاجر بأيقونات فيكتور صغيرة وخفيفة */
+.category-grid .category-card {
+  grid-template-columns: auto 1fr auto;
+  min-height: 5.8rem;
+  padding: .55rem .65rem;
+  gap: .55rem;
+}
+.category-grid .category-icon {
+  width: 2.9rem;
+  height: 2.9rem;
+  border-radius: .85rem;
+}
+.category-grid .category-icon svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+.category-grid .category-card-copy {
+  min-width: 0;
+}
+.category-grid .category-card-copy > span {
+  font-size: .78rem;
+  line-height: 1.25;
+}
+.category-grid .category-card-copy small {
+  font-size: .63rem;
+  line-height: 1.2;
+}
+.home-category-row > .home-category-card {
+  flex-basis: 7.2rem;
+  width: 7.2rem;
+  min-width: 7.2rem;
+  height: 6.8rem;
+  min-height: 6.8rem;
+  gap: .3rem;
+  border-radius: 1.2rem;
+  padding: .4rem .45rem .3rem;
+}
+.home-category-emoji {
+  width: 3.2rem;
+  height: 3.2rem;
+  font-size: 2.45rem;
+}
+.home-category-row > .home-category-card > span:last-child {
+  min-height: 1.8rem;
+  font-size: .76rem;
+}
+.category-card-image,
+.home-category-icon-photo,
+.home-category-image {
+  display: none !important;
+}
+@media (max-width: 420px) {
+  .category-grid .category-card {
+    min-height: 5.4rem;
+    padding: .45rem .55rem;
+  }
+  .home-category-row > .home-category-card {
+    flex-basis: 6.8rem;
+    width: 6.8rem;
+    min-width: 6.8rem;
+  }
+}
+
+/* حركات خفيفة لبطاقات الأقسام */
+.category-grid .category-card,
+.home-category-row > .home-category-card {
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.category-grid .category-card:active,
+.home-category-row > .home-category-card:active {
+  transform: scale(.98);
+}

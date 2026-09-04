@@ -966,9 +966,7 @@ export default function Home() {
                 const Icon = item.custom ? Store : categoryIcons[item.category];
                 const count = cart.filter(line => line.category === item.category).length;
                 const color = item.custom ? "from-slate-100 to-rose-50 text-[#7a3b1d]" : categoryColors[item.category];
-                const image = categoryImageByKey[item.category];
                 return <button key={item.key} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setRestaurantFilter("all"); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }} className={`category-card ${activeCategory === item.category && (item.custom?.id ? activeCustomCategory?.id === item.custom.id : !activeCustomCategory) ? "category-card-active" : ""}`}>
-                  {image ? <span className="category-card-image"><img src={image} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = "none"; }} /></span> : null}
                   <span className={`category-icon bg-gradient-to-br ${color}`}><Icon className="h-5 w-5" /></span>
                   <span className="category-card-copy"><span>{item.title}</span><small>{item.subtitle}</small></span>
                   {count > 0 ? <span className="category-badge">{count}</span> : <Plus className="h-4 w-4 text-slate-300" />}
