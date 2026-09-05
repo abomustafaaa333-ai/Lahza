@@ -1,0 +1,19 @@
+# Lahza Wasmer Edge build definition
+# Forces the server provider so Wasmer runs Express instead of static-web-server.
+
+load("//anybuild/tools:node.bzl", "node_build", "node_config", "node_serve")
+
+config = node_config(
+    schema = 1,
+    commands = {
+        "start": "node dist/index.js",
+    },
+    node_package_manager = "pnpm",
+    node_server = "express",
+    node_version = "24",
+    node_build_command = "pnpm run build",
+)
+
+build = node_build(config)
+
+node_serve(config, build, name = "lahza")
