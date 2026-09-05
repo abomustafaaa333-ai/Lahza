@@ -3356,3 +3356,75 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
 .home-category-row > .home-category-card:active {
   transform: scale(.98);
 }
+
+
+/* إصلاح نهائي لشريط «اكتشف ما تحتاجه»: أربع بطاقات متساوية على الهاتف. */
+.home-discover-section .home-category-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: .52rem;
+  overflow-x: auto;
+  align-items: stretch;
+}
+.home-discover-section .home-category-row > .home-category-card {
+  flex: 0 0 calc((100% - 1.56rem) / 4);
+  width: calc((100% - 1.56rem) / 4);
+  min-width: 0;
+  height: 5.25rem;
+  min-height: 5.25rem;
+  transform: none;
+  gap: .28rem;
+  padding: .38rem .24rem .3rem;
+  border-radius: .95rem;
+}
+.home-discover-section .home-category-row > .home-category-card:active {
+  transform: translateY(1px) scale(.98);
+}
+.home-discover-section .home-category-row > .home-category-card .home-category-emoji,
+.home-discover-section .home-category-row > .home-category-card .home-category-all-grid {
+  width: 2.2rem;
+  height: 2.2rem;
+  transform: none;
+}
+.home-discover-section .home-category-row > .home-category-card .home-category-emoji {
+  font-size: 1.65rem;
+  line-height: 1;
+}
+.home-discover-section .home-category-row > .home-category-card .home-category-all-grid {
+  gap: .16rem;
+  padding: .25rem;
+}
+.home-discover-section .home-category-row > .home-category-card .home-category-all-grid > span {
+  width: .78rem;
+  height: .78rem;
+  border-radius: .25rem;
+}
+.home-discover-section .home-category-row > .home-category-card > span:last-child,
+.home-discover-section .home-category-row > .home-category-all > .home-category-all-label {
+  min-height: 1.55rem;
+  font-size: .59rem;
+  line-height: 1.2;
+}
+@media (min-width: 601px) {
+  .home-discover-section .home-category-row {
+    gap: .7rem;
+  }
+  .home-discover-section .home-category-row > .home-category-card {
+    flex-basis: calc((100% - 2.1rem) / 4);
+    width: calc((100% - 2.1rem) / 4);
+    height: 6rem;
+    min-height: 6rem;
+  }
+  .home-discover-section .home-category-row > .home-category-card .home-category-emoji,
+  .home-discover-section .home-category-row > .home-category-card .home-category-all-grid {
+    width: 2.55rem;
+    height: 2.55rem;
+  }
+  .home-discover-section .home-category-row > .home-category-card .home-category-emoji {
+    font-size: 1.9rem;
+  }
+  .home-discover-section .home-category-row > .home-category-card > span:last-child,
+  .home-discover-section .home-category-row > .home-category-all > .home-category-all-label {
+    font-size: .68rem;
+  }
+}
