@@ -137,8 +137,11 @@ export function isStoreVisibleInCustomerCity(store: { city: CityKey; jarabulusGa
 }
 
 function customerStoreVisibilityCondition(city: CityKey) {
+  return eq(stores.city, city);
+}
+function customerGatewayStoreVisibilityCondition(city: CityKey) {
   return city === "jarabulus"
-    ? and(eq(stores.city, "manbij"), eq(stores.jarabulusGatewayEnabled, true))
+    ? or(eq(stores.city, "jarabulus"), and(eq(stores.city, "manbij"), eq(stores.jarabulusGatewayEnabled, true)))
     : eq(stores.city, city);
 }
 
@@ -1021,7 +1024,7 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureJarabulusGatewaySchema(db);
-      const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true), customerStoreVisibilityCondition(ctx.city))).limit(1);
+      const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true), customerGatewayStoreVisibilityCondition(ctx.city))).limit(1);
       const store = found[0];
       if (!store) throw new Error("هذا المتجر غير متاح حالياً");
       let storeOpen = true;
@@ -1072,7 +1075,7 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureJarabulusGatewaySchema(db);
-      const found = await db.select({ partnerId: stores.partnerId, active: stores.active, city: stores.city }).from(stores).where(and(eq(stores.id, input.storeId), customerStoreVisibilityCondition(ctx.city))).limit(1);
+      const found = await db.select({ partnerId: stores.partnerId, active: stores.active, city: stores.city }).from(stores).where(and(eq(stores.id, input.storeId), customerGatewayStoreVisibilityCondition(ctx.city))).limit(1);
       const store = found[0];
       if (!store?.active) throw new Error("هذا المتجر غير متاح حالياً");
       if (!store.partnerId) return { storeOpen: true };
@@ -1116,7 +1119,7 @@ export const lahzaRouter = router({
       await ensureProfileImageColumns(db);
       await ensureJarabulusGatewaySchema(db);
       const activePartners = await db.select({ id: partners.id, name: partners.name, storeOpen: partners.storeOpen, workHours: partners.workHours, city: partners.city }).from(partners).where(eq(partners.active, true));
-      const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId, city: stores.city, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled }).from(stores).where(and(eq(stores.active, true), customerStoreVisibilityCondition(ctx.city)));
+      const activeStores = await db.select({ id: stores.id, name: stores.name, category: stores.category, partnerId: stores.partnerId, city: stores.city, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled }).from(stores).where(and(eq(stores.active, true), input?.storeId ? customerGatewayStoreVisibilityCondition(ctx.city) : customerStoreVisibilityCondition(ctx.city)));
       const offerProductIds = activeOffers.flatMap(offer => offer.catalogItemId ? [offer.catalogItemId] : []);
       const offerProducts = offerProductIds.length ? await db.select({ id: catalogItems.id, name: catalogItems.name, unit: catalogItems.unit, unitPrice: catalogItems.unitPrice, imageUrl: catalogItems.imageUrl, storeId: catalogItems.storeId, partnerId: catalogItems.partnerId }).from(catalogItems).where(and(inArray(catalogItems.id, offerProductIds), eq(catalogItems.deleted, false), eq(catalogItems.available, true))) : [];
       const partnerById = new Map(activePartners.map(partner => [partner.id, partner]));
@@ -1685,13 +1688,13 @@ export const lahzaRouter = router({
     }),
     categories: router({
       list: publicProcedure.query(async ({ ctx }) => {
-        await requireAdmin(ctx);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         return db.select().from(customCategories).orderBy(customCategories.sortOrder, customCategories.title);
       }),
       create: publicProcedure.input(customCategoryInput).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const slug = `custom-${randomBytes(6).toString("hex")}`;
@@ -1699,7 +1702,7 @@ export const lahzaRouter = router({
         return { success: true };
       }),
       update: publicProcedure.input(customCategoryInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const { id, ...patch } = input;
@@ -1707,7 +1710,7 @@ export const lahzaRouter = router({
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const [storeLink, itemLink] = await Promise.all([
