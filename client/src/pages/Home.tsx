@@ -331,7 +331,7 @@ export default function Home() {
     const saved = typeof window !== "undefined" ? window.sessionStorage.getItem("lahza_selected_city") : null;
     return saved === "manbij" || saved === "jarabulus" ? saved : null;
   });
-  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { retry: false });
+  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false });
   useEffect(() => {
     if (!selectedCity || isStaticDemo) return;
     queryClient.removeQueries({ predicate: query => {
@@ -452,14 +452,14 @@ export default function Home() {
   const [sharedStoreId] = useState(() => parseSharedStoreId(window.location.search));
   const [gatewayMode, setGatewayMode] = useState(false);
 
-  const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
-  const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
-  const partnerOffersQuery = trpc.lahza.publicFeaturedOffers.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
-  const popularProductsQuery = trpc.lahza.storefront.popularProducts.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
+  const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
+  const partnerOffersQuery = trpc.lahza.publicFeaturedOffers.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
+  const popularProductsQuery = trpc.lahza.storefront.popularProducts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
   const storeOffersQuery = trpc.lahza.intercity.offers.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const trackStoreVisit = trpc.lahza.traffic.track.useMutation();
-  const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
-  const supportContactsQuery = trpc.lahza.support.contacts.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
+  const supportContactsQuery = trpc.lahza.support.contacts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
   const normalizedSearchText = searchText.trim();
   const productSearchInput = useMemo(() => ({ query: normalizedSearchText }), [normalizedSearchText]);
   const productSearchQuery = trpc.lahza.storefront.searchProducts.useQuery(productSearchInput, { enabled: !isStaticDemo && searchOpen && normalizedSearchText.length >= 2, retry: false });
@@ -485,10 +485,10 @@ export default function Home() {
     onError: error => toast.error(error.message),
   });
   const categoryStoresInput = useMemo(() => ({ category: activeCategory ?? "groceries", customCategorySlug: activeCategory === "other" ? activeCustomCategory?.slug : undefined }), [activeCategory, activeCustomCategory?.slug]);
-  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && Boolean(activeCategory), retry: false });
-  const gatewayStoresQuery = trpc.lahza.storefront.gatewayStores.useQuery(undefined, { enabled: !isStaticDemo && selectedCity === "jarabulus", retry: false });
-  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
-  const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && Boolean(sharedStoreId), retry: false });
+  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(activeCategory), retry: false });
+  const gatewayStoresQuery = trpc.lahza.storefront.gatewayStores.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && selectedCity === "jarabulus", retry: false });
+  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(selectedStore), retry: false });
+  const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(sharedStoreId), retry: false });
   const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
   const supportContacts = supportContactsQuery.data ?? [];
   const gatewayStores = (gatewayStoresQuery.data ?? []) as StoreOption[];
@@ -563,7 +563,7 @@ export default function Home() {
   const checkStoreAvailability = trpc.lahza.storefront.availability.useMutation({ onError: error => toast.error(error.message) });
   const touchPresence = trpc.lahza.customers.touch.useMutation();
   const deviceId = useMemo(() => getDeviceId(), []);
-  const notificationsQuery = trpc.lahza.notifications.feed.useQuery({ deviceId }, { enabled: !isStaticDemo, refetchInterval: 60_000, staleTime: 30_000 });
+  const notificationsQuery = trpc.lahza.notifications.feed.useQuery({ deviceId }, { enabled: !isStaticDemo && Boolean(customerAuth), refetchInterval: 60_000, staleTime: 30_000 });
   const markNotificationRead = trpc.lahza.notifications.markRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); } });
 
   useEffect(() => {
