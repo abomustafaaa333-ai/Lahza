@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNull, like, lt, lte, or, sql } from "drizzle-orm";
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
@@ -233,6 +233,12 @@ async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<ty
   if (!testCustomer) await db.insert(customerAccounts).values({ phone: TEST_CUSTOMER_PHONE, name: TEST_CUSTOMER_NAME, city: "منبج", status: "approved", verifiedAt: new Date(), verifiedBy: "حساب اختبار موثق — منبج وجرابلس" });
   const jarabulusTestCustomer = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, JARABULUS_TEST_CUSTOMER_PHONE)).limit(1))[0];
   if (!jarabulusTestCustomer) await db.insert(customerAccounts).values({ phone: JARABULUS_TEST_CUSTOMER_PHONE, name: JARABULUS_TEST_CUSTOMER_NAME, city: "جرابلس", status: "approved", verifiedAt: new Date(), verifiedBy: "حساب اختبار موثق — جرابلس" });
+  const alhamidStores = await db.select({ id: stores.id, partnerId: stores.partnerId }).from(stores).where(like(stores.name, "%الحميد%"));
+  if (alhamidStores.length) {
+    await db.update(stores).set({ active: true }).where(inArray(stores.id, alhamidStores.map(store => store.id)));
+    const partnerIds = alhamidStores.flatMap(store => store.partnerId ? [store.partnerId] : []);
+    if (partnerIds.length) await db.update(partners).set({ active: true, storeOpen: true, workHours: null }).where(inArray(partners.id, partnerIds));
+  }
   customerAccountsReady = true;
 }
 
