@@ -3428,3 +3428,30 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
     font-size: .68rem;
   }
 }
+
+/* أيقونات دائرية لقسم «اكتشف ما تحتاجه» */
+.home-discover-section .home-category-card .home-category-emoji {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  border: 2px solid rgba(255,255,255,.92);
+  border-radius: 999px;
+  background: linear-gradient(145deg, #fff7ef, #ffe3cf);
+  box-shadow: 0 8px 16px -10px rgba(99,48,27,.48), inset 0 0 0 1px rgba(255,132,56,.12);
+  font-size: 2.15rem;
+  line-height: 1;
+}
+.home-discover-section .home-category-card:nth-child(2) .home-category-emoji { background: linear-gradient(145deg, #fff9df, #ffeab1); }
+.home-discover-section .home-category-card:nth-child(3) .home-category-emoji { background: linear-gradient(145deg, #fff0f4, #ffd7e2); }
+.home-discover-section .home-category-card:nth-child(4) .home-category-emoji { background: linear-gradient(145deg, #e9fff5, #c8f2df); }
+.home-discover-section .home-category-card:nth-child(5) .home-category-emoji { background: linear-gradient(145deg, #eef5ff, #d9e6ff); }
+.home-discover-section .home-category-card:active .home-category-emoji { transform: scale(.94); }
+@media (max-width: 600px) {
+  .home-discover-section .home-category-card .home-category-emoji {
+    width: 2.55rem;
+    height: 2.55rem;
+    font-size: 1.8rem;
+  }
+}
