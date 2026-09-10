@@ -19,6 +19,14 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            if (project.hasProperty("lahzaKeystoreFile")) {
+                signingConfig signingConfigs.create("lahzaRelease") {
+                    storeFile file(project.property("lahzaKeystoreFile"))
+                    storePassword project.property("lahzaKeystorePassword")
+                    keyAlias project.property("lahzaKeyAlias")
+                    keyPassword project.property("lahzaKeyPassword")
+                }
+            }
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
