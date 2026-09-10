@@ -3370,8 +3370,8 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   flex: 0 0 calc((100% - 1.56rem) / 4);
   width: calc((100% - 1.56rem) / 4);
   min-width: 0;
-  height: 5.25rem;
-  min-height: 5.25rem;
+  height: 6rem;
+  min-height: 6rem;
   transform: none;
   gap: .28rem;
   padding: .38rem .24rem .3rem;
@@ -3382,8 +3382,8 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
 }
 .home-discover-section .home-category-row > .home-category-card .home-category-emoji,
 .home-discover-section .home-category-row > .home-category-card .home-category-all-grid {
-  width: 2.2rem;
-  height: 2.2rem;
+  width: 3.35rem;
+  height: 3.35rem;
   transform: none;
 }
 .home-discover-section .home-category-row > .home-category-card .home-category-emoji {
@@ -3417,8 +3417,8 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   }
   .home-discover-section .home-category-row > .home-category-card .home-category-emoji,
   .home-discover-section .home-category-row > .home-category-card .home-category-all-grid {
-    width: 2.55rem;
-    height: 2.55rem;
+    width: 3.7rem;
+    height: 3.7rem;
   }
   .home-discover-section .home-category-row > .home-category-card .home-category-emoji {
     font-size: 1.9rem;
@@ -3458,8 +3458,9 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
 .home-discover-section .home-category-card:active .home-category-emoji { transform: scale(.94); }
 @media (max-width: 600px) {
   .home-discover-section .home-category-card .home-category-emoji {
-    width: 2.55rem;
-    height: 2.55rem;
-    font-size: 1.8rem;
+    width: 3.35rem;
+    height: 3.35rem;
+    border: 0;
+    font-size: 2.15rem;
   }
 }
