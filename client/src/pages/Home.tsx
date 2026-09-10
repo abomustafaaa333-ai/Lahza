@@ -963,10 +963,11 @@ export default function Home() {
             <div className="category-grid">
               {deliveryCategories.map(item => {
                 const Icon = item.custom ? Store : categoryIcons[item.category];
+                const image = item.custom ? undefined : categoryImageByKey[item.category];
                 const count = cart.filter(line => line.category === item.category).length;
                 const color = item.custom ? "from-slate-100 to-rose-50 text-[#7a3b1d]" : categoryColors[item.category];
                 return <button key={item.key} onClick={() => { setSelectedStore(null); setSelectedProduct(null); setActiveCustomCategory(item.custom); setActiveCategory(item.category); setScreen("stores"); }} className={`category-card ${activeCategory === item.category && (item.custom?.id ? activeCustomCategory?.id === item.custom.id : !activeCustomCategory) ? "category-card-active" : ""}`}>
-                  <span className={`category-icon bg-gradient-to-br ${color}`}><Icon className="h-5 w-5" /></span>
+                  <span className={`category-icon bg-gradient-to-br ${color}`}>{image ? <img src={image} alt="" loading="lazy" /> : <Icon className="h-5 w-5" />}</span>
                   <span className="category-card-copy"><span>{item.title}</span><small>{item.subtitle}</small></span>
                   {count > 0 ? <span className="category-badge">{count}</span> : <Plus className="h-4 w-4 text-slate-300" />}
                 </button>;
