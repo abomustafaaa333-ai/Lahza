@@ -25,8 +25,11 @@ const DEMO_CUSTOMER_PHONE = "+963997311078";
 const DEMO_CUSTOMER_NAME = "عميل لحظة التجريبي";
 const internationalPhoneSchema = z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل رقم هاتف دولياً صحيحاً مع رمز الدولة");
 const syrianCustomerPhoneSchema = z.string().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سوري صحيحاً يبدأ بـ 9 بعد النداء +963");
-const DEFAULT_MASTER_PIN = "1212";
+const DEFAULT_MASTER_PIN = "0000";
 const LEGACY_DEFAULT_MASTER_PIN = "555369";
+const PREVIOUS_DEFAULT_MASTER_PIN = "1212";
+const DEFAULT_OWNER_PHONE = "+963997311078";
+const DEFAULT_STAFF_PASSWORD = "0000";
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
 
@@ -197,6 +200,16 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
   if (!availableColumns.has("tickerSecondary")) {
     await addTickerColumnIfMissing(db, "tickerSecondary", DEFAULT_TICKER_SECONDARY);
   }
+}
+
+async function ensureDefaultStaffPasswords(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `auth_defaults_migrations` (`id` VARCHAR(80) NOT NULL PRIMARY KEY)"));
+  const [rows] = await db.execute(sql.raw("SELECT `id` FROM `auth_defaults_migrations` WHERE `id` = 'password_0000_v1' LIMIT 1"));
+  if (Array.isArray(rows) && rows.length > 0) return;
+  const passwordHash = await hashSecret(DEFAULT_STAFF_PASSWORD);
+  await db.update(partners).set({ passwordHash });
+  await db.update(supervisors).set({ passwordHash });
+  await db.execute(sql.raw("INSERT INTO `auth_defaults_migrations` (`id`) VALUES ('password_0000_v1')"));
 }
 
 async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
@@ -382,10 +395,11 @@ async function getSettings() {
   await ensureJarabulusGatewaySchema(db);
   await ensureDeliveryPercentColumns(db);
   await ensureTickerColumns(db);
+  await ensureDefaultStaffPasswords(db);
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   if (current[0]) {
     // Migrate only the original seed PIN; never overwrite a PIN changed by the owner.
-    if (await verifySecret(LEGACY_DEFAULT_MASTER_PIN, current[0].masterPinHash)) {
+    if (await verifySecret(LEGACY_DEFAULT_MASTER_PIN, current[0].masterPinHash) || await verifySecret(PREVIOUS_DEFAULT_MASTER_PIN, current[0].masterPinHash)) {
       const migratedHash = await hashSecret(DEFAULT_MASTER_PIN);
       await db.update(systemSettings).set({ masterPinHash: migratedHash }).where(eq(systemSettings.id, 1));
       return { ...current[0], masterPinHash: migratedHash };
@@ -1243,20 +1257,14 @@ export const lahzaRouter = router({
       const assignedStores = await db.select().from(stores).where(eq(stores.partnerId, found[0].id)).orderBy(stores.category, stores.sortOrder, stores.name);
       return { ...found[0], workHours: parseStoreHours(found[0].workHours), stores: assignedStores };
     }),
-    login: publicProcedure.input(z.object({ password: passwordSchema })).mutation(async ({ ctx, input }) => {
+    login: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema, password: passwordSchema })).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
       if (!runtimeId) throw new Error("تعذر تأمين جلسة الشريك، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const candidates = await db.select().from(partners).where(eq(partners.active, true)).limit(100);
-      let found = null;
-      for (const candidate of candidates) {
-        if (await verifySecret(input.password, candidate.passwordHash)) {
-          found = candidate;
-          break;
-        }
-      }
-      if (!found) throw new Error("كلمة مرور الشريك غير صحيحة");
+      const foundRows = await db.select().from(partners).where(and(eq(partners.active, true), eq(partners.username, input.phone))).limit(1);
+      const found = foundRows[0];
+      if (!found || !await verifySecret(input.password, found.passwordHash)) throw new Error("رقم الهاتف أو كلمة مرور الشريك غير صحيحة");
       setPartnerCookie(ctx, await createPartnerSession({ partnerId: found.id, runtimeId }));
       return { id: found.id, name: found.name };
     }),
@@ -1974,21 +1982,22 @@ export const lahzaRouter = router({
     }),
     session: publicProcedure.query(async ({ ctx }) => readSession(ctx)),
     login: publicProcedure.input(z.discriminatedUnion("role", [
-      z.object({ role: z.literal("owner"), pin: passwordSchema }),
-      z.object({ role: z.literal("supervisor"), username: z.string().trim().min(3).max(64), password: passwordSchema }),
+      z.object({ role: z.literal("owner"), phone: syrianCustomerPhoneSchema, password: passwordSchema }),
+      z.object({ role: z.literal("supervisor"), phone: syrianCustomerPhoneSchema, password: passwordSchema }),
     ])).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
       if (!runtimeId) throw new Error("تعذر تأمين جلسة الإدارة، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureDefaultStaffPasswords(db);
       if (input.role === "owner") {
         const settings = await getSettings();
-        if (!await verifySecret(input.pin, settings.masterPinHash)) throw new Error("رمز PIN غير صحيح");
+        if (input.phone !== DEFAULT_OWNER_PHONE || !await verifySecret(input.password, settings.masterPinHash)) throw new Error("رقم الهاتف أو كلمة مرور المالك غير صحيحة");
         setAdminCookie(ctx, await createSession({ role: "owner", runtimeId }));
         return { role: "owner" as const };
       }
-      const found = await db.select().from(supervisors).where(and(eq(supervisors.username, input.username), eq(supervisors.active, true))).limit(1);
-      if (!found[0] || !await verifySecret(input.password, found[0].passwordHash)) throw new Error("بيانات دخول المشرف غير صحيحة");
+      const found = await db.select().from(supervisors).where(and(eq(supervisors.username, input.phone), eq(supervisors.active, true))).limit(1);
+      if (!found[0] || !await verifySecret(input.password, found[0].passwordHash)) throw new Error("رقم الهاتف أو كلمة مرور المشرف غير صحيحة");
       if (found[0].city !== ctx.city) throw new Error(`اختر واجهة ${found[0].city === "jarabulus" ? "جرابلس" : "منبج"} لتسجيل دخول هذا المشرف`);
       setAdminCookie(ctx, await createSession({ role: "supervisor", supervisorId: found[0].id, runtimeId }));
       return { role: "supervisor" as const, city: found[0].city };
@@ -2262,13 +2271,13 @@ export const lahzaRouter = router({
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         return db.select({ id: supervisors.id, username: supervisors.username, active: supervisors.active, city: supervisors.city, createdAt: supervisors.createdAt }).from(supervisors).where(eq(supervisors.city, ctx.city)).orderBy(desc(supervisors.createdAt));
       }),
-      create: publicProcedure.input(z.object({ username: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9_]+$/, "استخدم أحرفاً إنجليزية أو أرقاماً أو شرطة سفلية"), password: passwordSchema, city: z.enum(CITY_KEYS) })).mutation(async ({ ctx, input }) => {
+      create: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema, password: passwordSchema.default(DEFAULT_STAFF_PASSWORD), city: z.enum(CITY_KEYS) })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const exists = await db.select({ id: supervisors.id }).from(supervisors).where(eq(supervisors.username, input.username)).limit(1);
-        if (exists[0]) throw new Error("اسم المستخدم مستخدم بالفعل");
-        await db.insert(supervisors).values({ username: input.username, passwordHash: await hashSecret(input.password), active: true, city: input.city });
+        const exists = await db.select({ id: supervisors.id }).from(supervisors).where(eq(supervisors.username, input.phone)).limit(1);
+        if (exists[0]) throw new Error("رقم هاتف المشرف مستخدم بالفعل");
+        await db.insert(supervisors).values({ username: input.phone, passwordHash: await hashSecret(input.password), active: true, city: input.city });
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
