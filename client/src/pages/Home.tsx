@@ -19,6 +19,7 @@ import { ArrowLeft, BadgePercent, BellRing, Bike, CakeSlice, CarFront, CheckCirc
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 type Screen = "home" | "delivery" | "stores" | "store" | "productQuantity" | "storeOffers" | "offerQuantity" | "taxi" | "intercity" | "offers" | "checkout" | "orderTracking" | "account";
 type PromotionPreview = { code: string; kind: "discount" | "referral"; percent: number; discountAmount: number; itemsTotal: number };
@@ -322,6 +323,7 @@ function AdminAccessDialog({ open, onOpenChange, secretRole, setSecretRole, pin,
 export default function Home() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
+  const queryClient = useQueryClient();
   const [screen, setScreen] = useState<Screen>("home");
   const [customerAuthReady, setCustomerAuthReady] = useState(false);
   const [customerAuth, setCustomerAuth] = useState<CustomerAuthSession | null>(null);
@@ -332,8 +334,19 @@ export default function Home() {
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { retry: false });
   useEffect(() => {
     if (!selectedCity || isStaticDemo) return;
-    void utils.invalidate();
-  }, [selectedCity]);
+    queryClient.removeQueries({ predicate: query => {
+      const key = JSON.stringify(query.queryKey);
+      return key.includes("storefront") || key.includes("publicFeaturedOffers") || key.includes("catalog") || key.includes("customCategories") || key.includes("gatewayStores") || key.includes("interfaceSettings");
+    }});
+    setActiveCategory(null);
+    setActiveCustomCategory(null);
+    setSelectedStore(null);
+    setSelectedProduct(null);
+    setSelectedOffer(null);
+    setSelectedGalleryOffer(null);
+    setFocusedOfferId(null);
+    setScreen("home");
+  }, [selectedCity, queryClient]);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [checkoutMode, setCheckoutMode] = useState<"delivery" | "taxi">("delivery");
   const [checkoutStep, setCheckoutStep] = useState<1 | 2 | 3>(1);
