@@ -297,7 +297,8 @@ function CustomerAuthScreen({ onAuthenticated, onStaffLogin }: { onAuthenticated
     const account = result.data;
     if (!account || String(account.status) === "new") { setError("هذا الرقم غير مسجل بعد. اختر «التسجيل» لإنشاء حساب جديد."); return; }
     if (account.status === "rejected" || account.status === "suspended") { setError("لا يمكن الدخول بهذا الحساب حالياً. تواصل مع فريق لحظة."); return; }
-    onAuthenticated({ mode: "customer", phone: fullPhone, name: account.name || undefined, city: account.city === "جرابلس" ? "jarabulus" : "manbij", remember });
+    const testCity = fullPhone === "+963997777777" ? window.sessionStorage.getItem("lahza_selected_city") : null;
+    onAuthenticated({ mode: "customer", phone: fullPhone, name: account.name || undefined, city: testCity === "jarabulus" ? "jarabulus" : account.city === "جرابلس" ? "jarabulus" : "manbij", remember });
   };
   const verifyOtp = async () => {
     if (otp !== DEMO_OTP_CODE) { setError("رمز التحقق التجريبي غير صحيح. استخدم 123456."); return; }
