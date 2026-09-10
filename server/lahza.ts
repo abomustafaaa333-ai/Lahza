@@ -23,6 +23,8 @@ const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
 const DEMO_CUSTOMER_PHONE = "+963997311078";
 const DEMO_CUSTOMER_NAME = "عميل لحظة التجريبي";
+const TEST_CUSTOMER_PHONE = "+963997777777";
+const TEST_CUSTOMER_NAME = "عميل الاختبار";
 const internationalPhoneSchema = z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل رقم هاتف دولياً صحيحاً مع رمز الدولة");
 const syrianCustomerPhoneSchema = z.string().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سوري صحيحاً يبدأ بـ 9 بعد النداء +963");
 const DEFAULT_MASTER_PIN = "0000";
@@ -219,6 +221,8 @@ async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<ty
   if (!availableColumns.has("city")) await db.execute(sql.raw("ALTER TABLE `customer_accounts` ADD COLUMN `city` VARCHAR(20) NOT NULL DEFAULT 'منبج' AFTER `name`"));
   const demo = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, DEMO_CUSTOMER_PHONE)).limit(1))[0];
   if (!demo) await db.insert(customerAccounts).values({ phone: DEMO_CUSTOMER_PHONE, name: DEMO_CUSTOMER_NAME, status: "approved", verifiedAt: new Date(), verifiedBy: "بيئة التطوير" });
+  const testCustomer = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, TEST_CUSTOMER_PHONE)).limit(1))[0];
+  if (!testCustomer) await db.insert(customerAccounts).values({ phone: TEST_CUSTOMER_PHONE, name: TEST_CUSTOMER_NAME, city: "منبج", status: "approved", verifiedAt: new Date(), verifiedBy: "حساب اختبار موثق — منبج وجرابلس" });
 }
 
 async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
