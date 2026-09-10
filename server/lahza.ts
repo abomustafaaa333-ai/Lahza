@@ -1689,6 +1689,18 @@ export const lahzaRouter = router({
     });
   }),
   admin: router({
+    staffLookup: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema })).query(async ({ input }) => {
+      if (input.phone === DEFAULT_OWNER_PHONE) return { role: "owner" as const };
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const [supervisor, partner] = await Promise.all([
+        db.select({ id: supervisors.id }).from(supervisors).where(and(eq(supervisors.username, input.phone), eq(supervisors.active, true))).limit(1),
+        db.select({ id: partners.id }).from(partners).where(and(eq(partners.username, input.phone), eq(partners.active, true))).limit(1),
+      ]);
+      if (supervisor[0]) return { role: "supervisor" as const };
+      if (partner[0]) return { role: "partner" as const };
+      return null;
+    }),
     discountCodes: router({
       list: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); return db.select().from(discountCodes).orderBy(desc(discountCodes.createdAt)); }),
       create: publicProcedure.input(z.object({ code: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/), discountPercent: z.number().int().min(1).max(100), maxUses: z.number().int().positive().optional(), expiresAt: z.string().datetime().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); const code = input.code.toUpperCase(); const exists = await db.select({ id: discountCodes.id }).from(discountCodes).where(eq(discountCodes.code, code)).limit(1); if (exists[0]) throw new Error("رمز الخصم مستخدم مسبقاً"); await db.insert(discountCodes).values({ code, discountPercent: input.discountPercent, maxUses: input.maxUses ?? null, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null, active: true }); return { success: true }; }),
