@@ -32,6 +32,8 @@ const LEGACY_DEFAULT_MASTER_PIN = "555369";
 const PREVIOUS_DEFAULT_MASTER_PIN = "1212";
 const DEFAULT_OWNER_PHONE = "+963997311078";
 const DEFAULT_STAFF_PASSWORD = "0000";
+let defaultStaffPasswordsReady = false;
+let customerAccountsReady = false;
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
 
@@ -205,16 +207,20 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
 }
 
 async function ensureDefaultStaffPasswords(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (defaultStaffPasswordsReady) return;
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `auth_defaults_migrations` (`id` VARCHAR(80) NOT NULL PRIMARY KEY)"));
   const [rows] = await db.execute(sql.raw("SELECT `id` FROM `auth_defaults_migrations` WHERE `id` = 'password_0000_v1' LIMIT 1"));
-  if (Array.isArray(rows) && rows.length > 0) return;
-  const passwordHash = await hashSecret(DEFAULT_STAFF_PASSWORD);
-  await db.update(partners).set({ passwordHash });
-  await db.update(supervisors).set({ passwordHash });
-  await db.execute(sql.raw("INSERT INTO `auth_defaults_migrations` (`id`) VALUES ('password_0000_v1')"));
+  if (!Array.isArray(rows) || rows.length === 0) {
+    const passwordHash = await hashSecret(DEFAULT_STAFF_PASSWORD);
+    await db.update(partners).set({ passwordHash });
+    await db.update(supervisors).set({ passwordHash });
+    await db.execute(sql.raw("INSERT INTO `auth_defaults_migrations` (`id`) VALUES ('password_0000_v1')"));
+  }
+  defaultStaffPasswordsReady = true;
 }
 
 async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (customerAccountsReady) return;
   await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS \`customer_accounts\` (\`id\` INT NOT NULL AUTO_INCREMENT, \`phone\` VARCHAR(24) NOT NULL, \`name\` VARCHAR(80) NOT NULL, \`city\` VARCHAR(20) NOT NULL DEFAULT 'منبج', \`status\` VARCHAR(20) NOT NULL DEFAULT 'pending', \`verifiedAt\` TIMESTAMP NULL DEFAULT NULL, \`verifiedBy\` VARCHAR(80) NULL DEFAULT NULL, \`rejectionReason\` VARCHAR(300) NULL DEFAULT NULL, \`lastOrderId\` INT NULL DEFAULT NULL, \`createdAt\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, \`updatedAt\` TIMESTAMP NULL DEFAULT NULL, PRIMARY KEY (\`id\`), UNIQUE KEY \`customer_accounts_phone_unique\` (\`phone\`))`));
   const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `customer_accounts`"));
   const availableColumns = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
@@ -223,6 +229,7 @@ async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<ty
   if (!demo) await db.insert(customerAccounts).values({ phone: DEMO_CUSTOMER_PHONE, name: DEMO_CUSTOMER_NAME, status: "approved", verifiedAt: new Date(), verifiedBy: "بيئة التطوير" });
   const testCustomer = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, TEST_CUSTOMER_PHONE)).limit(1))[0];
   if (!testCustomer) await db.insert(customerAccounts).values({ phone: TEST_CUSTOMER_PHONE, name: TEST_CUSTOMER_NAME, city: "منبج", status: "approved", verifiedAt: new Date(), verifiedBy: "حساب اختبار موثق — منبج وجرابلس" });
+  customerAccountsReady = true;
 }
 
 async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {

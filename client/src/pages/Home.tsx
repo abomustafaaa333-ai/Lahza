@@ -270,7 +270,7 @@ function CustomerAuthScreen({ onAuthenticated, onStaffLogin }: { onAuthenticated
   const fullPhone = `+${callingCode}${normalizedPhone}`;
   const validPhone = normalizedPhone.length > 0 && isValidPhoneNumber(fullPhone, countryCode);
   const customerStatusQuery = trpc.lahza.customerAccounts.status.useQuery({ phone: fullPhone }, { enabled: !isStaticDemo && mode === "login" && step === "phone" && validPhone, staleTime: 10_000 });
-  const staffLookupQuery = trpc.lahza.admin.staffLookup.useQuery({ phone: fullPhone }, { enabled: !isStaticDemo && mode === "login" && step === "phone" && validPhone, retry: false, staleTime: 10_000 });
+  const staffLookupQuery = trpc.lahza.admin.staffLookup.useQuery({ phone: fullPhone }, { enabled: false, retry: false, staleTime: 10_000 });
   const startFlow = (nextMode: "login" | "register") => {
     setMode(nextMode);
     setStep("phone");
