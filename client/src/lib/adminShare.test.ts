@@ -41,4 +41,24 @@ describe("admin sharing helpers", () => {
     expect(message).toContain("رسوم التوصيل");
     expect(message).toContain("https://maps.google.com/?q=36.5,37.9");
   });
+
+  it("shows the store and map link only once", () => {
+    const message = decodeURIComponent(buildEmployeeOrderWhatsAppUrl("+963944123456", {
+      id: 11,
+      customerName: "إيتيتيت",
+      customerPhone: "+963997311078",
+      orderType: "delivery",
+      taxiType: null,
+      pickupLocation: null,
+      destination: null,
+      paymentMethod: "cash",
+      totalAmount: 1289,
+      storeNames: ["محلات الحميد"],
+      deliveryFee: 215,
+      notes: "تفضيل عدم التوفر: التواصل مع العميل أولاً\nرابط الخريطة: https://www.google.com/maps/search/?api=1&query=36.7804624,37.9993094",
+      lines: [{ itemName: "سكر", quantity: 3, unit: "وحدة", storeName: "محلات الحميد" }],
+    }, "https://www.google.com/maps/search/?api=1&query=36.7804624,37.9993094"));
+    expect(message.match(/محلات الحميد/g)).toHaveLength(1);
+    expect(message.match(/https:\/\/www\.google\.com\/maps\/search/g)).toHaveLength(1);
+  });
 });

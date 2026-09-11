@@ -29,6 +29,10 @@ export function mapUrlFromNotes(notes: string | null) {
   return notes?.match(/رابط الخريطة:\s*(https?:\/\/[^\s]+)/)?.[1] ?? null;
 }
 
+function notesWithoutMapLink(notes: string | null | undefined) {
+  return notes?.replace(/^رابط الخريطة:\s*https?:\/\/[^\s]+\s*$/gim, "").trim() ?? "";
+}
+
 export function buildWhatsAppLocationUrl(customerName: string, mapUrl: string) {
   const text = `موقع طلب ${customerName} لدى لحظة:\n${mapUrl}`;
   return `https://wa.me/?text=${encodeURIComponent(text)}`;
@@ -37,7 +41,8 @@ export function buildWhatsAppLocationUrl(customerName: string, mapUrl: string) {
 export function buildEmployeeOrderWhatsAppUrl(employeePhone: string, order: ShareableOrder, mapUrl: string | null) {
   const orderRows = order.orderType === "taxi"
     ? [`الرحلة: ${order.taxiType === "van" ? "فان" : "تاكسي"}`, `من: ${order.pickupLocation ?? "غير محدد"}`, `إلى: ${order.destination ?? "غير محدد"}`]
-    : order.lines.map(line => `• ${line.itemName} × ${line.quantity} ${line.unit}${line.storeName ? ` — المتجر: ${line.storeName}` : ""}`);
+    : order.lines.map(line => `• ${line.itemName} × ${line.quantity} ${line.unit}`);
+  const customerNotes = notesWithoutMapLink(order.notes);
   const message = [
     `طلب لحظة #${order.id}`,
     order.orderType === "delivery" && order.storeNames?.length ? `المتجر: ${order.storeNames.join("، ")}` : "",
@@ -49,7 +54,7 @@ export function buildEmployeeOrderWhatsAppUrl(employeePhone: string, order: Shar
     order.orderType === "delivery" && order.locationText ? `عنوان العميل: ${order.locationText}` : "",
     `طريقة الدفع: ${order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}`,
     `الإجمالي: ${formatSyp(order.totalAmount)}`,
-    order.notes ? `ملاحظات العميل: ${order.notes}` : "",
+    customerNotes ? `ملاحظات العميل: ${customerNotes}` : "",
     mapUrl ? `الموقع: ${mapUrl}` : "الموقع: لا يتوفر رابط GPS لهذا الطلب",
   ].filter(Boolean).join("\n");
   return `https://wa.me/${employeePhone.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;
