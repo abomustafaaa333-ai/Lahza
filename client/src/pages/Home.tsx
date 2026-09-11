@@ -840,14 +840,16 @@ export default function Home() {
       }
       if (code === 2) {
         if (nativeApp) window.LahzaAndroid?.openLocationSettings?.();
-        toast.info("تم فتح إعدادات الموقع. فعّل «الموقع» ثم ارجع واضغط الزر مرة أخرى.");
+        toast.error("خدمة الموقع في الهاتف غير متاحة. فعّل «الموقع» من إعدادات الهاتف ثم أعد المحاولة.");
         return;
       }
       if (code === 3) {
-        toast.info("جارٍ انتظار إشارة GPS. اخرج إلى مكان مفتوح وتأكد من تفعيل الموقع، ثم أعد المحاولة.");
+        if (nativeApp) window.LahzaAndroid?.openLocationSettings?.();
+        toast.error("تعذر الحصول على إحداثيات الموقع. فعّل GPS/الموقع، اخرج إلى مكان مفتوح، ثم أعد المحاولة.");
         return;
       }
-      toast.info("تعذر الحصول على إحداثيات الآن. تأكد من تفعيل الموقع والإنترنت، ثم أعد المحاولة.");
+      if (nativeApp) window.LahzaAndroid?.openLocationSettings?.();
+      toast.error("تعذر تحديد الموقع. فعّل GPS والإنترنت، ثم أعد المحاولة.");
     }
   };
 
