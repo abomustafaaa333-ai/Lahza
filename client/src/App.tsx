@@ -51,5 +51,5 @@ export default function App() {
     };
   }, []);
 
-  return <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider>{!isStaticDemo ? <AppUpdateNotice /> : null}<Toaster richColors position="top-center" /><Router /></TooltipProvider></ThemeProvider></ErrorBoundary>;
+  return <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider>{!isStaticDemo ? <AppUpdateNotice /> : null}<Toaster richColors position="top-right" offset="5rem" /><Router /></TooltipProvider></ThemeProvider></ErrorBoundary>;
 }
