@@ -849,7 +849,7 @@ export default function Home() {
         return;
       }
       if (nativeApp) window.LahzaAndroid?.openLocationSettings?.();
-      toast.error("تعذر تحديد الموقع. فعّل GPS والإنترنت، ثم أعد المحاولة.");
+      toast.info("لم نتمكن من تأكيد الموقع الآن. اضغط الزر مرة أخرى لإعادة المحاولة.");
     }
   };
 
