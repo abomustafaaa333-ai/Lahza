@@ -39,7 +39,9 @@ export async function uploadOfferImage(dataUrl: string, storeId: number, token: 
   body.set("api_key", config.apiKey);
   body.set("timestamp", String(timestamp));
   body.set("public_id", publicId);
-  body.set("signature", signature({ public_id: publicId, timestamp }, config.apiSecret));
+  const transformation = "c_limit,w_1600,h_1600,q_auto,f_auto";
+  body.set("transformation", transformation);
+  body.set("signature", signature({ public_id: publicId, timestamp, transformation }, config.apiSecret));
 
   const response = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`, { method: "POST", body });
   const result = await response.json() as { secure_url?: string; public_id?: string; error?: { message?: string } };
