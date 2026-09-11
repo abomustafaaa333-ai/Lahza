@@ -790,7 +790,10 @@ export default function Home() {
     try {
       let coords: { latitude: number; longitude: number };
       if (nativeApp) {
-        const permission = await Geolocation.requestPermissions();
+        const currentPermission = await Geolocation.checkPermissions();
+        const permission = currentPermission.location === "prompt"
+          ? await Geolocation.requestPermissions()
+          : currentPermission;
         if (permission.location === "denied") throw new Error("LOCATION_PERMISSION_DENIED");
         const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
         coords = position.coords;
