@@ -298,6 +298,17 @@ export const customerPresence = mysqlTable("customer_presence", {
   lastSeen: timestamp("lastSeen").defaultNow().onUpdateNow().notNull(),
 });
 
+export const pushTokens = mysqlTable("push_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  token: varchar("token", { length: 4096 }).notNull().unique(),
+  deviceId: varchar("deviceId", { length: 80 }).notNull(),
+  customerPhone: varchar("customerPhone", { length: 24 }),
+  platform: varchar("platform", { length: 20 }).notNull().default("android"),
+  active: boolean("active").notNull().default(true),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
 export const missingProductRequests = mysqlTable("missing_product_requests", {
   id: int("id").autoincrement().primaryKey(),
   customerName: varchar("customerName", { length: 80 }).notNull(),

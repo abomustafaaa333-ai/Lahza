@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
+import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
@@ -17,6 +17,7 @@ import { cleanExpiredOrders, isOrderArchived } from "./orderLifecycle";
 import { deleteOfferImage, uploadOfferImage } from "./offerMedia";
 import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
+import { sendPushNotification } from "./pushNotifications";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
@@ -137,6 +138,7 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
   await ensureColumn("system_settings", "jarabulusMinimumOrder", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_MINIMUM_ORDER_SYP}`);
   await ensureColumn("system_settings", "jarabulusPreparationMinutes", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_PREPARATION_MINUTES}`);
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `order_notifications` (`id` INT NOT NULL AUTO_INCREMENT, `orderId` INT NOT NULL, `customerPhone` VARCHAR(24) NOT NULL, `status` ENUM('pending','confirmed','preparing','on_the_way','completed','cancelled','rejected') NOT NULL, `title` VARCHAR(120) NOT NULL, `body` VARCHAR(300) NOT NULL, `readAt` TIMESTAMP NULL DEFAULT NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), CONSTRAINT `order_notifications_orderId_orders_id_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE CASCADE)"));
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `push_tokens` (`id` INT NOT NULL AUTO_INCREMENT, `token` VARCHAR(4096) NOT NULL, `deviceId` VARCHAR(80) NOT NULL, `customerPhone` VARCHAR(24) NULL, `platform` VARCHAR(20) NOT NULL DEFAULT 'android', `active` BOOLEAN NOT NULL DEFAULT TRUE, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), UNIQUE KEY `push_tokens_token_unique` (`token`(191)))"));
 }
 
 export function isStoreVisibleInCustomerCity(store: { city: CityKey; jarabulusGatewayEnabled: boolean }, city: CityKey) {
@@ -182,6 +184,8 @@ export function buildOrderStatusNotification(order: { id: number; fulfillmentSco
 async function createOrderStatusNotification(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, order: { id: number; customerPhone: string; fulfillmentScope: "local" | "manbij_to_jarabulus"; preparationMinutes: number }, status: OrderNotificationStatus) {
   const message = buildOrderStatusNotification(order, status);
   await db.insert(orderNotifications).values({ orderId: order.id, customerPhone: order.customerPhone, status, title: message.title, body: message.body });
+  const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, order.customerPhone), eq(pushTokens.active, true)));
+  await sendPushNotification(tokens.map(row => row.token), message);
 }
 
 async function addTickerColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "tickerPrimary" | "tickerSecondary", defaultValue: string) {
@@ -828,6 +832,20 @@ export const lahzaRouter = router({
     }),
   }),
   notifications: router({
+    registerPushToken: publicProcedure.input(z.object({ token: z.string().trim().min(20).max(4096), deviceId: deviceIdSchema, customerPhone: internationalPhoneSchema })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureJarabulusGatewaySchema(db);
+      await db.insert(customerPresence).values({ deviceId: input.deviceId, lastSeen: new Date() }).onDuplicateKeyUpdate({ set: { lastSeen: new Date() } });
+      await db.insert(pushTokens).values({ token: input.token, deviceId: input.deviceId, customerPhone: input.customerPhone, platform: "android", active: true }).onDuplicateKeyUpdate({ set: { deviceId: input.deviceId, customerPhone: input.customerPhone, active: true, updatedAt: new Date() } });
+      return { success: true };
+    }),
+    unregisterPushToken: publicProcedure.input(z.object({ token: z.string().trim().min(20).max(4096) })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await db.update(pushTokens).set({ active: false }).where(eq(pushTokens.token, input.token));
+      return { success: true };
+    }),
     orderFeed: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema, unreadOnly: z.boolean().optional() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
@@ -2239,7 +2257,12 @@ export const lahzaRouter = router({
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        await db.insert(notificationCampaigns).values({ ...input, scheduledAt: input.scheduledAt ? new Date(input.scheduledAt) : null, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null });
+        const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
+        await db.insert(notificationCampaigns).values({ ...input, scheduledAt, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null });
+        if (input.active && (!scheduledAt || scheduledAt <= new Date())) {
+          const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(eq(pushTokens.active, true));
+          await sendPushNotification(tokens.map(row => row.token), input);
+        }
         return { success: true };
       }),
       update: publicProcedure.input(notificationCampaignInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

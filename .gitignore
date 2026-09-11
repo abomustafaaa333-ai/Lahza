@@ -11,3 +11,6 @@ build/
 .gradle/
 *.jks
 keystore.properties
+android/app/google-services.json
+firebase-service-account*.json
+.firebase/

@@ -9,6 +9,7 @@ import { countryCallingCodes, DEFAULT_COUNTRY_CODE } from "@/lib/countryCallingC
 import { getCountryCallingCode, isValidPhoneNumber, type CountryCode } from "libphonenumber-js";
 import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
+import { PushNotifications } from "@capacitor/push-notifications";
 import { isNativeLahzaApp } from "@/lib/nativeRuntime";
 import { LAHZA_APK_FILE_NAME, LAHZA_APK_URL } from "@/lib/appDownload";
 import { QRCodeSVG } from "qrcode.react";
@@ -638,6 +639,25 @@ export default function Home() {
   const deviceId = useMemo(() => getDeviceId(), []);
   const notificationsQuery = trpc.lahza.notifications.feed.useQuery({ deviceId }, { enabled: !isStaticDemo && Boolean(customerAuth), refetchInterval: 60_000, staleTime: 30_000 });
   const markNotificationRead = trpc.lahza.notifications.markRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); } });
+  const registerPushToken = trpc.lahza.notifications.registerPushToken.useMutation();
+
+  useEffect(() => {
+    if (isStaticDemo || !Capacitor.isNativePlatform() || customerAuth?.mode !== "customer" || !customerAuth.phone) return;
+    let active = true;
+    let registrationListener: { remove: () => Promise<void> } | undefined;
+    const setupPushNotifications = async () => {
+      const permission = await PushNotifications.checkPermissions();
+      const granted = permission.receive === "granted" ? permission : await PushNotifications.requestPermissions();
+      if (!active || granted.receive !== "granted") return;
+      await PushNotifications.createChannel({ id: "lahza_notifications", name: "إشعارات لحظة", description: "تأكيد الطلبات والعروض والتذكيرات", importance: 5, visibility: 1, sound: "default" });
+      registrationListener = await PushNotifications.addListener("registration", token => {
+        if (active) registerPushToken.mutate({ token: token.value, deviceId, customerPhone: customerAuth.phone! });
+      });
+      await PushNotifications.register();
+    };
+    void setupPushNotifications().catch(error => console.warn("Push notifications setup failed", error));
+    return () => { active = false; void registrationListener?.remove(); };
+  }, [customerAuth?.mode, customerAuth?.phone, deviceId, isStaticDemo]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) setNotificationPermission(window.Notification.permission);
