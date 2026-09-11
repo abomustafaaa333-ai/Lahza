@@ -848,6 +848,7 @@ export default function Home() {
         toast.error("تعذر الحصول على إحداثيات الموقع. فعّل GPS/الموقع، اخرج إلى مكان مفتوح، ثم أعد المحاولة.");
         return;
       }
+      if (nativeApp) window.LahzaAndroid?.openLocationSettings?.();
       toast.info("جارٍ تحديد الموقع");
     }
   };
