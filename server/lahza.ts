@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
-import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, customerDeliveryCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
@@ -781,6 +781,25 @@ const adminOrderUpdateInput = z.object({
 });
 
 export const lahzaRouter = router({
+  categorySettings: router({
+    get: publicProcedure.query(async () => {
+      const settings = await getSettings();
+      let overrides: Record<string, { title?: string; subtitle?: string; active?: boolean; sortOrder?: number }> = {};
+      try { overrides = settings.categoryOverrides ? JSON.parse(settings.categoryOverrides) : {}; } catch { overrides = {}; }
+      return storeCategories.map((key, index) => ({ key, title: overrides[key]?.title || categoryMeta[key].title, subtitle: overrides[key]?.subtitle || categoryMeta[key].subtitle, active: overrides[key]?.active ?? true, sortOrder: overrides[key]?.sortOrder ?? index }));
+    }),
+    update: publicProcedure.input(z.object({ key: z.enum(storeCategories), title: z.string().trim().min(2).max(120), subtitle: z.string().trim().min(2).max(220), active: z.boolean(), sortOrder: z.number().int().min(0).max(9999) })).mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx, ["owner", "supervisor"]);
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const settings = await getSettings();
+      let overrides: Record<string, unknown> = {};
+      try { overrides = settings.categoryOverrides ? JSON.parse(settings.categoryOverrides) : {}; } catch { overrides = {}; }
+      overrides[input.key] = { title: input.title, subtitle: input.subtitle, active: input.active, sortOrder: input.sortOrder };
+      await db.update(systemSettings).set({ categoryOverrides: JSON.stringify(overrides) }).where(eq(systemSettings.id, 1));
+      return { success: true };
+    }),
+  }),
   interfaceSettings: router({
     get: publicProcedure.query(async ({ ctx }) => {
       ctx.res.setHeader("Cache-Control", "no-store, max-age=0");

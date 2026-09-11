@@ -334,6 +334,7 @@ export default function Home() {
     return saved === "manbij" || saved === "jarabulus" ? saved : null;
   });
   const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false });
+  const categorySettingsQuery = trpc.lahza.categorySettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false });
   useEffect(() => {
     if (!selectedCity || isStaticDemo) return;
     queryClient.removeQueries({ predicate: query => {
@@ -498,9 +499,9 @@ export default function Home() {
     ? [{ id: -1, name: "متجر لحظة التجريبي", category: activeCategory }]
     : categoryStoresQuery.data ?? [];
   const deliveryCategories = useMemo(() => [
-    ...customerDeliveryCategories.map(category => ({ key: category, category, title: categoryMeta[category].title, subtitle: categoryMeta[category].subtitle, custom: null as CustomDeliveryCategory | null })),
+    ...(categorySettingsQuery.data ?? customerDeliveryCategories.map((category, index) => ({ key: category, title: categoryMeta[category].title, subtitle: categoryMeta[category].subtitle, active: true, sortOrder: index }))).filter(category => category.active).sort((a, b) => a.sortOrder - b.sortOrder).map(category => ({ key: category.key, category: category.key as LahzaCategory, title: category.title, subtitle: category.subtitle, custom: null as CustomDeliveryCategory | null })),
     ...(customCategoriesQuery.data ?? []).map(category => ({ key: `custom-${category.id}`, category: "other" as LahzaCategory, title: category.title, subtitle: category.subtitle, custom: category as CustomDeliveryCategory })),
-  ], [customCategoriesQuery.data]);
+  ], [customCategoriesQuery.data, categorySettingsQuery.data]);
   const selectedStoreProducts = isStaticDemo
     ? products.filter(product => product.category === activeCategory)
     : storeProductsQuery.data?.products ?? [];
