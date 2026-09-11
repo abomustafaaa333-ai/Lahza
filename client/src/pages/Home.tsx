@@ -839,10 +839,12 @@ export default function Home() {
         return;
       }
       if (code === 2) {
+        if (nativeApp) window.LahzaAndroid?.openLocationSettings?.();
         toast.error("خدمة الموقع في الهاتف غير متاحة. فعّل «الموقع» من إعدادات الهاتف ثم أعد المحاولة.");
         return;
       }
       if (code === 3) {
+        if (nativeApp) window.LahzaAndroid?.openLocationSettings?.();
         toast.error("تعذر الحصول على إحداثيات الموقع. فعّل GPS/الموقع، اخرج إلى مكان مفتوح، ثم أعد المحاولة.");
         return;
       }
