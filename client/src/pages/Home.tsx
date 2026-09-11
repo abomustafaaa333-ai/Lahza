@@ -792,11 +792,12 @@ export default function Home() {
       let coords: { latitude: number; longitude: number };
       if (nativeApp) {
         (window as Window & { LahzaAndroid?: { requestLocationPermission?: () => void } }).LahzaAndroid?.requestLocationPermission?.();
-        await new Promise(resolve => window.setTimeout(resolve, 300));
-        const currentPermission = await Geolocation.checkPermissions();
-        const permission = currentPermission.location !== "granted"
-          ? await Geolocation.requestPermissions()
-          : currentPermission;
+        let permission = await Geolocation.checkPermissions();
+        for (let attempt = 0; attempt < 60 && permission.location !== "granted" && permission.location !== "denied"; attempt += 1) {
+          await new Promise(resolve => window.setTimeout(resolve, 500));
+          permission = await Geolocation.checkPermissions();
+        }
+        if (permission.location !== "granted" && permission.location !== "denied") permission = await Geolocation.requestPermissions();
         if (permission.location === "denied") throw new Error("LOCATION_PERMISSION_DENIED");
         let position;
         try {
