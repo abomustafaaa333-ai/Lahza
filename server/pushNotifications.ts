@@ -31,11 +31,16 @@ export function isFirebasePushReady() {
 export async function sendPushNotification(tokens: string[], message: { title: string; body: string; targetPath?: string }) {
   const messaging = getFirebaseMessaging();
   if (!messaging || tokens.length === 0) return { sent: 0, failed: 0 };
-  const response = await messaging.sendEachForMulticast({
-    tokens,
-    notification: { title: message.title, body: message.body },
-    data: { targetPath: message.targetPath || "/" },
-    android: { priority: "high", notification: { channelId: "lahza_notifications", sound: "default" } },
-  });
-  return { sent: response.successCount, failed: response.failureCount };
+  try {
+    const response = await messaging.sendEachForMulticast({
+      tokens,
+      notification: { title: message.title, body: message.body },
+      data: { targetPath: message.targetPath || "/" },
+      android: { priority: "high", notification: { channelId: "lahza_notifications", sound: "default" } },
+    });
+    return { sent: response.successCount, failed: response.failureCount };
+  } catch (error) {
+    console.error("Firebase push delivery failed", error);
+    return { sent: 0, failed: tokens.length };
+  }
 }
