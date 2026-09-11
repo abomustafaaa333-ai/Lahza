@@ -2156,7 +2156,6 @@ export const lahzaRouter = router({
         const order = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, input.orderId)).limit(1);
         if (!order[0]) throw new Error("الطلب غير موجود");
         await db.insert(orderAssignments).values({ orderId: input.orderId, driverId: input.driverId, note: input.note || null }).onDuplicateKeyUpdate({ set: { driverId: input.driverId, status: "assigned", note: input.note || null, assignedAt: new Date() } });
-        await db.update(drivers).set({ available: false }).where(eq(drivers.id, input.driverId));
         return { success: true };
       }),
     }),
