@@ -59,6 +59,27 @@ function CitySelectionGate({ onSelect }: { onSelect: (city: CityKey) => void }) 
 }
 
 const CUSTOMER_AUTH_STORAGE_KEY = "lahza_customer_auth_v1";
+const CART_CHECKOUT_STORAGE_KEY = "lahza_cart_checkout_v1";
+
+type PersistedCheckout = {
+  cart: CartLine[];
+  screen: Screen;
+  checkoutMode: "delivery" | "taxi";
+  checkoutStep: 1 | 2 | 3;
+  checkoutName: string;
+  checkoutPhone: string;
+  customerLocation: string;
+  customerLocationUrl: string;
+  customerLat: number | null;
+  customerLng: number | null;
+  locationVerified: boolean;
+  notes: string;
+  deliveryAddress: string;
+  payment: "sham_cash" | "cash";
+  taxiType: "standard" | "van";
+  pickup: string;
+  destination: string;
+};
 const DEMO_OTP_CODE = "123456";
 const DEMO_OWNER_PIN = "1212";
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
@@ -404,6 +425,7 @@ export default function Home() {
   const [searchPlaceholderIndex, setSearchPlaceholderIndex] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [checkoutRestored, setCheckoutRestored] = useState(false);
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(CUSTOMER_AUTH_STORAGE_KEY);
@@ -421,6 +443,46 @@ export default function Home() {
       setCustomerAuthReady(true);
     }
   }, []);
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(CART_CHECKOUT_STORAGE_KEY);
+      if (saved) {
+        const checkout = JSON.parse(saved) as PersistedCheckout;
+        if (Array.isArray(checkout.cart) && checkout.cart.length > 0) {
+          setCart(checkout.cart);
+          setScreen(checkout.screen === "checkout" ? "checkout" : "home");
+          setCheckoutMode(checkout.checkoutMode);
+          setCheckoutStep(checkout.checkoutStep);
+          setCheckoutName(checkout.checkoutName || "");
+          setCheckoutPhone(checkout.checkoutPhone || "");
+          setCustomerLocation(checkout.customerLocation || "");
+          setCustomerLocationUrl(checkout.customerLocationUrl || "");
+          setCustomerLat(checkout.customerLat ?? null);
+          setCustomerLng(checkout.customerLng ?? null);
+          setLocationVerified(Boolean(checkout.locationVerified));
+          setNotes(checkout.notes || "");
+          setDeliveryAddress(checkout.deliveryAddress || "");
+          setPayment(checkout.payment || "cash");
+          setTaxiType(checkout.taxiType || "standard");
+          setPickup(checkout.pickup || "");
+          setDestination(checkout.destination || "");
+        }
+      }
+    } catch {
+      window.localStorage.removeItem(CART_CHECKOUT_STORAGE_KEY);
+    } finally {
+      setCheckoutRestored(true);
+    }
+  }, []);
+  useEffect(() => {
+    if (!checkoutRestored) return;
+    if (!cart.length) {
+      window.localStorage.removeItem(CART_CHECKOUT_STORAGE_KEY);
+      return;
+    }
+    const checkout: PersistedCheckout = { cart, screen, checkoutMode, checkoutStep, checkoutName, checkoutPhone, customerLocation, customerLocationUrl, customerLat, customerLng, locationVerified, notes, deliveryAddress, payment, taxiType, pickup, destination };
+    window.localStorage.setItem(CART_CHECKOUT_STORAGE_KEY, JSON.stringify(checkout));
+  }, [checkoutRestored, cart, screen, checkoutMode, checkoutStep, checkoutName, checkoutPhone, customerLocation, customerLocationUrl, customerLat, customerLng, locationVerified, notes, deliveryAddress, payment, taxiType, pickup, destination]);
   const completeCustomerAuth = (session: CustomerAuthSession) => {
     if (session.mode === "customer" && session.remember) window.localStorage.setItem(CUSTOMER_AUTH_STORAGE_KEY, JSON.stringify(session));
     else window.localStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
