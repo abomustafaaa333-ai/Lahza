@@ -791,7 +791,7 @@ export default function Home() {
       let coords: { latitude: number; longitude: number };
       if (nativeApp) {
         const currentPermission = await Geolocation.checkPermissions();
-        const permission = currentPermission.location === "prompt"
+        const permission = currentPermission.location !== "granted"
           ? await Geolocation.requestPermissions()
           : currentPermission;
         if (permission.location === "denied") throw new Error("LOCATION_PERMISSION_DENIED");
