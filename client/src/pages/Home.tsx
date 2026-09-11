@@ -10,6 +10,7 @@ import { getCountryCallingCode, isValidPhoneNumber, type CountryCode } from "lib
 import { Capacitor } from "@capacitor/core";
 import { Geolocation } from "@capacitor/geolocation";
 import { isNativeLahzaApp } from "@/lib/nativeRuntime";
+import { LAHZA_APK_FILE_NAME, LAHZA_APK_URL } from "@/lib/appDownload";
 import { QRCodeSVG } from "qrcode.react";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
@@ -17,7 +18,7 @@ import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, custom
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
 import { CITY_LABELS, CITY_KEYS, type CityKey } from "@shared/cities";
-import { ArrowLeft, BadgePercent, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Fuel, HandCoins, LayoutDashboard, Loader2, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, BadgePercent, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Download, Fuel, HandCoins, LayoutDashboard, Loader2, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -216,6 +217,7 @@ function Header({ onSearch, onExplore, onGateway, searchPlaceholder, city }: { o
   return (
     <header className={`relative z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme}`}>
       <div className="app-shell header-top-row flex h-[76px] items-center justify-end gap-3">
+        {!Capacitor.isNativePlatform() && !isNativeLahzaApp() ? <a href={LAHZA_APK_URL} download={LAHZA_APK_FILE_NAME} className="inline-flex items-center gap-2 rounded-xl bg-[#ff6b2d] px-3 py-2 text-xs font-black text-white shadow-sm transition hover:bg-[#e85b24]" title="تحميل تطبيق لحظة" aria-label="تحميل تطبيق لحظة"><Download className="h-4 w-4" /><span>تحميل التطبيق</span></a> : null}
         <a className="current-location-button" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><span className="current-location-label" aria-label="خدمة الزبائن"><MessageCircle className="h-5 w-5" /><span>خدمة الزبائن</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></a>
       </div>
       <div className="app-shell header-search-wrap"><button className="header-search-button" onClick={onSearch} aria-label="البحث عن منتج"><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span><Search className="h-5 w-5" /></button></div><ServiceIntroCarousel onActiveChange={setServiceTheme} onExplore={onExplore} onGateway={onGateway} city={city} />
