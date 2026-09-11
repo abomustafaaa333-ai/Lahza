@@ -791,6 +791,8 @@ export default function Home() {
     try {
       let coords: { latitude: number; longitude: number };
       if (nativeApp) {
+        (window as Window & { LahzaAndroid?: { requestLocationPermission?: () => void } }).LahzaAndroid?.requestLocationPermission?.();
+        await new Promise(resolve => window.setTimeout(resolve, 300));
         const currentPermission = await Geolocation.checkPermissions();
         const permission = currentPermission.location !== "granted"
           ? await Geolocation.requestPermissions()
