@@ -8,6 +8,8 @@
 html { width: 100%; max-width: 100%; overflow-x: clip; scroll-behavior: smooth; background: #ffffff; }
 body { width: 100%; max-width: 100%; margin: 0; min-width: 320px; overflow-x: clip; font-family: "Cairo", ui-sans-serif, system-ui, sans-serif; background: #FFFFFF; }
 #root { width: 100%; max-width: 100%; overflow-x: clip; background: #FFFFFF; }
+.toaster[data-sonner-toaster][data-x-position="right"] { right: .5rem !important; left: auto !important; width: min(18rem, calc(100vw - 1rem)); }
+.toaster [data-sonner-toast] { width: 100%; max-width: 18rem; min-height: 2.4rem; padding: .5rem .7rem; border-radius: .75rem; font-size: .75rem; line-height: 1.45; text-align: right; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .55; }
