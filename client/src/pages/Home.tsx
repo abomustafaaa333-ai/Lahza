@@ -797,30 +797,9 @@ export default function Home() {
     try {
       let coords: { latitude: number; longitude: number };
       if (nativeApp) {
-        const androidPermission = await new Promise<boolean | null>(resolve => {
-          const previousResult = window.LahzaAndroidPermissionResult;
-          const timer = window.setTimeout(() => {
-            window.LahzaAndroidPermissionResult = previousResult;
-            resolve(null);
-          }, 65000);
-          window.LahzaAndroidPermissionResult = (granted: boolean) => {
-            window.clearTimeout(timer);
-            window.LahzaAndroidPermissionResult = previousResult;
-            resolve(granted);
-          };
-          const bridge = (window as Window & { LahzaAndroid?: { requestLocationPermission?: () => void } }).LahzaAndroid;
-          if (!bridge?.requestLocationPermission) {
-            window.clearTimeout(timer);
-            window.LahzaAndroidPermissionResult = previousResult;
-            resolve(null);
-            return;
-          }
-          bridge.requestLocationPermission();
-        });
-        if (androidPermission === false) throw new Error("LOCATION_PERMISSION_DENIED");
         let permission = await Geolocation.checkPermissions();
-        if (androidPermission === null && permission.location !== "granted") permission = await Geolocation.requestPermissions();
-        if (permission.location === "denied") throw new Error("LOCATION_PERMISSION_DENIED");
+        if (permission.location !== "granted") permission = await Geolocation.requestPermissions();
+        if (permission.location !== "granted") throw new Error("LOCATION_PERMISSION_DENIED");
         let position;
         try {
           position = await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 60000, maximumAge: 30000 });
