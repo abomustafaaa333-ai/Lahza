@@ -849,7 +849,7 @@ export default function Home() {
         return;
       }
       if (nativeApp) window.LahzaAndroid?.openLocationSettings?.();
-      toast.info("لم نتمكن من تأكيد الموقع الآن. اضغط الزر مرة أخرى لإعادة المحاولة.");
+      toast.info("جارٍ تحديد الموقع");
     }
   };
 
