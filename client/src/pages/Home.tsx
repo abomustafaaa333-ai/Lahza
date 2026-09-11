@@ -24,6 +24,12 @@ import { useLocation } from "wouter";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
+declare global {
+  interface Window {
+    LahzaAndroidPermissionResult?: (granted: boolean) => void;
+  }
+}
+
 type Screen = "home" | "delivery" | "stores" | "store" | "productQuantity" | "storeOffers" | "offerQuantity" | "taxi" | "intercity" | "offers" | "checkout" | "orderTracking" | "account";
 type PromotionPreview = { code: string; kind: "discount" | "referral"; percent: number; discountAmount: number; itemsTotal: number };
 type SubmittedOrder = { id: number; customerPhone: string; orderType: "delivery" | "taxi"; customerName: string; status: "pending" | "confirmed" | "preparing" | "on_the_way" | "completed" | "cancelled" | "rejected"; totalAmount: number; deliveryFee: number; deliveryAddress: string; paymentMethod: "cash" | "sham_cash"; eta: string; lines: CartLine[]; notes: string };
@@ -791,13 +797,29 @@ export default function Home() {
     try {
       let coords: { latitude: number; longitude: number };
       if (nativeApp) {
-        (window as Window & { LahzaAndroid?: { requestLocationPermission?: () => void } }).LahzaAndroid?.requestLocationPermission?.();
+        const androidPermission = await new Promise<boolean | null>(resolve => {
+          const previousResult = window.LahzaAndroidPermissionResult;
+          const timer = window.setTimeout(() => {
+            window.LahzaAndroidPermissionResult = previousResult;
+            resolve(null);
+          }, 65000);
+          window.LahzaAndroidPermissionResult = (granted: boolean) => {
+            window.clearTimeout(timer);
+            window.LahzaAndroidPermissionResult = previousResult;
+            resolve(granted);
+          };
+          const bridge = (window as Window & { LahzaAndroid?: { requestLocationPermission?: () => void } }).LahzaAndroid;
+          if (!bridge?.requestLocationPermission) {
+            window.clearTimeout(timer);
+            window.LahzaAndroidPermissionResult = previousResult;
+            resolve(null);
+            return;
+          }
+          bridge.requestLocationPermission();
+        });
+        if (androidPermission === false) throw new Error("LOCATION_PERMISSION_DENIED");
         let permission = await Geolocation.checkPermissions();
-        for (let attempt = 0; attempt < 60 && permission.location !== "granted" && permission.location !== "denied"; attempt += 1) {
-          await new Promise(resolve => window.setTimeout(resolve, 500));
-          permission = await Geolocation.checkPermissions();
-        }
-        if (permission.location !== "granted" && permission.location !== "denied") permission = await Geolocation.requestPermissions();
+        if (androidPermission === null && permission.location !== "granted") permission = await Geolocation.requestPermissions();
         if (permission.location === "denied") throw new Error("LOCATION_PERMISSION_DENIED");
         let position;
         try {
