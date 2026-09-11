@@ -7,6 +7,8 @@ import { trpc } from "@/lib/trpc";
 import { buildStoreShareUrl, parseSharedStoreId } from "@/lib/storeShare";
 import { countryCallingCodes, DEFAULT_COUNTRY_CODE } from "@/lib/countryCallingCodes";
 import { getCountryCallingCode, isValidPhoneNumber, type CountryCode } from "libphonenumber-js";
+import { Capacitor } from "@capacitor/core";
+import { Geolocation } from "@capacitor/geolocation";
 import { isNativeLahzaApp } from "@/lib/nativeRuntime";
 import { QRCodeSVG } from "qrcode.react";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
@@ -773,19 +775,29 @@ export default function Home() {
     setScreen("checkout");
   };
 
-  const locateCustomer = () => {
-    if (!navigator.geolocation) {
+  const locateCustomer = async () => {
+    const nativeApp = Capacitor.isNativePlatform() || isNativeLahzaApp();
+    if (!nativeApp && !navigator.geolocation) {
       toast.error("لا يدعم هذا الجهاز تحديد الموقع");
       return;
     }
-    if (!window.isSecureContext && !isNativeLahzaApp()) {
+    if (!window.isSecureContext && !nativeApp) {
       toast.error("يتطلب تحديد الموقع فتح التطبيق عبر اتصال آمن HTTPS.");
       return;
     }
-    // يستدعي المتصفح مباشرة من ضغطة العميل كي تظهر نافذة السماح في الهاتف.
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(position => {
-      const { latitude, longitude } = position.coords;
+    try {
+      let coords: { latitude: number; longitude: number };
+      if (nativeApp) {
+        const permission = await Geolocation.requestPermissions();
+        if (permission.location === "denied") throw new Error("LOCATION_PERMISSION_DENIED");
+        const position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+        coords = position.coords;
+      } else {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }));
+        coords = position.coords;
+      }
+      const { latitude, longitude } = coords;
       setCustomerLocation(`موقعي الحالي (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`);
       setCustomerLocationUrl(`https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`);
       setCustomerLat(latitude);
@@ -794,18 +806,19 @@ export default function Home() {
       setUseManualLocation(false);
       setLocating(false);
       toast.success("تم السماح بالموقع وتأكيد عنوان التوصيل.");
-    }, error => {
+    } catch (error) {
       setLocating(false);
-      if (error.code === error.PERMISSION_DENIED) {
+      const code = typeof error === "object" && error && "code" in error ? Number(error.code) : undefined;
+      if (error instanceof Error && error.message === "LOCATION_PERMISSION_DENIED" || code === 1) {
         toast.error("لم يتم منح إذن الموقع. عند ظهور نافذة الهاتف اختر «سماح أثناء الاستخدام»، ثم اضغط الزر مرة أخرى.");
         return;
       }
-      if (error.code === error.POSITION_UNAVAILABLE) {
+      if (code === 2) {
         toast.error("خدمة الموقع في الهاتف غير متاحة. فعّل «الموقع» من إعدادات الهاتف ثم أعد المحاولة.");
         return;
       }
       toast.error("انتهت مهلة تحديد الموقع. تأكد من الإنترنت أو GPS ثم أعد المحاولة.");
-    }, { enableHighAccuracy: false, timeout: 20000, maximumAge: 0 });
+    }
   };
 
   const submitCheckout = async () => {
