@@ -8,9 +8,13 @@ export type ShareableOrder = {
   destination: string | null;
   paymentMethod: "sham_cash" | "cash";
   totalAmount: number;
+  storeNames?: string[];
+  locationMode?: "gps" | "manual";
+  locationText?: string | null;
+  notes?: string | null;
   deliveryDistanceMeters?: number;
   deliveryFee?: number;
-  lines: Array<{ itemName: string; quantity: string | number; unit: string }>;
+  lines: Array<{ itemName: string; quantity: string | number; unit: string; storeName?: string | null }>;
 };
 
 declare global {
@@ -33,15 +37,19 @@ export function buildWhatsAppLocationUrl(customerName: string, mapUrl: string) {
 export function buildEmployeeOrderWhatsAppUrl(employeePhone: string, order: ShareableOrder, mapUrl: string | null) {
   const orderRows = order.orderType === "taxi"
     ? [`الرحلة: ${order.taxiType === "van" ? "فان" : "تاكسي"}`, `من: ${order.pickupLocation ?? "غير محدد"}`, `إلى: ${order.destination ?? "غير محدد"}`]
-    : order.lines.map(line => `• ${line.itemName} × ${line.quantity} ${line.unit}`);
+    : order.lines.map(line => `• ${line.itemName} × ${line.quantity} ${line.unit}${line.storeName ? ` — المتجر: ${line.storeName}` : ""}`);
   const message = [
     `طلب لحظة #${order.id}`,
+    order.orderType === "delivery" && order.storeNames?.length ? `المتجر: ${order.storeNames.join("، ")}` : "",
     `العميل: ${order.customerName}`,
     `الهاتف: ${order.customerPhone}`,
     ...orderRows,
     order.orderType === "delivery" && order.deliveryDistanceMeters ? `مسافة الطريق: ${(order.deliveryDistanceMeters / 1000).toFixed(1)} كم` : "",
     order.orderType === "delivery" && order.deliveryFee !== undefined ? `رسوم التوصيل: ${formatSyp(order.deliveryFee)}` : "",
+    order.orderType === "delivery" && order.locationText ? `عنوان العميل: ${order.locationText}` : "",
+    `طريقة الدفع: ${order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}`,
     `الإجمالي: ${formatSyp(order.totalAmount)}`,
+    order.notes ? `ملاحظات العميل: ${order.notes}` : "",
     mapUrl ? `الموقع: ${mapUrl}` : "الموقع: لا يتوفر رابط GPS لهذا الطلب",
   ].filter(Boolean).join("\n");
   return `https://wa.me/${employeePhone.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`;

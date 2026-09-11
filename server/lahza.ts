@@ -1664,7 +1664,16 @@ export const lahzaRouter = router({
       )).orderBy(desc(orders.createdAt));
       const ids = allOrders.map(order => order.id);
       const lines = ids.length ? await db.select().from(orderLines).where(inArray(orderLines.orderId, ids)) : [];
-      return allOrders.map(order => ({ ...order, archived: isOrderArchived(order.createdAt), lines: lines.filter(line => line.orderId === order.id) }));
+      const catalogIds = Array.from(new Set(lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : [])));
+      const catalogRows = catalogIds.length ? await db.select({ id: catalogItems.id, storeId: catalogItems.storeId }).from(catalogItems).where(inArray(catalogItems.id, catalogIds)) : [];
+      const storeIds = Array.from(new Set(catalogRows.flatMap(row => row.storeId ? [row.storeId] : [])));
+      const storeRows = storeIds.length ? await db.select({ id: stores.id, name: stores.name }).from(stores).where(inArray(stores.id, storeIds)) : [];
+      const storeByCatalogId = new Map(catalogRows.map(row => [row.id, row.storeId ? storeRows.find(store => store.id === row.storeId)?.name ?? null : null]));
+      return allOrders.map(order => {
+        const orderLines = lines.filter(line => line.orderId === order.id).map(line => ({ ...line, storeName: line.catalogItemId ? storeByCatalogId.get(line.catalogItemId) ?? null : null }));
+        const storeNames = Array.from(new Set(orderLines.flatMap(line => line.storeName ? [line.storeName] : [])));
+        return { ...order, archived: isOrderArchived(order.createdAt), storeNames, lines: orderLines };
+      });
     }),
     updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(orderStatuses), reason: z.string().trim().min(2).max(300).optional() })).mutation(async ({ ctx, input }) => {
       const session = await requireAdmin(ctx);
