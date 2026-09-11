@@ -239,9 +239,7 @@ const orderScopeCopy: Record<OrderScope, { title: string; eyebrow: string; empty
 function OrdersPanel({ scope }: { scope: OrderScope }) {
   const utils = trpc.useUtils();
   const ordersQuery = trpc.lahza.orders.list.useQuery();
-  const employeesQuery = trpc.lahza.admin.employees.list.useQuery();
   const driversQuery = trpc.lahza.admin.drivers.list.useQuery(undefined, { enabled: scope !== "archive" });
-  const [recipientByOrder, setRecipientByOrder] = useState<Record<number, string>>({});
   const [driverByOrder, setDriverByOrder] = useState<Record<number, string>>({});
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
   const updateStatus = trpc.lahza.orders.updateStatus.useMutation({ onSuccess: () => { utils.lahza.orders.list.invalidate(); toast.success("تم تحديث حالة الطلب"); }, onError: error => toast.error(error.message) });
@@ -249,7 +247,6 @@ function OrdersPanel({ scope }: { scope: OrderScope }) {
   const assignDriver = trpc.lahza.admin.drivers.assign.useMutation({ onSuccess: () => { void utils.lahza.admin.drivers.list.invalidate(); toast.success("تم تعيين المندوب للطلب"); }, onError: error => toast.error(error.message) });
   if (ordersQuery.isLoading) return <PanelLoading text="جارٍ تحميل الطلبات" />;
   const orders = ordersQuery.data ?? [];
-  const employees = (employeesQuery.data ?? []).filter(employee => employee.active);
   const availableDrivers = (driversQuery.data ?? []).filter(driver => driver.active && driver.available);
   const visibleOrders = orders.filter(order => {
     if (scope === "archive") return order.archived;
@@ -276,8 +273,6 @@ function OrdersPanel({ scope }: { scope: OrderScope }) {
       {visibleOrders.length ? <div className="orders-list">{visibleOrders.map(order => {
         const gpsUrl = order.locationUrl || mapUrlFromNotes(order.notes);
         const locationShareUrl = gpsUrl ? buildWhatsAppLocationUrl(order.customerName, gpsUrl) : null;
-        const selectedEmployee = employees.find(employee => String(employee.id) === recipientByOrder[order.id]);
-        const employeeShareUrl = selectedEmployee ? buildEmployeeOrderWhatsAppUrl(selectedEmployee.phone, order, gpsUrl) : null;
         const selectedDriver = availableDrivers.find(driver => String(driver.id) === driverByOrder[order.id]);
         const driverShareUrl = selectedDriver ? buildEmployeeOrderWhatsAppUrl(selectedDriver.phone, order, gpsUrl) : null;
         const isClosed = ["completed", "cancelled", "rejected"].includes(order.status);
@@ -294,8 +289,7 @@ function OrdersPanel({ scope }: { scope: OrderScope }) {
           {order.notes ? <p className="order-notes">{order.notes}</p> : null}
           {!isClosed && scope !== "archive" ? <div className="mt-3 flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => setEditingOrderId(order.id)}><Pencil className="h-3.5 w-3.5" /> تعديل الطلب</Button><Button size="sm" variant="outline" onClick={() => requestStatusChange(order.id, "rejected")} className="border-orange-200 text-orange-700 hover:bg-orange-50"><XCircle className="h-3.5 w-3.5" /> رفض</Button><Button size="sm" variant="outline" onClick={() => requestStatusChange(order.id, "cancelled")} className="border-red-200 text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /> إلغاء</Button></div> : null}
           {editingOrderId === order.id ? <OrderEditCard order={order} saving={updateOrder.isPending} onClose={() => setEditingOrderId(null)} onSave={values => updateOrder.mutate(values)} /> : null}
-          {scope !== "archive" && order.orderType === "delivery" ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-orange-50/70 p-2"><select value={driverByOrder[order.id] ?? ""} onChange={event => setDriverByOrder(current => ({ ...current, [order.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-orange-200 bg-white px-2 py-2 text-xs font-bold text-slate-700"><option value="">اختر مندوباً متاحاً للتعيين</option>{availableDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name} · {driver.region}</option>)}</select><Button size="sm" disabled={!driverByOrder[order.id] || assignDriver.isPending} onClick={() => assignDriver.mutate({ orderId: order.id, driverId: Number(driverByOrder[order.id]) })} className="rounded-lg bg-[#c75b26] hover:bg-[#a9471b]">تعيين المندوب</Button>{driverShareUrl ? <a href={driverShareUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">إرسال التفاصيل للمندوب</a> : null}</div> : null}
-          {scope !== "archive" ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-2"><select value={recipientByOrder[order.id] ?? ""} onChange={event => setRecipientByOrder(current => ({ ...current, [order.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-slate-700"><option value="">اختر موظف لحظة لإرسال التفاصيل</option>{employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name} · {employee.phone}</option>)}</select>{employeeShareUrl ? <a href={employeeShareUrl} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">فتح واتساب للموظف</a> : <button type="button" disabled className="rounded-lg bg-slate-200 px-3 py-2 text-xs font-bold text-slate-400">إرسال للموظف</button>}</div> : null}
+          {scope !== "archive" && order.orderType === "delivery" ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-orange-50/70 p-2"><select value={driverByOrder[order.id] ?? ""} onChange={event => setDriverByOrder(current => ({ ...current, [order.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-orange-200 bg-white px-2 py-2 text-xs font-bold text-slate-700"><option value="">اختر مندوباً متاحاً للتعيين</option>{availableDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name} · {driver.region}</option>)}</select><Button size="sm" disabled={!driverByOrder[order.id] || assignDriver.isPending} onClick={() => { if (driverShareUrl) window.open(driverShareUrl, "_blank", "noopener,noreferrer"); assignDriver.mutate({ orderId: order.id, driverId: Number(driverByOrder[order.id]) }); }} className="rounded-lg bg-[#c75b26] hover:bg-[#a9471b]">تعيين وإرسال التفاصيل للمندوب</Button></div> : null}
           <div className="order-card-footer"><div><span>{order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}</span>{order.orderType === "delivery" ? <strong>{formatSyp(order.totalAmount)}</strong> : <strong>يحدد السعر لاحقاً</strong>}</div>{scope !== "archive" ? <select value={order.status} onChange={e => updateStatus.mutate({ id: order.id, status: e.target.value as keyof typeof orderStatusLabels })} aria-label="تغيير الحالة">{Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : <span className="text-xs font-bold text-slate-400">في الأرشيف</span>}</div>
         </article>;
       })}</div> : <Empty icon={scope === "taxi" ? CarFront : scope === "archive" ? Archive : ClipboardList} title={copy.empty} text={scope === "archive" ? "تُنقل الطلبات هنا تلقائياً بعد مرور 24 ساعة، ثم تحذف نهائياً بعد 7 أيام." : "ستظهر الطلبات الجديدة هنا فور إرسالها من التطبيق."} />}
