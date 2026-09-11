@@ -802,9 +802,19 @@ export default function Home() {
         if (permission.location !== "granted") throw new Error("LOCATION_PERMISSION_DENIED");
         let position;
         try {
-          position = await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 60000, maximumAge: 30000 });
-        } catch {
-          position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+          // A cold GPS fix can take longer than the default Android timeout.
+          // Try the actual GPS provider first, then fall back to the network provider.
+          position = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 90000, maximumAge: 0 });
+        } catch (firstError) {
+          try {
+            position = await Geolocation.getCurrentPosition({ enableHighAccuracy: false, timeout: 60000, maximumAge: 120000 });
+          } catch (secondError) {
+            const firstCode = typeof firstError === "object" && firstError && "code" in firstError ? Number(firstError.code) : undefined;
+            const secondCode = typeof secondError === "object" && secondError && "code" in secondError ? Number(secondError.code) : undefined;
+            const locationError = new Error("LOCATION_UNAVAILABLE");
+            (locationError as Error & { code?: number }).code = secondCode ?? firstCode;
+            throw locationError;
+          }
         }
         coords = position.coords;
       } else {
@@ -831,7 +841,11 @@ export default function Home() {
         toast.error("خدمة الموقع في الهاتف غير متاحة. فعّل «الموقع» من إعدادات الهاتف ثم أعد المحاولة.");
         return;
       }
-      toast.error("انتهت مهلة تحديد الموقع. تأكد من الإنترنت أو GPS ثم أعد المحاولة.");
+      if (code === 3) {
+        toast.error("تعذر الحصول على إحداثيات الموقع. فعّل GPS/الموقع، اخرج إلى مكان مفتوح، ثم أعد المحاولة.");
+        return;
+      }
+      toast.error("تعذر تحديد الموقع. فعّل GPS والإنترنت، ثم أعد المحاولة.");
     }
   };
 
