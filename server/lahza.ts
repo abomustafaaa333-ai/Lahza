@@ -296,7 +296,9 @@ export async function handleWahaWebhook(body: unknown) {
   if (reply === "جاهز") {
     await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, assignment.assignment.id));
     await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب عبر واتساب" }).where(eq(orders.id, assignment.order.id));
-    const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${assignment.order.id} وبدأ المندوب تجهيزه. مندوب التوصيل: ${driver.phone}` };
+    const driverWhatsappNumber = driver.phone.replace(/\D/g, "");
+    const driverWhatsappUrl = `https://wa.me/${driverWhatsappNumber}`;
+    const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${assignment.order.id} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${driver.phone}\nللتواصل عبر واتساب: ${driverWhatsappUrl}` };
     await db.insert(orderNotifications).values({ orderId: assignment.order.id, customerPhone: assignment.order.customerPhone, status: "preparing", title: customerMessage.title, body: customerMessage.body });
     const customerTokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, assignment.order.customerPhone), eq(pushTokens.active, true)));
     await sendPushNotification(customerTokens.map(row => row.token), customerMessage);
