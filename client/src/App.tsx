@@ -1,23 +1,23 @@
 import { Toaster } from "@/components/ui/sonner";
 import { AppUpdateNotice } from "@/components/AppUpdateNotice";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Admin from "@/pages/Admin";
-import DemoAdmin from "@/pages/DemoAdmin";
-import DownloadApp from "@/pages/DownloadApp";
 import Home from "@/pages/Home";
 import NotFound from "@/pages/NotFound";
-import PartnerPortal from "@/pages/PartnerPortal";
 import { Route, Switch } from "wouter";
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { clearAuthRuntimeLock, lockAuthRuntime } from "./lib/authRuntime";
 
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
+const Admin = lazy(() => import("@/pages/Admin"));
+const DemoAdmin = lazy(() => import("@/pages/DemoAdmin"));
+const DownloadApp = lazy(() => import("@/pages/DownloadApp"));
+const PartnerPortal = lazy(() => import("@/pages/PartnerPortal"));
 
 function Router() {
   const AdminPage = isStaticDemo ? DemoAdmin : Admin;
-  return <Switch><Route path="/" component={Home} /><Route path="/download" component={DownloadApp} /><Route path="/partner/store" component={PartnerPortal} /><Route path="/partner" component={PartnerPortal} /><Route path="/admin" component={AdminPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch>;
+  return <Suspense fallback={<main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ فتح الصفحة...</span></main>}><Switch><Route path="/" component={Home} /><Route path="/download" component={DownloadApp} /><Route path="/partner/store" component={PartnerPortal} /><Route path="/partner" component={PartnerPortal} /><Route path="/admin" component={AdminPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch></Suspense>;
 }
 
 export default function App() {

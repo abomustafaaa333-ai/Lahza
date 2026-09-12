@@ -376,8 +376,8 @@ export default function Home() {
     const saved = typeof window !== "undefined" ? window.sessionStorage.getItem("lahza_selected_city") : null;
     return saved === "manbij" || saved === "jarabulus" ? saved : null;
   });
-  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false });
-  const categorySettingsQuery = trpc.lahza.categorySettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false });
+  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false, staleTime: 300_000 });
+  const categorySettingsQuery = trpc.lahza.categorySettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false, staleTime: 300_000 });
   useEffect(() => {
     if (!selectedCity || isStaticDemo) return;
     queryClient.removeQueries({ predicate: query => {
@@ -544,14 +544,13 @@ export default function Home() {
   const [sharedStoreId] = useState(() => parseSharedStoreId(window.location.search));
   const [gatewayMode, setGatewayMode] = useState(false);
 
-  const catalogQuery = trpc.lahza.catalog.list.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
-  const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
-  const partnerOffersQuery = trpc.lahza.publicFeaturedOffers.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
-  const popularProductsQuery = trpc.lahza.storefront.popularProducts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
+  const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && screen === "checkout", retry: false });
+  const partnerOffersQuery = trpc.lahza.publicFeaturedOffers.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false, staleTime: 120_000 });
+  const popularProductsQuery = trpc.lahza.storefront.popularProducts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false, staleTime: 300_000 });
   const storeOffersQuery = trpc.lahza.intercity.offers.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const trackStoreVisit = trpc.lahza.traffic.track.useMutation();
-  const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
-  const supportContactsQuery = trpc.lahza.support.contacts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false });
+  const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && (screen === "delivery" || screen === "stores"), retry: false });
+  const supportContactsQuery = trpc.lahza.support.contacts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && (screen === "checkout" || supportOpen), retry: false });
   const normalizedSearchText = searchText.trim();
   const productSearchInput = useMemo(() => ({ query: normalizedSearchText }), [normalizedSearchText]);
   const productSearchQuery = trpc.lahza.storefront.searchProducts.useQuery(productSearchInput, { enabled: !isStaticDemo && searchOpen && normalizedSearchText.length >= 2, retry: false });
@@ -560,8 +559,9 @@ export default function Home() {
   const orderNotificationPhone = customerAuth?.phone || (checkoutPhone.length === 9 ? `+963${checkoutPhone}` : "");
   const orderNotificationsQuery = trpc.lahza.notifications.orderFeed.useQuery({ customerPhone: orderNotificationPhone, unreadOnly: true }, { enabled: !isStaticDemo && /^\+9639\d{8}$/.test(orderNotificationPhone), retry: false, refetchInterval: 15_000 });
   const markOrderNotificationRead = trpc.lahza.notifications.markOrderRead.useMutation({ onSuccess: () => { void orderNotificationsQuery.refetch(); } });
-  const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
-  const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false });
+  const staffSessionEnabled = !isStaticDemo && (!customerAuth || secretOpen);
+  const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: staffSessionEnabled, retry: false, staleTime: 60_000 });
+  const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: staffSessionEnabled, retry: false, staleTime: 60_000 });
   const pointsQuery = trpc.lahza.customers.points.balance.useQuery({ phone: `+963${checkoutPhone}` }, { enabled: !isStaticDemo && /^9\d{8}$/.test(checkoutPhone), retry: false });
   const customerOrderHistoryQuery = trpc.lahza.orders.history.useQuery({ customerPhone: customerAuth?.phone ?? "+963900000000" }, { enabled: !isStaticDemo && customerAuth?.mode === "customer" && Boolean(customerAuth.phone), retry: false });
   const updateCustomerPhone = trpc.lahza.customerAccounts.updatePhone.useMutation({ onSuccess: (_result, variables) => { updateCustomerSessionPhone(variables.newPhone); toast.success("تم تحديث رقم هاتفك بنجاح"); }, onError: error => toast.error(error.message) });
@@ -576,11 +576,11 @@ export default function Home() {
     onError: error => toast.error(error.message),
   });
   const categoryStoresInput = useMemo(() => ({ category: activeCategory ?? "groceries", customCategorySlug: activeCategory === "other" ? activeCustomCategory?.slug : undefined }), [activeCategory, activeCustomCategory?.slug]);
-  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(activeCategory), retry: false });
+  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(activeCategory), retry: false, staleTime: 60_000 });
   const gatewayStoresQuery = trpc.lahza.storefront.gatewayStores.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && selectedCity === "jarabulus", retry: false });
-  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(selectedStore), retry: false });
-  const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(sharedStoreId), retry: false });
-  const products = isStaticDemo ? staticDemoProducts : catalogQuery.data ?? [];
+  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(selectedStore), retry: false, staleTime: 60_000 });
+  const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(sharedStoreId), retry: false, staleTime: 120_000 });
+  const products = isStaticDemo ? staticDemoProducts : [];
   const supportContacts = supportContactsQuery.data ?? [];
   const gatewayStores = (gatewayStoresQuery.data ?? []) as StoreOption[];
   const categoryStores: StoreOption[] = isStaticDemo && activeCategory
@@ -1074,9 +1074,7 @@ export default function Home() {
   };
 
   if (!customerAuthReady) return <main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ تجهيز لحظتك...</span></main>;
-  const staffSessionLoading = !isStaticDemo && (adminSessionQuery.isLoading || partnerSessionQuery.isLoading);
   const hasStaffSession = Boolean(adminSessionQuery.data?.role || partnerSessionQuery.data);
-  if (!customerAuth && staffSessionLoading) return <main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ التحقق من الحساب...</span></main>;
   const handleStaffLogin = (phone: string, role: "owner" | "supervisor" | "partner", staffPassword: string) => {
     if (role === "partner") partnerLogin.mutate({ phone, password: staffPassword });
     else adminLogin.mutate({ role, phone, password: staffPassword });
