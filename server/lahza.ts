@@ -2338,7 +2338,7 @@ export const lahzaRouter = router({
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const assignment = await db.select({ id: orderAssignments.id }).from(orderAssignments).where(and(eq(orderAssignments.driverId, input.id), or(eq(orderAssignments.status, "assigned"), eq(orderAssignments.status, "accepted"), eq(orderAssignments.status, "picked_up")))).limit(1);
+        const assignment = await db.select({ id: orderAssignments.id }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, input.id), or(eq(orderAssignments.status, "assigned"), eq(orderAssignments.status, "accepted"), eq(orderAssignments.status, "picked_up")), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).limit(1);
         if (assignment[0]) throw new Error("لا يمكن حذف مندوب لديه طلب قيد التنفيذ");
         await db.delete(drivers).where(eq(drivers.id, input.id));
         return { success: true };
