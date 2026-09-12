@@ -18,7 +18,7 @@ import { deleteOfferImage, uploadOfferImage } from "./offerMedia";
 import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
 import { sendPushNotification } from "./pushNotifications";
-import { sendWahaText } from "./waha";
+import { sendWahaReplyButtons, sendWahaText } from "./waha";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
@@ -216,17 +216,22 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}` }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}`, assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
   await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
   const distance = Math.round(distanceBetweenE6(store.locationLat, store.locationLng, nearest.locationLat!, nearest.locationLng!));
-  void sendWahaText(nearest.phone, { title: `طلب جديد #${orderId}`, body: `من متجر ${store.name} على بعد ${distance}م. العميل: ${customerName}. الموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\nهل أنت جاهز لتنفيذ الطلب؟ أجب بكلمة: جاهز أو غير جاهز.` });
+  const driverMessage = { title: `طلب جديد #${orderId}`, body: `من متجر ${store.name} على بعد ${distance}م. العميل: ${customerName}. الموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\nهل أنت جاهز لتنفيذ الطلب؟` };
+  void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "جاهز" }, { id: "not_ready", text: "غير جاهز" }]).then(result => {
+    if (!result.sent) void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: جاهز أو غير جاهز.` });
+  });
   return nearest.id;
 }
 
 export async function handleWahaWebhook(body: unknown) {
-  const event = body as { event?: string; payload?: { from?: string; body?: string; fromMe?: boolean } };
+  const event = body as { event?: string; payload?: { from?: string; body?: string; fromMe?: boolean; _data?: { dynamicReplyButtons?: Array<{ buttonId?: string; buttonText?: { displayText?: string } }> } } };
   if (event.event && event.event !== "message.any" && event.event !== "message") return;
   const payload = event.payload;
-  if (!payload || payload.fromMe || !payload.from || !payload.body) return;
+  if (!payload || payload.fromMe || !payload.from) return;
   const phone = `+${payload.from.replace(/[^0-9]/g, "").replace(/:.*$/, "")}`;
-  const reply = payload.body.trim().replace(/[.!؟?]+$/g, "");
+  const buttonReply = payload._data?.dynamicReplyButtons?.at(-1)?.buttonText?.displayText;
+  const buttonId = payload._data?.dynamicReplyButtons?.at(-1)?.buttonId;
+  const reply = (buttonReply || payload.body || (buttonId === "ready" ? "جاهز" : buttonId === "not_ready" ? "غير جاهز" : "")).trim().replace(/[.!؟?]+$/g, "");
   if (reply !== "جاهز" && reply !== "غير جاهز") return;
   const db = await getDb();
   if (!db) return;

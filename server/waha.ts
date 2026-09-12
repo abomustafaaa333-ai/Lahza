@@ -5,6 +5,8 @@ export type WahaMessage = {
   body: string;
 };
 
+export type WahaReplyButton = { id: string; text: string };
+
 export function normalizeWahaChatId(phone: string) {
   const digits = phone.replace(/\D/g, "");
   return digits ? `${digits}@c.us` : null;
@@ -54,6 +56,25 @@ export async function sendWahaText(phone: string, message: WahaMessage) {
     return { configured: true, sent: true };
   } catch (error) {
     console.error("WAHA WhatsApp delivery failed", error);
+    return { configured: true, sent: false };
+  }
+}
+
+export async function sendWahaReplyButtons(phone: string, message: WahaMessage, buttons: WahaReplyButton[]) {
+  const config = getWahaConfig();
+  const chatId = normalizeWahaChatId(phone);
+  if (!config || !chatId) return { configured: Boolean(config), sent: false };
+  try {
+    const response = await fetch(`${config.baseUrl}/api/sendButtons`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json", "X-Api-Key": config.apiKey },
+      body: JSON.stringify({ session: config.session, chatId, body: message.body, footer: "اختر أحد الخيارين للمتابعة", buttons: buttons.map(button => ({ id: button.id, type: "reply", text: button.text })) }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`WAHA buttons returned ${response.status}`);
+    return { configured: true, sent: true };
+  } catch (error) {
+    console.error("WAHA interactive button delivery failed", error);
     return { configured: true, sent: false };
   }
 }
