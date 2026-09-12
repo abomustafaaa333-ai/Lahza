@@ -53,6 +53,8 @@ export const stores = mysqlTable("stores", {
   // A Manbij store can be deliberately published in the Jarabulus gateway.
   // It remains a Manbij store for all local operations.
   jarabulusGatewayEnabled: boolean("jarabulusGatewayEnabled").notNull().default(false),
+  locationLat: int("locationLat"),
+  locationLng: int("locationLng"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -329,6 +331,8 @@ export const drivers = mysqlTable("drivers", {
   region: varchar("region", { length: 120 }).notNull().default("منبج"),
   active: boolean("active").notNull().default(true),
   available: boolean("available").notNull().default(true),
+  locationLat: int("locationLat"),
+  locationLng: int("locationLng"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

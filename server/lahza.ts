@@ -192,6 +192,61 @@ async function createOrderStatusNotification(db: NonNullable<Awaited<ReturnType<
   void sendWahaText(order.customerPhone, message);
 }
 
+function distanceBetweenE6(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const toRadians = (value: number) => value * Math.PI / 180;
+  const firstLat = toRadians(lat1 / 1_000_000);
+  const secondLat = toRadians(lat2 / 1_000_000);
+  const deltaLat = toRadians((lat2 - lat1) / 1_000_000);
+  const deltaLng = toRadians((lng2 - lng1) / 1_000_000);
+  const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(firstLat) * Math.cos(secondLat) * Math.sin(deltaLng / 2) ** 2;
+  return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
+  if (!storeId) return null;
+  const store = (await db.select({ id: stores.id, name: stores.name, locationLat: stores.locationLat, locationLng: stores.locationLng }).from(stores).where(eq(stores.id, storeId)).limit(1))[0];
+  if (!store?.locationLat || !store.locationLng) return null;
+  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true)));
+  const nearest = candidates.filter(driver => !excludedDriverIds.includes(driver.id) && driver.locationLat !== null && driver.locationLng !== null && (driver.region.includes(orderCity === "manbij" ? "منبج" : "جرابلس") || driver.region.includes("الكل"))).sort((a, b) => distanceBetweenE6(store.locationLat!, store.locationLng!, a.locationLat!, a.locationLng!) - distanceBetweenE6(store.locationLat!, store.locationLng!, b.locationLat!, b.locationLng!))[0];
+  if (!nearest) {
+    const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
+    for (const contact of contacts) void sendWahaText(contact.phone, { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} من متجر ${store.name} للعميل ${customerName} يحتاج تدخلاً يدوياً.` });
+    return null;
+  }
+  await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}` }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}`, assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
+  await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
+  const distance = Math.round(distanceBetweenE6(store.locationLat, store.locationLng, nearest.locationLat!, nearest.locationLng!));
+  void sendWahaText(nearest.phone, { title: `طلب جديد #${orderId}`, body: `من متجر ${store.name} على بعد ${distance}م. العميل: ${customerName}. الموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\nهل أنت جاهز لتنفيذ الطلب؟ أجب بكلمة: جاهز أو غير جاهز.` });
+  return nearest.id;
+}
+
+export async function handleWahaWebhook(body: unknown) {
+  const event = body as { event?: string; payload?: { from?: string; body?: string; fromMe?: boolean } };
+  if (event.event && event.event !== "message.any" && event.event !== "message") return;
+  const payload = event.payload;
+  if (!payload || payload.fromMe || !payload.from || !payload.body) return;
+  const phone = `+${payload.from.replace(/[^0-9]/g, "").replace(/:.*$/, "")}`;
+  const reply = payload.body.trim().replace(/[.!؟?]+$/g, "");
+  if (reply !== "جاهز" && reply !== "غير جاهز") return;
+  const db = await getDb();
+  if (!db) return;
+  const driver = (await db.select().from(drivers).where(eq(drivers.phone, phone)).limit(1))[0];
+  if (!driver) return;
+  const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
+  if (!assignment) return;
+  if (reply === "جاهز") {
+    await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, assignment.assignment.id));
+    await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب عبر واتساب" }).where(eq(orders.id, assignment.order.id));
+    await createOrderStatusNotification(db, assignment.order, "preparing");
+    void sendWahaText(driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${assignment.order.id}.` });
+    return;
+  }
+  await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, assignment.assignment.id));
+  await db.update(drivers).set({ available: true }).where(eq(drivers.id, driver.id));
+  const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, assignment.order.id)).limit(1))[0];
+  await dispatchOrderToNearestDriver(db, assignment.order.id, assignment.order.orderCity, line?.storeId ?? null, assignment.order.customerName, assignment.order.locationText, assignment.order.locationUrl, [driver.id]);
+}
+
 export async function autoCompleteDueOrders() {
   const db = await getDb();
   if (!db) return 0;
@@ -206,6 +261,16 @@ export async function autoCompleteDueOrders() {
     await db.update(orders).set({ status: "completed", statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
     await createOrderStatusNotification(db, order, "completed");
     await awardCustomerPoint(db, order.customerPhone, "order_completed", order.id);
+  }
+  const followUpCutoff = new Date(Date.now() - 20 * 60_000);
+  const followUps = await db.select({ order: orders, assignment: orderAssignments, driver: drivers }).from(orders).innerJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orders.status, "preparing"), eq(orderAssignments.status, "accepted"))).limit(100);
+  for (const row of followUps) {
+    if (row.order.statusChangedAt > followUpCutoff || row.order.statusReason?.includes("تم إرسال متابعة 20 دقيقة")) continue;
+    const body = `مرّ 20 دقيقة على الطلب #${row.order.id}. ما وضع الطلب؟ أجب برسالة قصيرة.`;
+    void sendWahaText(row.driver.phone, { title: "متابعة الطلب", body });
+    void sendWahaText(row.order.customerPhone, { title: "متابعة طلبك", body: `مرّت 20 دقيقة على طلبك #${row.order.id}. سنوافيك بآخر تحديث قريباً.` });
+    await db.insert(orderNotifications).values({ orderId: row.order.id, customerPhone: row.order.customerPhone, status: "preparing", title: "متابعة طلبك", body: `مرّت 20 دقيقة على طلبك #${row.order.id}. سنوافيك بآخر تحديث قريباً.` });
+    await db.update(orders).set({ statusReason: `${row.order.statusReason ?? ""} تم إرسال متابعة 20 دقيقة` }).where(eq(orders.id, row.order.id));
   }
   return due.length;
 }
@@ -316,6 +381,15 @@ export const tickerSettingsInputSchema = z.object({
 async function ensureCustomerOtpTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `customer_otp_codes` (`phone` VARCHAR(24) NOT NULL PRIMARY KEY, `codeHash` VARCHAR(255) NOT NULL, `expiresAt` TIMESTAMP NOT NULL, `attempts` INT NOT NULL DEFAULT 0, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"));
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `customer_otp_verified` (`phone` VARCHAR(24) NOT NULL PRIMARY KEY, `expiresAt` TIMESTAMP NOT NULL)"));
+}
+
+async function ensureDispatchLocationSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  for (const table of ["stores", "drivers"] as const) {
+    const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
+    const names = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+    if (!names.has("locationLat")) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`locationLat\` INT NULL`));
+    if (!names.has("locationLng")) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`locationLng\` INT NULL`));
+  }
 }
 
 async function hashSecret(value: string) {
@@ -542,6 +616,7 @@ export async function ensureDemoStoresSeed() {
   const db = await getDb();
   if (!db) return;
   await ensureJarabulusGatewaySchema(db);
+  await ensureDispatchLocationSchema(db);
   await ensureDemoStores(db);
   await ensureDemoProducts(db);
 }
@@ -550,6 +625,7 @@ async function ensureCatalogSeed() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
   await ensureJarabulusGatewaySchema(db);
+  await ensureDispatchLocationSchema(db);
   const existing = await db.select({ id: catalogItems.id }).from(catalogItems).limit(1);
   if (existing.length) return db;
   for (const item of catalogSeed) {
@@ -595,6 +671,8 @@ export const storeInput = z.object({
   sortOrder: z.number().int().min(0).max(10_000).default(0),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
   city: z.enum(CITY_KEYS).optional(),
+  locationLat: coordinateSchema.optional(),
+  locationLng: coordinateSchema.optional(),
 });
 
 const customCategoryInput = z.object({
@@ -630,6 +708,8 @@ export const driverInput = z.object({
   region: z.string().trim().min(2).max(120).default("منبج"),
   active: z.boolean().default(true),
   available: z.boolean().default(true),
+  locationLat: coordinateSchema.optional(),
+  locationLng: coordinateSchema.optional(),
 });
 
 export const notificationCampaignInput = z.object({
@@ -1672,7 +1752,7 @@ export const lahzaRouter = router({
 
       const created = await db.insert(orders).values({
         orderType: input.orderType,
-        status: initialStatus,
+        status: input.orderType === "delivery" ? "pending" : initialStatus,
         orderCity,
         fulfillmentScope,
         intercityTripId: intercityTrip?.id ?? null,
@@ -1720,6 +1800,10 @@ export const lahzaRouter = router({
           priceKnown: line.priceKnown,
           notes: line.notes ?? null,
         })));
+      }
+      if (input.orderType === "delivery") {
+        const primaryStoreId = products.find(product => product.storeId)?.storeId ?? null;
+        await dispatchOrderToNearestDriver(db, orderId, orderCity, primaryStoreId, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
       }
       return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending, orderCity, fulfillmentScope, preparationMinutes, minimumOrder };
     }),
@@ -1899,7 +1983,7 @@ export const lahzaRouter = router({
         if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
         await ensureProfileImageColumns(db);
         await ensureJarabulusGatewaySchema(db);
-        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", customCategoryId: customCategory?.id ?? null, partnerId: input.partnerId ?? null, imageUrl: input.imageUrl || null, active: input.active, sortOrder: input.sortOrder, city: input.city ?? ctx.city });
+        await db.insert(stores).values({ name: input.name, category: input.category, restaurantType: input.category === "restaurants" ? input.restaurantType : "all", customCategoryId: customCategory?.id ?? null, partnerId: input.partnerId ?? null, imageUrl: input.imageUrl || null, active: input.active, sortOrder: input.sortOrder, city: input.city ?? ctx.city, locationLat: input.locationLat === undefined ? null : Math.round(input.locationLat * 1_000_000), locationLng: input.locationLng === undefined ? null : Math.round(input.locationLng * 1_000_000) });
         return { success: true };
       }),
       update: publicProcedure.input(storeInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -1913,8 +1997,8 @@ export const lahzaRouter = router({
         const customCategory = input.category === "other" ? await getActiveCustomCategory(db, input.customCategoryId) : null;
         if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
         await ensureProfileImageColumns(db);
-        const { id, category, restaurantType, customCategoryId: _customCategoryId, imageUrl, city: requestedCity, ...patch } = input;
-        await db.update(stores).set({ ...patch, imageUrl: imageUrl || null, category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null, city: requestedCity ?? ctx.city }).where(and(eq(stores.id, id), eq(stores.city, ctx.city)));
+        const { id, category, restaurantType, customCategoryId: _customCategoryId, imageUrl, city: requestedCity, locationLat, locationLng, ...patch } = input;
+        await db.update(stores).set({ ...patch, imageUrl: imageUrl || null, category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null, city: requestedCity ?? ctx.city, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(and(eq(stores.id, id), eq(stores.city, ctx.city)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -2214,15 +2298,16 @@ export const lahzaRouter = router({
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const exists = await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.phone, input.phone)).limit(1);
         if (exists[0]) throw new Error("رقم المندوب مستخدم بالفعل");
-        await db.insert(drivers).values(input);
+        const { locationLat, locationLng, ...driverData } = input;
+        await db.insert(drivers).values({ ...driverData, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) });
         return { success: true };
       }),
       update: publicProcedure.input(driverInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const { id, ...patch } = input;
-        await db.update(drivers).set(patch).where(eq(drivers.id, id));
+        const { id, locationLat, locationLng, ...patch } = input;
+        await db.update(drivers).set({ ...patch, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
