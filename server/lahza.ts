@@ -819,7 +819,7 @@ export const partnerOfferInput = z.object({
   text: z.string().trim().min(3, "أدخل وصف العرض").max(220),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
   imageStorageKey: z.string().trim().min(1).max(500).optional().or(z.literal("")),
-  durationDays: z.number().int().min(1, "اختر مدة عرض لا تقل عن يوم واحد").max(365, "الحد الأقصى لمدة العرض سنة واحدة"),
+  durationDays: z.number().int().min(1, "اختر مدة عرض لا تقل عن يوم واحد").max(365, "الحد الأقصى لمدة العرض سنة واحدة").default(3),
   offerPrice: newSypMoneyInput.min(1, "أدخل سعر العرض الجديد"),
   active: z.boolean().default(true),
 });

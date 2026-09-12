@@ -185,7 +185,7 @@ function ProductForm({ title, product, saving, onCancel, onSave, onToggle, onRem
 function OffersPanel({ featuredOnly = false, offers, products, store, creating, saving, deleting, onCreate, onUpdate, onRemove, onPreview }: { featuredOnly?: boolean; offers: PartnerOffer[]; products: PartnerProduct[]; store: AssignedStore; creating: boolean; saving: boolean; deleting: boolean; onCreate: (input: { catalogItemId: number; text: string; durationDays: number; offerPrice: number; dataUrl?: string }) => Promise<void>; onUpdate: (input: { id: number; storeId: number; catalogItemId: number; text: string; imageUrl: string; imageStorageKey: string; durationDays: number; offerPrice: number; active: boolean }) => void; onRemove: (id: number) => void; onPreview: (src: string, alt: string) => void }) {
   const [text, setText] = useState("");
   const [catalogItemId, setCatalogItemId] = useState("");
-  const [durationDays, setDurationDays] = useState("30");
+  const [durationDays, setDurationDays] = useState("3");
   const [offerPrice, setOfferPrice] = useState("");
   const [dataUrl, setDataUrl] = useState("");
   const availableProducts = products.filter(product => product.available);
@@ -208,7 +208,7 @@ function OffersPanel({ featuredOnly = false, offers, products, store, creating, 
 function OfferEditor({ offer, products, storeId, saving, deleting, onUpdate, onRemove, onPreview }: { offer: PartnerOffer; products: PartnerProduct[]; storeId: number; saving: boolean; deleting: boolean; onUpdate: (input: { id: number; storeId: number; catalogItemId: number; text: string; imageUrl: string; imageStorageKey: string; durationDays: number; offerPrice: number; active: boolean }) => void; onRemove: (id: number) => void; onPreview: (src: string, alt: string) => void }) {
   const [text, setText] = useState(offer.text);
   const [catalogItemId, setCatalogItemId] = useState(offer.catalogItemId ? String(offer.catalogItemId) : "");
-  const [durationDays, setDurationDays] = useState(String(offer.durationDays ?? 30));
+  const [durationDays, setDurationDays] = useState(String(offer.durationDays ?? 3));
   const [offerPrice, setOfferPrice] = useState(String(toNewSyp(offer.offerPrice)));
   const [active, setActive] = useState(offer.active);
   const selectedProduct = products.find(product => String(product.id) === catalogItemId) ?? null;
