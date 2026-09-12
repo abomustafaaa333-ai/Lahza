@@ -187,6 +187,8 @@ async function createOrderStatusNotification(db: NonNullable<Awaited<ReturnType<
   await db.insert(orderNotifications).values({ orderId: order.id, customerPhone: order.customerPhone, status, title: message.title, body: message.body });
   const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, order.customerPhone), eq(pushTokens.active, true)));
   await sendPushNotification(tokens.map(row => row.token), message);
+  // WhatsApp is optional; a missing or unavailable WAHA server must never block orders.
+  void sendWahaText(order.customerPhone, message);
 }
 
 export async function autoCompleteDueOrders() {
@@ -2400,3 +2402,4 @@ export const lahzaRouter = router({
     }),
   }),
 });
+import { sendWahaText } from "./waha";
