@@ -188,6 +188,23 @@ async function createOrderStatusNotification(db: NonNullable<Awaited<ReturnType<
   await sendPushNotification(tokens.map(row => row.token), message);
 }
 
+export async function autoCompleteDueOrders() {
+  const db = await getDb();
+  if (!db) return 0;
+  await ensureJarabulusGatewaySchema(db);
+  const now = new Date();
+  const due = await db.select().from(orders).where(and(
+    inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]),
+    lte(sql`DATE_ADD(${orders.statusChangedAt}, INTERVAL GREATEST(${orders.preparationMinutes}, 30) MINUTE)`, now),
+  )).limit(100);
+  for (const order of due) {
+    await db.update(orders).set({ status: "completed", statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
+    await createOrderStatusNotification(db, order, "completed");
+    await awardCustomerPoint(db, order.customerPhone, "order_completed", order.id);
+  }
+  return due.length;
+}
+
 async function addTickerColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "tickerPrimary" | "tickerSecondary", defaultValue: string) {
   try {
     await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` VARCHAR(220) NOT NULL DEFAULT '${defaultValue.replace(/'/g, "''")}'`));
@@ -1593,7 +1610,7 @@ export const lahzaRouter = router({
       const fulfillmentScope = orderCity === "jarabulus" && input.orderType === "delivery" ? "manbij_to_jarabulus" as const : "local" as const;
       const preparationMinutes = fulfillmentScope === "manbij_to_jarabulus"
         ? jarabulusOrderPreparationMinutes(settings)
-        : partnerPreparationMinutes;
+        : Math.max(partnerPreparationMinutes, resolvedLines.length >= 6 ? 55 : resolvedLines.length >= 3 ? 50 : 45);
       if (input.intercityTripId) {
         const foundTrips = await db.select().from(intercityTrips).where(and(eq(intercityTrips.id, input.intercityTripId), eq(intercityTrips.active, true))).limit(1);
         intercityTrip = foundTrips[0] ?? null;

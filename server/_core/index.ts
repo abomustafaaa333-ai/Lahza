@@ -3,7 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
-import { ensureDemoStoresSeed } from "../lahza";
+import { autoCompleteDueOrders, ensureDemoStoresSeed } from "../lahza";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -23,6 +23,10 @@ async function startServer() {
   } catch (error) {
     console.warn("Unable to seed demo stores", error);
   }
+
+  const runOrderCompletion = () => void autoCompleteDueOrders().catch(error => console.warn("Unable to auto-complete due orders", error));
+  runOrderCompletion();
+  setInterval(runOrderCompletion, 60_000);
 
   const port = Number(process.env.PORT ?? 3000);
   server.listen(port, () => console.log(`Lahza server listening on port ${port}`));

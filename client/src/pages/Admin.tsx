@@ -34,7 +34,7 @@ function RestaurantTypeSelect({ value, onChange }: { value: RestaurantType; onCh
 }
 
 const tabs: { id: Tab; label: string; icon: typeof ClipboardList; ownerOnly?: boolean }[] = [
-  { id: "orders", label: "الطلبات", icon: ClipboardList },
+  { id: "orders", label: "طلبات جديدة", icon: ClipboardList },
   { id: "intercityOrders", label: "طلبات جرابلس", icon: Route },
   { id: "taxiOrders", label: "طلبات سيارات الأجرة", icon: CarFront },
   { id: "archive", label: "الأرشيف", icon: Archive },
@@ -228,6 +228,7 @@ function ExpiredOffersPanel() {
 }
 
 type OrderScope = "delivery" | "intercity" | "taxi" | "archive";
+type OrderStatusView = "new" | "active" | "completed" | "cancelled";
 
 const orderScopeCopy: Record<OrderScope, { title: string; eyebrow: string; empty: string }> = {
   delivery: { title: "طلبات التوصيل الحديثة", eyebrow: "متابعة مباشرة", empty: "لا توجد طلبات توصيل حديثة" },
@@ -242,6 +243,7 @@ function OrdersPanel({ scope }: { scope: OrderScope }) {
   const driversQuery = trpc.lahza.admin.drivers.list.useQuery(undefined, { enabled: scope !== "archive" });
   const [driverByOrder, setDriverByOrder] = useState<Record<number, string>>({});
   const [editingOrderId, setEditingOrderId] = useState<number | null>(null);
+  const [statusView, setStatusView] = useState<OrderStatusView>("new");
   const updateStatus = trpc.lahza.orders.updateStatus.useMutation({ onSuccess: () => { utils.lahza.orders.list.invalidate(); toast.success("تم تحديث حالة الطلب"); }, onError: error => toast.error(error.message) });
   const updateOrder = trpc.lahza.orders.update.useMutation({ onSuccess: () => { utils.lahza.orders.list.invalidate(); setEditingOrderId(null); toast.success("تم حفظ تعديل الطلب"); }, onError: error => toast.error(error.message) });
   const assignDriver = trpc.lahza.admin.drivers.assign.useMutation({ onSuccess: () => { void utils.lahza.admin.drivers.list.invalidate(); toast.success("تم تعيين المندوب للطلب"); }, onError: error => toast.error(error.message) });
@@ -255,8 +257,11 @@ function OrdersPanel({ scope }: { scope: OrderScope }) {
     if (scope === "intercity") return order.orderType === "delivery" && Boolean(order.intercityTripId);
     return order.orderType === "delivery" && !order.intercityTripId;
   });
-  const active = visibleOrders.filter(order => !["completed", "cancelled", "rejected"].includes(order.status));
+  const newOrders = visibleOrders.filter(order => order.status === "pending");
+  const active = visibleOrders.filter(order => ["confirmed", "preparing", "on_the_way"].includes(order.status));
   const completed = visibleOrders.filter(order => order.status === "completed");
+  const cancelled = visibleOrders.filter(order => ["cancelled", "rejected"].includes(order.status));
+  const filteredOrders = statusView === "new" ? newOrders : statusView === "active" ? active : statusView === "completed" ? completed : cancelled;
   const copy = orderScopeCopy[scope];
   const announceShare = (result: "native" | "web" | "download", fallback: string) => toast.success(result === "download" ? fallback : "اختر واتساب من نافذة المشاركة");
   const requestStatusChange = (id: number, status: "cancelled" | "rejected") => {
@@ -267,10 +272,11 @@ function OrdersPanel({ scope }: { scope: OrderScope }) {
   };
 
   return <div className="space-y-5">
-    <section className="admin-overview"><div><span>ضمن هذا القسم</span><strong>{visibleOrders.length}</strong></div><div><span>طلبات حية</span><strong>{active.length}</strong></div><div><span>مكتملة</span><strong>{completed.length}</strong></div></section>
+    <section className="admin-overview"><div><span>طلبات جديدة</span><strong>{newOrders.length}</strong></div><div><span>طلبات جارية</span><strong>{active.length}</strong></div><div><span>مكتملة</span><strong>{completed.length}</strong></div><div><span>ملغاة</span><strong>{cancelled.length}</strong></div></section>
     <section className="admin-section">
       <div className="admin-section-heading"><div><p>{copy.eyebrow}</p><h2>{copy.title}</h2></div>{scope !== "archive" ? <span className="live-dot">محدّث</span> : <span className="admin-note">يُحذف تلقائياً بعد 7 أيام</span>}</div>
-      {visibleOrders.length ? <div className="orders-list">{visibleOrders.map(order => {
+      {scope !== "archive" ? <div className="mb-4 grid grid-cols-2 gap-2 md:grid-cols-4"><button type="button" onClick={() => setStatusView("new")} className={`rounded-xl border px-3 py-3 text-sm font-black ${statusView === "new" ? "border-orange-300 bg-orange-50 text-[#63301b]" : "border-slate-100 bg-white text-slate-500"}`}><ClipboardList className="mx-auto mb-1 h-5 w-5" />جديدة ({newOrders.length})</button><button type="button" onClick={() => setStatusView("active")} className={`rounded-xl border px-3 py-3 text-sm font-black ${statusView === "active" ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-100 bg-white text-slate-500"}`}><RefreshCw className="mx-auto mb-1 h-5 w-5" />جارية ({active.length})</button><button type="button" onClick={() => setStatusView("completed")} className={`rounded-xl border px-3 py-3 text-sm font-black ${statusView === "completed" ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-100 bg-white text-slate-500"}`}><CheckCircle2 className="mx-auto mb-1 h-5 w-5" />مكتملة ({completed.length})</button><button type="button" onClick={() => setStatusView("cancelled")} className={`rounded-xl border px-3 py-3 text-sm font-black ${statusView === "cancelled" ? "border-red-300 bg-red-50 text-red-700" : "border-slate-100 bg-white text-slate-500"}`}><XCircle className="mx-auto mb-1 h-5 w-5" />ملغاة ({cancelled.length})</button></div> : null}
+      {filteredOrders.length ? <div className="orders-list">{filteredOrders.map(order => {
         const gpsUrl = order.locationUrl || mapUrlFromNotes(order.notes);
         const locationShareUrl = gpsUrl ? buildWhatsAppLocationUrl(order.customerName, gpsUrl) : null;
         const selectedDriver = availableDrivers.find(driver => String(driver.id) === driverByOrder[order.id]);
@@ -292,7 +298,7 @@ function OrdersPanel({ scope }: { scope: OrderScope }) {
           {scope !== "archive" && order.orderType === "delivery" ? <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-orange-50/70 p-2"><select value={driverByOrder[order.id] ?? ""} onChange={event => setDriverByOrder(current => ({ ...current, [order.id]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-orange-200 bg-white px-2 py-2 text-xs font-bold text-slate-700"><option value="">اختر مندوباً متاحاً للتعيين</option>{availableDrivers.map(driver => <option key={driver.id} value={driver.id}>{driver.name} · {driver.region}</option>)}</select><Button size="sm" disabled={!driverByOrder[order.id] || assignDriver.isPending} onClick={() => { if (driverShareUrl) window.open(driverShareUrl, "_blank", "noopener,noreferrer"); assignDriver.mutate({ orderId: order.id, driverId: Number(driverByOrder[order.id]) }); }} className="rounded-lg bg-[#c75b26] hover:bg-[#a9471b]">تعيين وإرسال التفاصيل للمندوب</Button></div> : null}
           <div className="order-card-footer"><div><span>{order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}</span>{order.orderType === "delivery" ? <strong>{formatSyp(order.totalAmount)}</strong> : <strong>يحدد السعر لاحقاً</strong>}</div>{scope !== "archive" ? <select value={order.status} onChange={e => updateStatus.mutate({ id: order.id, status: e.target.value as keyof typeof orderStatusLabels })} aria-label="تغيير الحالة">{Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select> : <span className="text-xs font-bold text-slate-400">في الأرشيف</span>}</div>
         </article>;
-      })}</div> : <Empty icon={scope === "taxi" ? CarFront : scope === "archive" ? Archive : ClipboardList} title={copy.empty} text={scope === "archive" ? "تُنقل الطلبات هنا تلقائياً بعد مرور 24 ساعة، ثم تحذف نهائياً بعد 7 أيام." : "ستظهر الطلبات الجديدة هنا فور إرسالها من التطبيق."} />}
+      })}</div> : <Empty icon={scope === "taxi" ? CarFront : scope === "archive" ? Archive : ClipboardList} title={statusView === "new" ? copy.empty : statusView === "active" ? "لا توجد طلبات جارية" : statusView === "completed" ? "لا توجد طلبات مكتملة" : "لا توجد طلبات ملغاة"} text={scope === "archive" ? "تُنقل الطلبات هنا تلقائياً بعد مرور 24 ساعة، ثم تحذف نهائياً بعد 7 أيام." : "ستظهر الطلبات في هذه الخانة تلقائياً حسب حالتها."} />}
     </section>
   </div>;
 }
