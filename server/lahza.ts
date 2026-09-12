@@ -18,7 +18,7 @@ import { deleteOfferImage, uploadOfferImage } from "./offerMedia";
 import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
 import { sendPushNotification } from "./pushNotifications";
-import { sendWahaReplyButtons, sendWahaText } from "./waha";
+import { resolveWahaLid, sendWahaReplyButtons, sendWahaText } from "./waha";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
@@ -249,6 +249,10 @@ export async function handleWahaWebhook(body: unknown) {
   if (!payload || payload.fromMe || !payload.from) return;
   const senderIds = [payload.from, payload.participant, payload._data?.from, payload._data?.author, payload._data?.participant].filter((value): value is string => Boolean(value));
   const senderPhones = senderIds.filter(value => !value.includes("@lid") && !value.includes("@g.us")).map(value => `+${value.replace(/\D/g, "")}`).filter(value => /^\+\d{7,15}$/.test(value));
+  for (const senderId of senderIds.filter(value => value.includes("@lid"))) {
+    const resolvedPhone = await resolveWahaLid(senderId);
+    if (resolvedPhone) senderPhones.push(resolvedPhone);
+  }
   const buttonReply = payload._data?.dynamicReplyButtons?.at(-1)?.buttonText?.displayText;
   const buttonId = payload._data?.dynamicReplyButtons?.at(-1)?.buttonId;
   const reply = (buttonReply || payload.body || (buttonId === "ready" ? "جاهز" : buttonId === "not_ready" ? "غير جاهز" : "")).trim().replace(/[.!؟?]+$/g, "");

@@ -78,3 +78,22 @@ export async function sendWahaReplyButtons(phone: string, message: WahaMessage, 
     return { configured: true, sent: false };
   }
 }
+
+export async function resolveWahaLid(lid: string) {
+  const config = getWahaConfig();
+  const normalizedLid = lid.replace(/@lid$/, "").replace(/\D/g, "");
+  if (!config || !normalizedLid) return null;
+  try {
+    const response = await fetch(`${config.baseUrl}/api/${encodeURIComponent(config.session)}/lids/${encodeURIComponent(normalizedLid)}`, {
+      headers: { Accept: "application/json", "X-Api-Key": config.apiKey },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return null;
+    const result = await response.json() as { pn?: string; phoneNumber?: string };
+    const phone = result.pn || result.phoneNumber;
+    return phone ? `+${phone.replace(/\D/g, "")}` : null;
+  } catch (error) {
+    console.warn("WAHA LID resolution failed", error);
+    return null;
+  }
+}
