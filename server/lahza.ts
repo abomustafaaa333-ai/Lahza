@@ -270,14 +270,34 @@ export async function handleWahaWebhook(body: unknown) {
   const buttonReply = payload._data?.dynamicReplyButtons?.at(-1)?.buttonText?.displayText;
   const buttonId = payload._data?.dynamicReplyButtons?.at(-1)?.buttonId;
   const rawReply = (buttonReply || payload.body || (buttonId === "ready" ? "نعم" : buttonId === "not_ready" ? "لا" : "")).trim().replace(/[.!؟?]+$/g, "");
+  const completeCommand = rawReply === "10";
   const reply = rawReply === "نعم" || rawReply === "جاهز" ? "جاهز" : rawReply === "لا" || rawReply === "غير جاهز" ? "غير جاهز" : "";
-  if (!reply) return;
+  if (!reply && !completeCommand) return;
   const db = await getDb();
   if (!db) return;
   const availableDrivers = await db.select().from(drivers);
   const driver = availableDrivers.find(candidate => senderPhones.some(phone => phone === candidate.phone || phone.replace(/^\+/, "") === candidate.phone.replace(/^\+/, "")));
   console.info("WAHA driver reply identity", { senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
   if (!driver) return;
+  if (completeCommand) {
+    const activeAssignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
+    if (!activeAssignment) {
+      void sendWahaText(driver.phone, { body: "لا يوجد لديك طلب نشط لإنهائه حالياً." });
+      return;
+    }
+    const now = new Date();
+    await db.update(orderAssignments).set({ status: "delivered", deliveredAt: now }).where(and(eq(orderAssignments.id, activeAssignment.assignment.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"])));
+    await db.update(orders).set({ status: "completed", statusChangedAt: now, statusReason: "اكتمل الطلب بأمر المندوب 10" }).where(and(eq(orders.id, activeAssignment.order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
+    await db.update(drivers).set({ available: true }).where(eq(drivers.id, driver.id));
+    await createOrderStatusNotification(db, activeAssignment.order, "completed");
+    await awardCustomerPoint(db, activeAssignment.order.customerPhone, "order_completed", activeAssignment.order.id);
+    const completionMessage = { title: "تم تسليم طلبك", body: `تم إنهاء الطلب #${activeAssignment.order.id} وتسجيله كمكتمل.` };
+    const customerTokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, activeAssignment.order.customerPhone), eq(pushTokens.active, true)));
+    await sendPushNotification(customerTokens.map(row => row.token), completionMessage);
+    void sendWahaText(activeAssignment.order.customerPhone, completionMessage);
+    void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل، وأصبحت متاحاً لاستقبال طلب جديد.` });
+    return;
+  }
   const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
   if (!assignment) {
     if (reply === "جاهز") {
