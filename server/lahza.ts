@@ -1670,6 +1670,11 @@ export const lahzaRouter = router({
       const lines = await db.select().from(orderLines).where(eq(orderLines.orderId, order.id));
       return { ...order, lines };
     }),
+    history: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      return db.select({ id: orders.id, status: orders.status, orderType: orders.orderType, customerName: orders.customerName, totalAmount: orders.totalAmount, createdAt: orders.createdAt, updatedAt: orders.updatedAt }).from(orders).where(eq(orders.customerPhone, input.customerPhone)).orderBy(desc(orders.createdAt)).limit(50);
+    }),
     list: publicProcedure.query(async ({ ctx }) => {
       const session = await requireAdmin(ctx);
       const db = await getDb();
