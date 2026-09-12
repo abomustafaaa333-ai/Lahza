@@ -154,6 +154,7 @@ export const orders = mysqlTable("orders", {
   deliveryFee: int("deliveryFee").notNull().default(0),
   preparationMinutes: int("preparationMinutes").notNull().default(0),
   status: mysqlEnum("status", ["pending", "confirmed", "preparing", "on_the_way", "completed", "cancelled", "rejected"]).notNull().default("pending"),
+  manualStatusOverride: boolean("manualStatusOverride").notNull().default(false),
   taxiType: mysqlEnum("taxiType", ["standard", "van"]),
   pickupLocation: varchar("pickupLocation", { length: 220 }),
   destination: varchar("destination", { length: 220 }),

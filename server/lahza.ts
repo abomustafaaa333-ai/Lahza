@@ -135,6 +135,7 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
   await ensureColumn("orders", "orderCity", "ENUM('manbij', 'jarabulus') NOT NULL DEFAULT 'manbij'");
   await ensureColumn("orders", "fulfillmentScope", "ENUM('local', 'manbij_to_jarabulus') NOT NULL DEFAULT 'local'");
   await ensureColumn("orders", "preparationMinutes", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("orders", "manualStatusOverride", "BOOLEAN NOT NULL DEFAULT FALSE");
   await ensureColumn("system_settings", "jarabulusMinimumOrder", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_MINIMUM_ORDER_SYP}`);
   await ensureColumn("system_settings", "jarabulusPreparationMinutes", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_PREPARATION_MINUTES}`);
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `order_notifications` (`id` INT NOT NULL AUTO_INCREMENT, `orderId` INT NOT NULL, `customerPhone` VARCHAR(24) NOT NULL, `status` ENUM('pending','confirmed','preparing','on_the_way','completed','cancelled','rejected') NOT NULL, `title` VARCHAR(120) NOT NULL, `body` VARCHAR(300) NOT NULL, `readAt` TIMESTAMP NULL DEFAULT NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), CONSTRAINT `order_notifications_orderId_orders_id_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE CASCADE)"));
@@ -195,6 +196,7 @@ export async function autoCompleteDueOrders() {
   const now = new Date();
   const due = await db.select().from(orders).where(and(
     inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]),
+    eq(orders.manualStatusOverride, false),
     lte(sql`DATE_ADD(${orders.statusChangedAt}, INTERVAL GREATEST(${orders.preparationMinutes}, 30) MINUTE)`, now),
   )).limit(100);
   for (const order of due) {
@@ -1722,7 +1724,7 @@ export const lahzaRouter = router({
       await ensureJarabulusGatewaySchema(db);
       const existing = (await db.select().from(orders).where(eq(orders.id, input.id)).limit(1))[0];
       if (!existing || (session.role !== "owner" && existing.fulfillmentScope !== "manbij_to_jarabulus" && existing.orderCity !== (session.city ?? ctx.city))) throw new Error("لا يمكنك تحديث طلب تابع لمدينة أخرى");
-      await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date() }).where(eq(orders.id, input.id));
+      await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date(), manualStatusOverride: true }).where(eq(orders.id, input.id));
       if (existing.status !== input.status) await createOrderStatusNotification(db, existing, input.status);
       if (input.status === "completed") {
         const order = (await db.select({ customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.id)).limit(1))[0];
