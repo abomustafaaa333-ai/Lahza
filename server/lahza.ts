@@ -238,7 +238,11 @@ export async function handleWahaWebhook(body: unknown) {
   const driver = (await db.select().from(drivers).where(eq(drivers.phone, phone)).limit(1))[0];
   if (!driver) return;
   const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
-  if (!assignment) return;
+  if (!assignment) {
+    await db.update(drivers).set({ available: reply === "جاهز" }).where(eq(drivers.id, driver.id));
+    void sendWahaText(driver.phone, { body: reply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك." });
+    return;
+  }
   if (reply === "جاهز") {
     await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, assignment.assignment.id));
     await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب عبر واتساب" }).where(eq(orders.id, assignment.order.id));
