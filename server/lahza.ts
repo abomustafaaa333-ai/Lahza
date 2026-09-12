@@ -203,11 +203,22 @@ function distanceBetweenE6(lat1: number, lng1: number, lat2: number, lng2: numbe
 }
 
 async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
-  if (!storeId) return null;
+  if (!storeId) {
+    console.warn("Automatic dispatch skipped: order has no primary store", { orderId });
+    return null;
+  }
   const store = (await db.select({ id: stores.id, name: stores.name, locationLat: stores.locationLat, locationLng: stores.locationLng }).from(stores).where(eq(stores.id, storeId)).limit(1))[0];
-  if (!store?.locationLat || !store.locationLng) return null;
+  if (!store?.locationLat || !store.locationLng) {
+    console.warn("Automatic dispatch skipped: store has no coordinates", { orderId, storeId });
+    return null;
+  }
   const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true)));
-  const nearest = candidates.filter(driver => !excludedDriverIds.includes(driver.id) && driver.locationLat !== null && driver.locationLng !== null && (driver.region.includes(orderCity === "manbij" ? "منبج" : "جرابلس") || driver.region.includes("الكل"))).sort((a, b) => distanceBetweenE6(store.locationLat!, store.locationLng!, a.locationLat!, a.locationLng!) - distanceBetweenE6(store.locationLat!, store.locationLng!, b.locationLat!, b.locationLng!))[0];
+  const cityLabel = orderCity === "manbij" ? "منبج" : "جرابلس";
+  const withCoordinates = candidates.filter(driver => !excludedDriverIds.includes(driver.id) && driver.locationLat !== null && driver.locationLng !== null);
+  const cityCandidates = withCoordinates.filter(driver => driver.region.includes(cityLabel) || driver.region.includes("الكل"));
+  const eligibleCandidates = cityCandidates.length ? cityCandidates : withCoordinates;
+  console.info("Automatic dispatch candidate check", { orderId, orderCity, storeId, activeAvailable: candidates.length, withCoordinates: withCoordinates.length, cityCandidates: cityCandidates.length });
+  const nearest = eligibleCandidates.sort((a, b) => distanceBetweenE6(store.locationLat!, store.locationLng!, a.locationLat!, a.locationLng!) - distanceBetweenE6(store.locationLat!, store.locationLng!, b.locationLat!, b.locationLng!))[0];
   if (!nearest) {
     const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
     for (const contact of contacts) void sendWahaText(contact.phone, { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} من متجر ${store.name} للعميل ${customerName} يحتاج تدخلاً يدوياً.` });
