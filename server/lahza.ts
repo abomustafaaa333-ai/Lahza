@@ -2327,8 +2327,13 @@ export const lahzaRouter = router({
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const exists = await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.phone, input.phone)).limit(1);
-        if (exists[0]) throw new Error("رقم المندوب مستخدم بالفعل");
+        const exists = (await db.select().from(drivers).where(eq(drivers.phone, input.phone)).limit(1))[0];
+        if (exists?.active) throw new Error("رقم المندوب مستخدم بالفعل");
+        if (exists) {
+          const { locationLat, locationLng, ...driverData } = input;
+          await db.update(drivers).set({ ...driverData, active: true, available: true, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, exists.id));
+          return { success: true, reactivated: true };
+        }
         const { locationLat, locationLng, ...driverData } = input;
         await db.insert(drivers).values({ ...driverData, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) });
         return { success: true };
