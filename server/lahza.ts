@@ -315,6 +315,7 @@ export const tickerSettingsInputSchema = z.object({
 
 async function ensureCustomerOtpTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `customer_otp_codes` (`phone` VARCHAR(24) NOT NULL PRIMARY KEY, `codeHash` VARCHAR(255) NOT NULL, `expiresAt` TIMESTAMP NOT NULL, `attempts` INT NOT NULL DEFAULT 0, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"));
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `customer_otp_verified` (`phone` VARCHAR(24) NOT NULL PRIMARY KEY, `expiresAt` TIMESTAMP NOT NULL)"));
 }
 
 async function hashSecret(value: string) {
@@ -1276,12 +1277,18 @@ export const lahzaRouter = router({
         throw new Error("رمز التحقق غير صحيح");
       }
       await db.execute(sql`DELETE FROM \`customer_otp_codes\` WHERE \`phone\` = ${input.phone}`);
+      await db.execute(sql`INSERT INTO \`customer_otp_verified\` (\`phone\`, \`expiresAt\`) VALUES (${input.phone}, DATE_ADD(NOW(), INTERVAL 10 MINUTE)) ON DUPLICATE KEY UPDATE \`expiresAt\` = VALUES(\`expiresAt\`)`);
       return { success: true };
     }),
     register: publicProcedure.input(z.object({ phone: internationalPhoneSchema, name: z.string().trim().min(2).max(80), city: z.enum(["منبج", "جرابلس"]) })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCustomerAccountsTable(db);
+      await ensureCustomerOtpTable(db);
+      const [verifiedRows] = await db.execute(sql`SELECT \`expiresAt\` FROM \`customer_otp_verified\` WHERE \`phone\` = ${input.phone} LIMIT 1`);
+      const verified = (Array.isArray(verifiedRows) ? verifiedRows[0] : null) as { expiresAt?: Date | string } | null;
+      if (!verified || new Date(verified.expiresAt ?? 0).getTime() <= Date.now()) throw new Error("تحقق من رقم هاتفك أولاً");
+      await db.execute(sql`DELETE FROM \`customer_otp_verified\` WHERE \`phone\` = ${input.phone}`);
       const existing = (await db.select().from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
       if (!existing) {
         await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, city: input.city, status: "pending" });
