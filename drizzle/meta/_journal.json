@@ -211,6 +211,13 @@
       "when": 1789139200000,
       "tag": "0030_driver_assignment_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1789139300000,
+      "tag": "0031_owner_phone",
+      "breakpoints": true
     }
   ]
 }

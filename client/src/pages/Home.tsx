@@ -557,7 +557,7 @@ export default function Home() {
   const orderTrackingInput = useMemo(() => ({ orderId: submittedOrder?.id ?? 1, customerPhone: submittedOrder?.customerPhone ?? "+963900000000" }), [submittedOrder?.id, submittedOrder?.customerPhone]);
   const orderTrackingQuery = trpc.lahza.orders.track.useQuery(orderTrackingInput, { enabled: !isStaticDemo && Boolean(submittedOrder), retry: false, refetchInterval: screen === "orderTracking" ? 15_000 : false });
   const orderNotificationPhone = customerAuth?.phone || (checkoutPhone.length === 9 ? `+963${checkoutPhone}` : "");
-  const orderNotificationsQuery = trpc.lahza.notifications.orderFeed.useQuery({ customerPhone: orderNotificationPhone, unreadOnly: true }, { enabled: !isStaticDemo && /^\+9639\d{8}$/.test(orderNotificationPhone), retry: false, refetchInterval: 15_000 });
+  const orderNotificationsQuery = trpc.lahza.notifications.orderFeed.useQuery({ customerPhone: orderNotificationPhone, unreadOnly: true }, { enabled: !isStaticDemo && /^\+[1-9]\d{6,14}$/.test(orderNotificationPhone), retry: false, refetchInterval: 15_000 });
   const markOrderNotificationRead = trpc.lahza.notifications.markOrderRead.useMutation({ onSuccess: () => { void orderNotificationsQuery.refetch(); } });
   const staffSessionEnabled = !isStaticDemo && (!customerAuth || secretOpen);
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: staffSessionEnabled, retry: false, staleTime: 60_000 });
@@ -1204,7 +1204,7 @@ function CustomerAccountScreen({ session, orders, onBack, onLogout, onPhoneSubmi
   const [pendingPhone, setPendingPhone] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [referralCode, setReferralCode] = useState("");
-  const pointsQuery = trpc.lahza.customers.points.balance.useQuery({ phone: phone || "+963900000000" }, { enabled: !isStaticDemo && !isGuest && /^\+9639\d{8}$/.test(phone), retry: false });
+  const pointsQuery = trpc.lahza.customers.points.balance.useQuery({ phone: phone || "+963900000000" }, { enabled: !isStaticDemo && !isGuest && /^\+[1-9]\d{6,14}$/.test(phone), retry: false });
   const createReferralCode = trpc.lahza.customers.referral.getOrCreate.useMutation({ onSuccess: result => { setReferralCode(result.code); void navigator.clipboard?.writeText(result.code); toast.success("تم إنشاء رمز الإحالة ونسخه"); }, onError: error => toast.error(error.message) });
   useEffect(() => {
     setNewPhone(phone.replace(/^\+963/, ""));
@@ -1223,7 +1223,7 @@ function CustomerAccountScreen({ session, orders, onBack, onLogout, onPhoneSubmi
       toast.success("تم إنشاء رمز الإحالة التجريبي ونسخه");
       return;
     }
-    if (/^\+9639\d{8}$/.test(phone)) createReferralCode.mutate({ phone });
+    if (/^\+[1-9]\d{6,14}$/.test(phone)) createReferralCode.mutate({ phone });
   };
   const submitPhone = () => {
     const normalized = newPhone.replace(/\D/g, "").replace(/^963/, "").replace(/^0/, "").slice(0, 9);

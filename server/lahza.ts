@@ -192,8 +192,9 @@ async function createOrderStatusNotification(db: NonNullable<Awaited<ReturnType<
   void sendWahaText(order.customerPhone, message);
 }
 
-function notifyOwnerOrderCompleted(orderId: number) {
-  void sendWahaText(DEFAULT_OWNER_PHONE, { body: `الطلب رقم #${orderId} اكتمل.` });
+async function notifyOwnerOrderCompleted(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number) {
+  const settings = await getSettings();
+  void sendWahaText(settings.ownerPhone || DEFAULT_OWNER_PHONE, { body: `الطلب رقم #${orderId} اكتمل.` });
 }
 
 function distanceBetweenE6(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -237,7 +238,8 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
       db.select({ phone: lahzaEmployees.phone }).from(lahzaEmployees).where(eq(lahzaEmployees.active, true)).limit(10),
       db.select({ phone: supervisors.username }).from(supervisors).where(and(eq(supervisors.active, true), eq(supervisors.city, orderCity))).limit(10),
     ]);
-    const phones = [DEFAULT_OWNER_PHONE, ...contacts, ...employees, ...activeSupervisors]
+    const settings = await getSettings();
+    const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts, ...employees, ...activeSupervisors]
       .map(contact => (typeof contact === "string" ? contact : contact.phone).trim())
       .filter((phone, index, all) => phone && all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
     const alert = { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} من متجر ${store.name} للعميل ${customerName} لا يوجد له مندوب متاح حالياً. يرجى التدخل يدوياً.` };
@@ -295,7 +297,7 @@ export async function handleWahaWebhook(body: unknown) {
     await db.update(drivers).set({ available: true }).where(eq(drivers.id, driver.id));
     await createOrderStatusNotification(db, activeAssignment.order, "completed");
     await awardCustomerPoint(db, activeAssignment.order.customerPhone, "order_completed", activeAssignment.order.id);
-    notifyOwnerOrderCompleted(activeAssignment.order.id);
+    await notifyOwnerOrderCompleted(db, activeAssignment.order.id);
     const completionMessage = { title: "تم تسليم طلبك", body: `تم إنهاء الطلب #${activeAssignment.order.id} وتسجيله كمكتمل.` };
     const customerTokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, activeAssignment.order.customerPhone), eq(pushTokens.active, true)));
     await sendPushNotification(customerTokens.map(row => row.token), completionMessage);
@@ -353,7 +355,7 @@ export async function autoCompleteDueOrders() {
     await db.update(drivers).set({ available: true }).where(eq(drivers.id, (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, order.id)).limit(1))[0]?.driverId ?? -1));
     await createOrderStatusNotification(db, order, "completed");
     await awardCustomerPoint(db, order.customerPhone, "order_completed", order.id);
-    notifyOwnerOrderCompleted(order.id);
+    await notifyOwnerOrderCompleted(db, order.id);
   }
   const followUpCutoff = new Date(Date.now() - 20 * 60_000);
   const followUps = await db.select({ order: orders, assignment: orderAssignments, driver: drivers }).from(orders).innerJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orders.status, "preparing"), eq(orderAssignments.status, "accepted"))).limit(100);
@@ -626,7 +628,7 @@ async function getSettings() {
     return current[0];
   }
   const masterPinHash = await hashSecret(DEFAULT_MASTER_PIN);
-  await db.insert(systemSettings).values({ id: 1, masterPinHash, manbijDeliveryPercent: 20, jarabulusDeliveryPercent: 30, jarabulusMinimumOrder: DEFAULT_JARABULUS_MINIMUM_ORDER_SYP, jarabulusPreparationMinutes: DEFAULT_JARABULUS_PREPARATION_MINUTES, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
+  await db.insert(systemSettings).values({ id: 1, masterPinHash, ownerPhone: DEFAULT_OWNER_PHONE, manbijDeliveryPercent: 20, jarabulusDeliveryPercent: 30, jarabulusMinimumOrder: DEFAULT_JARABULUS_MINIMUM_ORDER_SYP, jarabulusPreparationMinutes: DEFAULT_JARABULUS_PREPARATION_MINUTES, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
   const created = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   return created[0]!;
 }
@@ -777,7 +779,7 @@ const customCategoryInput = z.object({
 
 const partnerAccountInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم الشريك أو المتجر").max(120),
-  phone: z.string().trim().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سورياً صحيحاً يبدأ بـ +9639"),
+  phone: internationalPhoneSchema,
   password: passwordSchema,
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
   city: z.enum(CITY_KEYS).optional(),
@@ -993,7 +995,7 @@ export const lahzaRouter = router({
       return storeCategories.map((key, index) => ({ key, title: overrides[key]?.title || categoryMeta[key].title, subtitle: overrides[key]?.subtitle || categoryMeta[key].subtitle, active: overrides[key]?.active ?? true, sortOrder: overrides[key]?.sortOrder ?? index }));
     }),
     update: publicProcedure.input(z.object({ key: z.enum(storeCategories), title: z.string().trim().min(2).max(120), subtitle: z.string().trim().min(2).max(220), active: z.boolean(), sortOrder: z.number().int().min(0).max(9999) })).mutation(async ({ ctx, input }) => {
-      await requireAdmin(ctx, ["owner", "supervisor"]);
+      await requireAdmin(ctx, ["owner"]);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const settings = await getSettings();
@@ -1100,9 +1102,11 @@ export const lahzaRouter = router({
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const existing = await db.select({ code: customerReferrals.code }).from(customerReferrals).where(eq(customerReferrals.ownerPhone, input.phone)).limit(1);
         if (existing[0]) return { code: existing[0].code };
-        const code = `LHZ-${randomBytes(4).toString("hex").toUpperCase()}`;
-        await db.insert(customerReferrals).values({ code, ownerPhone: input.phone });
-        return { code };
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const code = `LHZ-${randomBytes(4).toString("hex").toUpperCase()}`;
+          try { await db.insert(customerReferrals).values({ code, ownerPhone: input.phone }); return { code }; } catch (error) { if (attempt === 2) throw error; }
+        }
+        throw new Error("تعذر إنشاء رمز الإحالة حالياً");
       }),
     }),
     dashboard: publicProcedure.query(async ({ ctx }) => {
@@ -1956,7 +1960,7 @@ export const lahzaRouter = router({
         const order = (await db.select({ customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.id)).limit(1))[0];
         if (order) {
           await awardCustomerPoint(db, order.customerPhone, "order_completed", input.id);
-          notifyOwnerOrderCompleted(input.id);
+          await notifyOwnerOrderCompleted(db, input.id);
           const referral = (await db.select().from(customerReferrals).where(and(eq(customerReferrals.referredOrderId, input.id), isNull(customerReferrals.completedAt))).limit(1))[0];
           if (referral) { await db.update(customerReferrals).set({ completedAt: new Date() }).where(eq(customerReferrals.id, referral.id)); await awardCustomerPoint(db, referral.ownerPhone, "referral_completed", undefined, referral.id); }
         }
@@ -2007,8 +2011,9 @@ export const lahzaRouter = router({
     });
   }),
   admin: router({
-    staffLookup: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema })).query(async ({ input }) => {
-      if (input.phone === DEFAULT_OWNER_PHONE) return { role: "owner" as const };
+    staffLookup: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).query(async ({ input }) => {
+      const settings = await getSettings();
+      if (input.phone === (settings.ownerPhone || DEFAULT_OWNER_PHONE)) return { role: "owner" as const };
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const [supervisor, partner] = await Promise.all([
@@ -2026,13 +2031,13 @@ export const lahzaRouter = router({
     }),
     categories: router({
       list: publicProcedure.query(async ({ ctx }) => {
-        await requireAdmin(ctx, ["owner", "supervisor"]);
+        await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         return db.select().from(customCategories).orderBy(customCategories.sortOrder, customCategories.title);
       }),
       create: publicProcedure.input(customCategoryInput).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx, ["owner", "supervisor"]);
+        await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const slug = `custom-${randomBytes(6).toString("hex")}`;
@@ -2040,7 +2045,7 @@ export const lahzaRouter = router({
         return { success: true };
       }),
       update: publicProcedure.input(customCategoryInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx, ["owner", "supervisor"]);
+        await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const { id, ...patch } = input;
@@ -2048,7 +2053,7 @@ export const lahzaRouter = router({
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx, ["owner", "supervisor"]);
+        await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const [storeLink, itemLink] = await Promise.all([
@@ -2144,12 +2149,14 @@ export const lahzaRouter = router({
         await db.insert(partners).values({ name: input.name, username: input.phone, imageUrl: input.imageUrl || null, passwordHash: await hashSecret(input.password), active: true, storeOpen: true, preparationMinutes: 20, city: input.city ?? ctx.city });
         return { success: true };
       }),
-      update: publicProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(120), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")), active: z.boolean(), storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440), city: z.enum(CITY_KEYS).optional() })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ id: z.number().int().positive(), phone: internationalPhoneSchema, name: z.string().trim().min(2).max(120), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")), active: z.boolean(), storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440), city: z.enum(CITY_KEYS).optional() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureProfileImageColumns(db);
-        await db.update(partners).set({ name: input.name, imageUrl: input.imageUrl || null, active: input.active, storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, city: input.city ?? ctx.city }).where(and(eq(partners.id, input.id), eq(partners.city, ctx.city)));
+        const phoneExists = await db.select({ id: partners.id }).from(partners).where(and(eq(partners.username, input.phone), sql`${partners.id} <> ${input.id}`)).limit(1);
+        if (phoneExists[0]) throw new Error("رقم هاتف الشريك مستخدم بالفعل");
+        await db.update(partners).set({ username: input.phone, name: input.name, imageUrl: input.imageUrl || null, active: input.active, storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, city: input.city ?? ctx.city }).where(and(eq(partners.id, input.id), eq(partners.city, ctx.city)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -2312,8 +2319,8 @@ export const lahzaRouter = router({
     }),
     session: publicProcedure.query(async ({ ctx }) => readSession(ctx)),
     login: publicProcedure.input(z.discriminatedUnion("role", [
-      z.object({ role: z.literal("owner"), phone: syrianCustomerPhoneSchema, password: passwordSchema }),
-      z.object({ role: z.literal("supervisor"), phone: syrianCustomerPhoneSchema, password: passwordSchema }),
+      z.object({ role: z.literal("owner"), phone: internationalPhoneSchema, password: passwordSchema }),
+      z.object({ role: z.literal("supervisor"), phone: internationalPhoneSchema, password: passwordSchema }),
     ])).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
       if (!runtimeId) throw new Error("تعذر تأمين جلسة الإدارة، أعد فتح التطبيق وحاول مرة أخرى");
@@ -2322,7 +2329,7 @@ export const lahzaRouter = router({
       await ensureDefaultStaffPasswords(db);
       if (input.role === "owner") {
         const settings = await getSettings();
-        if (input.phone !== DEFAULT_OWNER_PHONE || !await verifySecret(input.password, settings.masterPinHash)) throw new Error("رقم الهاتف أو كلمة مرور المالك غير صحيحة");
+        if (input.phone !== (settings.ownerPhone || DEFAULT_OWNER_PHONE) || !await verifySecret(input.password, settings.masterPinHash)) throw new Error("رقم الهاتف أو كلمة مرور المالك غير صحيحة");
         setAdminCookie(ctx, await createSession({ role: "owner", runtimeId }));
         return { role: "owner" as const };
       }
@@ -2611,14 +2618,16 @@ export const lahzaRouter = router({
       }),
     }),
     staff: router({
+      ownerPhone: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx, ["owner", "supervisor"]); const settings = await getSettings(); return { phone: settings.ownerPhone || DEFAULT_OWNER_PHONE }; }),
+      updateOwnerPhone: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner", "supervisor"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await db.update(systemSettings).set({ ownerPhone: input.phone }).where(eq(systemSettings.id, 1)); return { success: true }; }),
       list: publicProcedure.query(async ({ ctx }) => {
-        await requireAdmin(ctx, ["owner"]);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         return db.select({ id: supervisors.id, username: supervisors.username, active: supervisors.active, city: supervisors.city, createdAt: supervisors.createdAt }).from(supervisors).where(eq(supervisors.city, ctx.city)).orderBy(desc(supervisors.createdAt));
       }),
-      create: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema, password: passwordSchema.default(DEFAULT_STAFF_PASSWORD), city: z.enum(CITY_KEYS) })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx, ["owner"]);
+      create: publicProcedure.input(z.object({ phone: internationalPhoneSchema, password: passwordSchema.default(DEFAULT_STAFF_PASSWORD), city: z.enum(CITY_KEYS) })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const exists = await db.select({ id: supervisors.id }).from(supervisors).where(eq(supervisors.username, input.phone)).limit(1);
@@ -2626,8 +2635,9 @@ export const lahzaRouter = router({
         await db.insert(supervisors).values({ username: input.phone, passwordHash: await hashSecret(input.password), active: true, city: input.city });
         return { success: true };
       }),
+      update: publicProcedure.input(z.object({ id: z.number().int().positive(), phone: internationalPhoneSchema, active: z.boolean().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner", "supervisor"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); const exists = await db.select({ id: supervisors.id }).from(supervisors).where(and(eq(supervisors.username, input.phone), sql`${supervisors.id} <> ${input.id}`)).limit(1); if (exists[0]) throw new Error("رقم الهاتف مستخدم بالفعل"); await db.update(supervisors).set({ username: input.phone, ...(input.active === undefined ? {} : { active: input.active }) }).where(eq(supervisors.id, input.id)); return { success: true }; }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx, ["owner"]);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await db.delete(supervisors).where(eq(supervisors.id, input.id));

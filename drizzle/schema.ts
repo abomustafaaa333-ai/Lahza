@@ -189,6 +189,7 @@ export const orderLines = mysqlTable("order_lines", {
 export const systemSettings = mysqlTable("system_settings", {
   id: int("id").primaryKey(),
   masterPinHash: varchar("masterPinHash", { length: 255 }).notNull(),
+  ownerPhone: varchar("ownerPhone", { length: 24 }).notNull().default("+963997311078"),
   deliveryPricePerKm: int("deliveryPricePerKm").notNull().default(2),
   manbijDeliveryPercent: int("manbijDeliveryPercent").notNull().default(20),
   jarabulusDeliveryPercent: int("jarabulusDeliveryPercent").notNull().default(30),
