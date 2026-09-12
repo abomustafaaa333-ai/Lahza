@@ -279,6 +279,16 @@ export async function handleWahaWebhook(body: unknown) {
   if (!driver) return;
   const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
   if (!assignment) {
+    if (reply === "جاهز") {
+      const previous = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "cancelled"))).orderBy(desc(orderAssignments.updatedAt), desc(orderAssignments.assignedAt)).limit(1))[0];
+      if (previous) {
+        const current = (await db.select({ assignment: orderAssignments }).from(orderAssignments).where(and(eq(orderAssignments.orderId, previous.order.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up", "delivered"]))).limit(1))[0];
+        if (current && current.assignment.driverId !== driver.id) {
+          void sendWahaText(driver.phone, { body: `تم تنفيذ الطلب #${previous.order.id} من قبل مندوب آخر.` });
+          return;
+        }
+      }
+    }
     await db.update(drivers).set({ available: reply === "جاهز" }).where(eq(drivers.id, driver.id));
     void sendWahaText(driver.phone, { body: reply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك." });
     return;
@@ -294,14 +304,10 @@ export async function handleWahaWebhook(body: unknown) {
     void sendWahaText(driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${assignment.order.id}.` });
     return;
   }
-  // Keep the latest assignment pending. The driver may have pressed "غير جاهز"
-  // by mistake and then press "جاهز" for the same WhatsApp prompt. Cancelling
-  // and redispatching here used to make the subsequent "جاهز" response fall
-  // through to an older assignment (or to the general availability toggle).
-  // Keeping this assignment as `assigned` also makes repeated "جاهز" messages
-  // idempotent: after the first one it is no longer selected by this query.
-  await db.update(drivers).set({ available: false }).where(eq(drivers.id, driver.id));
-  void sendWahaText(driver.phone, { body: `تم تسجيلك غير جاهز مؤقتاً. سيبقى الطلب #${assignment.order.id} محفوظاً، أرسل «جاهز» لاعتماده.` });
+  await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, assignment.assignment.id));
+  await db.update(drivers).set({ available: true }).where(eq(drivers.id, driver.id));
+  const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, assignment.order.id)).limit(1))[0];
+  await dispatchOrderToNearestDriver(db, assignment.order.id, assignment.order.orderCity, line?.storeId ?? null, assignment.order.customerName, assignment.order.locationText, assignment.order.locationUrl, [driver.id]);
 }
 
 export async function autoCompleteDueOrders() {
