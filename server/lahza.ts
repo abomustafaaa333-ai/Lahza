@@ -226,8 +226,19 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   console.info("Automatic dispatch candidate check", { orderId, orderCity, storeId, activeAvailable: candidates.length, withCoordinates: withCoordinates.length, cityCandidates: cityCandidates.length });
   const nearest = eligibleCandidates.sort((a, b) => distanceBetweenE6(store.locationLat!, store.locationLng!, a.locationLat!, a.locationLng!) - distanceBetweenE6(store.locationLat!, store.locationLng!, b.locationLat!, b.locationLng!))[0];
   if (!nearest) {
-    const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
-    for (const contact of contacts) void sendWahaText(contact.phone, { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} من متجر ${store.name} للعميل ${customerName} يحتاج تدخلاً يدوياً.` });
+    // Notify every configured Lahza contact. Older installations may have the
+    // number in lahza_employees or supervisors instead of support_contacts.
+    const [contacts, employees, activeSupervisors] = await Promise.all([
+      db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10),
+      db.select({ phone: lahzaEmployees.phone }).from(lahzaEmployees).where(eq(lahzaEmployees.active, true)).limit(10),
+      db.select({ phone: supervisors.username }).from(supervisors).where(and(eq(supervisors.active, true), eq(supervisors.city, orderCity))).limit(10),
+    ]);
+    const phones = [...contacts, ...employees, ...activeSupervisors]
+      .map(contact => contact.phone.trim())
+      .filter((phone, index, all) => phone && all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
+    const alert = { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} من متجر ${store.name} للعميل ${customerName} لا يوجد له مندوب متاح حالياً. يرجى التدخل يدوياً.` };
+    const results = await Promise.allSettled(phones.map(phone => sendWahaText(phone, alert)));
+    console.warn("No-driver alert dispatched", { orderId, recipientCount: phones.length, recipients: phones.map(maskPhone), failures: results.filter(result => result.status === "rejected").length });
     return null;
   }
   await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}` }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}`, assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
