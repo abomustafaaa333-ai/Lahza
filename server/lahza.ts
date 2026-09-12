@@ -202,6 +202,12 @@ function distanceBetweenE6(lat1: number, lng1: number, lat2: number, lng2: numbe
   return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function maskPhone(phone: string) {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 7) return "***";
+  return `+${digits.slice(0, 6)}***${digits.slice(-4)}`;
+}
+
 async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
   if (!storeId) {
     console.warn("Automatic dispatch skipped: order has no primary store", { orderId });
@@ -227,6 +233,7 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}` }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}`, assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
   await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
   const distance = Math.round(distanceBetweenE6(store.locationLat, store.locationLng, nearest.locationLat!, nearest.locationLng!));
+  console.info("Automatic dispatch recipient", { orderId, driverId: nearest.id, phone: maskPhone(nearest.phone), chatId: `${nearest.phone.replace(/\D/g, "")}@c.us`.replace(/^(\d{6})\d+(\d{4}@c\.us)$/, "$1***$2"), distanceMeters: distance });
   const driverMessage = { title: `طلب جديد #${orderId}`, body: `من متجر ${store.name} على بعد ${distance}م. العميل: ${customerName}. الموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\nهل أنت جاهز لتنفيذ الطلب؟` };
   void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "جاهز" }, { id: "not_ready", text: "غير جاهز" }]).then(result => {
     if (!result.sent) void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: جاهز أو غير جاهز.` });
