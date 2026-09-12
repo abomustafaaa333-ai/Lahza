@@ -192,9 +192,11 @@ async function createOrderStatusNotification(db: NonNullable<Awaited<ReturnType<
   void sendWahaText(order.customerPhone, message);
 }
 
-async function notifyOwnerOrderCompleted(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number) {
+async function notifyOperationsOrderCompleted(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number) {
   const settings = await getSettings();
-  void sendWahaText(settings.ownerPhone || DEFAULT_OWNER_PHONE, { body: `الطلب رقم #${orderId} اكتمل.` });
+  const employees = await db.select({ phone: lahzaEmployees.phone }).from(lahzaEmployees).where(eq(lahzaEmployees.active, true)).limit(50);
+  const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...employees.map(employee => employee.phone)].filter((phone, index, all) => all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
+  await Promise.allSettled(phones.map(phone => sendWahaText(phone, { body: `الطلب رقم #${orderId} اكتمل.` })));
 }
 
 function distanceBetweenE6(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -297,7 +299,7 @@ export async function handleWahaWebhook(body: unknown) {
     await db.update(drivers).set({ available: true }).where(eq(drivers.id, driver.id));
     await createOrderStatusNotification(db, activeAssignment.order, "completed");
     await awardCustomerPoint(db, activeAssignment.order.customerPhone, "order_completed", activeAssignment.order.id);
-    await notifyOwnerOrderCompleted(db, activeAssignment.order.id);
+    await notifyOperationsOrderCompleted(db, activeAssignment.order.id);
     const completionMessage = { title: "تم تسليم طلبك", body: `تم إنهاء الطلب #${activeAssignment.order.id} وتسجيله كمكتمل.` };
     const customerTokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, activeAssignment.order.customerPhone), eq(pushTokens.active, true)));
     await sendPushNotification(customerTokens.map(row => row.token), completionMessage);
@@ -355,7 +357,7 @@ export async function autoCompleteDueOrders() {
     await db.update(drivers).set({ available: true }).where(eq(drivers.id, (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, order.id)).limit(1))[0]?.driverId ?? -1));
     await createOrderStatusNotification(db, order, "completed");
     await awardCustomerPoint(db, order.customerPhone, "order_completed", order.id);
-    await notifyOwnerOrderCompleted(db, order.id);
+    await notifyOperationsOrderCompleted(db, order.id);
   }
   const followUpCutoff = new Date(Date.now() - 20 * 60_000);
   const followUps = await db.select({ order: orders, assignment: orderAssignments, driver: drivers }).from(orders).innerJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orders.status, "preparing"), eq(orderAssignments.status, "accepted"))).limit(100);
@@ -1960,7 +1962,7 @@ export const lahzaRouter = router({
         const order = (await db.select({ customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.id)).limit(1))[0];
         if (order) {
           await awardCustomerPoint(db, order.customerPhone, "order_completed", input.id);
-          await notifyOwnerOrderCompleted(db, input.id);
+          await notifyOperationsOrderCompleted(db, input.id);
           const referral = (await db.select().from(customerReferrals).where(and(eq(customerReferrals.referredOrderId, input.id), isNull(customerReferrals.completedAt))).limit(1))[0];
           if (referral) { await db.update(customerReferrals).set({ completedAt: new Date() }).where(eq(customerReferrals.id, referral.id)); await awardCustomerPoint(db, referral.ownerPhone, "referral_completed", undefined, referral.id); }
         }
@@ -2590,27 +2592,27 @@ export const lahzaRouter = router({
     }),
     employees: router({
       list: publicProcedure.query(async ({ ctx }) => {
-        await requireAdmin(ctx);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         return db.select().from(lahzaEmployees).orderBy(desc(lahzaEmployees.createdAt));
       }),
       create: publicProcedure.input(z.object({ name: z.string().trim().min(2).max(80), phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم موظف سورياً صحيحاً") })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await db.insert(lahzaEmployees).values({ name: input.name, phone: input.phone, active: true });
         return { success: true };
       }),
       update: publicProcedure.input(z.object({ id: z.number().int().positive(), name: z.string().trim().min(2).max(80), phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم موظف سورياً صحيحاً"), active: z.boolean() })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await db.update(lahzaEmployees).set({ name: input.name, phone: input.phone, active: input.active }).where(eq(lahzaEmployees.id, input.id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx);
+        await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await db.delete(lahzaEmployees).where(eq(lahzaEmployees.id, input.id));
