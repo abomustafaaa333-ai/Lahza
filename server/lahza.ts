@@ -1692,7 +1692,10 @@ export const lahzaRouter = router({
     history: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      return db.select({ id: orders.id, status: orders.status, orderType: orders.orderType, customerName: orders.customerName, totalAmount: orders.totalAmount, createdAt: orders.createdAt, updatedAt: orders.updatedAt }).from(orders).where(eq(orders.customerPhone, input.customerPhone)).orderBy(desc(orders.createdAt)).limit(50);
+      const customerOrders = await db.select().from(orders).where(eq(orders.customerPhone, input.customerPhone)).orderBy(desc(orders.createdAt)).limit(50);
+      const ids = customerOrders.map(order => order.id);
+      const lines = ids.length ? await db.select().from(orderLines).where(inArray(orderLines.orderId, ids)) : [];
+      return customerOrders.map(order => ({ ...order, lines: lines.filter(line => line.orderId === order.id) }));
     }),
     list: publicProcedure.query(async ({ ctx }) => {
       const session = await requireAdmin(ctx);
