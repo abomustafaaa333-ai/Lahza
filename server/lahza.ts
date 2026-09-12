@@ -235,8 +235,9 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   const distance = Math.round(distanceBetweenE6(store.locationLat, store.locationLng, nearest.locationLat!, nearest.locationLng!));
   console.info("Automatic dispatch recipient", { orderId, driverId: nearest.id, phone: maskPhone(nearest.phone), chatId: `${nearest.phone.replace(/\D/g, "")}@c.us`.replace(/^(\d{6})\d+(\d{4}@c\.us)$/, "$1***$2"), distanceMeters: distance });
   const driverMessage = { title: `طلب جديد #${orderId}`, body: `من متجر ${store.name} على بعد ${distance}م. العميل: ${customerName}. الموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\nهل أنت جاهز لتنفيذ الطلب؟` };
+  void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: جاهز أو غير جاهز.` });
   void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "جاهز" }, { id: "not_ready", text: "غير جاهز" }]).then(result => {
-    if (!result.sent) void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: جاهز أو غير جاهز.` });
+    if (!result.sent) console.warn("Interactive driver buttons unavailable; text message was already sent", { orderId, driverId: nearest.id });
   });
   return nearest.id;
 }
