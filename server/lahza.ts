@@ -770,7 +770,7 @@ export const supportContactInput = z.object({
 
 export const driverInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المندوب").max(80),
-  phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم مندوب سورياً صحيحاً"),
+  phone: z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل رقم هاتف دولياً صحيحاً مع رمز الدولة"),
   vehicleType: z.enum(["motorcycle", "car", "van"]).default("motorcycle"),
   region: z.string().trim().min(2).max(120).default("منبج"),
   active: z.boolean().default(true),
@@ -2372,10 +2372,12 @@ export const lahzaRouter = router({
         if (exists) {
           const { locationLat, locationLng, ...driverData } = input;
           await db.update(drivers).set({ ...driverData, active: true, available: true, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, exists.id));
+          void sendWahaText(input.phone, { body: "لقد تم تعيينك مندوباً في شركة لحظة." });
           return { success: true, reactivated: true };
         }
         const { locationLat, locationLng, ...driverData } = input;
         await db.insert(drivers).values({ ...driverData, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) });
+        void sendWahaText(input.phone, { body: "لقد تم تعيينك مندوباً في شركة لحظة." });
         return { success: true };
       }),
       update: publicProcedure.input(driverInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
