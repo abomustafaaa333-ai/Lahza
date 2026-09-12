@@ -333,11 +333,11 @@ describe("بيانات الطلب الإلزامية", () => {
 
     expect(parsed.success).toBe(false);
   });
-  it("يرفض الرقم الذي لا يبدأ بالرقم 9 بعد النداء السوري", () => {
+  it("يقبل رقم العميل الدولي حسب دولته", () => {
     const parsed = orderInputSchema.safeParse({
       orderType: "delivery",
       customerName: "أحمد",
-      customerPhone: "+963812345678",
+      customerPhone: "+436641234567",
       paymentMethod: "cash",
       locationUrl: "https://www.google.com/maps/search/?api=1&query=36.12345,37.12345",
       locationLat: 36.12345,
@@ -345,7 +345,7 @@ describe("بيانات الطلب الإلزامية", () => {
       lines: [{ category: "pharmacy", itemName: "فيتامين C", quantity: 1, unit: "طلب" }],
     });
 
-    expect(parsed.success).toBe(false);
+    expect(parsed.success).toBe(true);
   });
 
   it("ينقل طلب المنتجات المتاحة والمسعّرة إلى التجهيز مباشرة", () => {

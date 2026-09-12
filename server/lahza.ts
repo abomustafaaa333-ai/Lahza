@@ -769,7 +769,7 @@ export const orderInputSchema = z.object({
   orderCity: z.enum(CITY_KEYS).optional(),
   intercityTripId: z.number().int().positive().optional(),
   customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
-  customerPhone: syrianCustomerPhoneSchema,
+  customerPhone: internationalPhoneSchema,
   locationMode: z.enum(["gps", "manual"]).default("gps"),
   locationText: z.string().trim().min(3, "اكتب وصفاً واضحاً لموقعك").max(280).optional(),
   locationUrl: z.string().url("رابط الموقع غير صالح").max(500).optional(),
