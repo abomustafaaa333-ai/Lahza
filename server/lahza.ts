@@ -1245,7 +1245,7 @@ export const lahzaRouter = router({
     }),
   }),
   customerAccounts: router({
-    register: publicProcedure.input(z.object({ phone: z.string().regex(/^\+9639\d{8}$/, "أدخل رقم واتساب سورياً صحيحاً"), name: z.string().trim().min(2).max(80), city: z.enum(["منبج", "جرابلس"]) })).mutation(async ({ input }) => {
+    register: publicProcedure.input(z.object({ phone: internationalPhoneSchema, name: z.string().trim().min(2).max(80), city: z.enum(["منبج", "جرابلس"]) })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCustomerAccountsTable(db);
