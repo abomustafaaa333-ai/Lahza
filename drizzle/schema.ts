@@ -340,7 +340,8 @@ export const drivers = mysqlTable("drivers", {
 export const orderAssignments = mysqlTable("order_assignments", {
   id: int("id").autoincrement().primaryKey(),
   orderId: int("orderId").notNull().unique().references(() => orders.id, { onDelete: "cascade" }),
-  driverId: int("driverId").notNull().references(() => drivers.id, { onDelete: "restrict" }),
+  driverId: int("driverId").references(() => drivers.id, { onDelete: "set null" }),
+  driverName: varchar("driverName", { length: 80 }),
   status: mysqlEnum("status", ["assigned", "accepted", "picked_up", "delivered", "cancelled"]).notNull().default("assigned"),
   note: varchar("note", { length: 300 }),
   assignedAt: timestamp("assignedAt").defaultNow().notNull(),

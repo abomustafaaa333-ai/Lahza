@@ -241,7 +241,7 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
     console.warn("No-driver alert dispatched", { orderId, recipientCount: phones.length, recipients: phones.map(maskPhone), failures: results.filter(result => result.status === "rejected").length });
     return null;
   }
-  await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}` }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}`, assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
+  await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, driverName: nearest.name, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}` }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, driverName: nearest.name, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}`, assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
   await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
   const distance = Math.round(distanceBetweenE6(store.locationLat, store.locationLng, nearest.locationLat!, nearest.locationLng!));
   console.info("Automatic dispatch recipient", { orderId, driverId: nearest.id, phone: maskPhone(nearest.phone), chatId: `${nearest.phone.replace(/\D/g, "")}@c.us`.replace(/^(\d{6})\d+(\d{4}@c\.us)$/, "$1***$2"), distanceMeters: distance });
@@ -325,6 +325,7 @@ export async function autoCompleteDueOrders() {
   )).limit(100);
   for (const order of due) {
     await db.update(orders).set({ status: "completed", statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
+    await db.update(drivers).set({ available: true }).where(eq(drivers.id, (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, order.id)).limit(1))[0]?.driverId ?? -1));
     await createOrderStatusNotification(db, order, "completed");
     await awardCustomerPoint(db, order.customerPhone, "order_completed", order.id);
   }
@@ -1901,6 +1902,8 @@ export const lahzaRouter = router({
       )).orderBy(desc(orders.createdAt));
       const ids = allOrders.map(order => order.id);
       const lines = ids.length ? await db.select().from(orderLines).where(inArray(orderLines.orderId, ids)) : [];
+      const assignmentRows = ids.length ? await db.select({ orderId: orderAssignments.orderId, liveDriverName: drivers.name, archivedDriverName: orderAssignments.driverName }).from(orderAssignments).leftJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(inArray(orderAssignments.orderId, ids)) : [];
+      const assignmentByOrderId = new Map(assignmentRows.map(row => [row.orderId, row.liveDriverName ?? row.archivedDriverName ?? null]));
       const catalogIds = Array.from(new Set(lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : [])));
       const catalogRows = catalogIds.length ? await db.select({ id: catalogItems.id, storeId: catalogItems.storeId }).from(catalogItems).where(inArray(catalogItems.id, catalogIds)) : [];
       const storeIds = Array.from(new Set(catalogRows.flatMap(row => row.storeId ? [row.storeId] : [])));
@@ -1909,7 +1912,7 @@ export const lahzaRouter = router({
       return allOrders.map(order => {
         const orderLines = lines.filter(line => line.orderId === order.id).map(line => ({ ...line, storeName: line.catalogItemId ? storeByCatalogId.get(line.catalogItemId) ?? null : null }));
         const storeNames = Array.from(new Set(orderLines.flatMap(line => line.storeName ? [line.storeName] : [])));
-        return { ...order, archived: isOrderArchived(order.createdAt), storeNames, lines: orderLines };
+        return { ...order, archived: isOrderArchived(order.createdAt), driverName: assignmentByOrderId.get(order.id) ?? null, storeNames, lines: orderLines };
       });
     }),
     updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(orderStatuses), reason: z.string().trim().min(2).max(300).optional() })).mutation(async ({ ctx, input }) => {
@@ -1922,6 +1925,8 @@ export const lahzaRouter = router({
       await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date(), manualStatusOverride: true }).where(eq(orders.id, input.id));
       if (existing.status !== input.status) await createOrderStatusNotification(db, existing, input.status);
       if (input.status === "completed") {
+        const completedAssignment = (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, input.id)).limit(1))[0];
+        if (completedAssignment?.driverId) await db.update(drivers).set({ available: true }).where(eq(drivers.id, completedAssignment.driverId));
         const order = (await db.select({ customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.id)).limit(1))[0];
         if (order) {
           await awardCustomerPoint(db, order.customerPhone, "order_completed", input.id);
@@ -2378,28 +2383,31 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const { id, locationLat, locationLng, ...patch } = input;
-        await db.update(drivers).set({ ...patch, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, id));
+        await db.update(drivers).set({ ...patch, active: true, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const assignment = await db.select({ id: orderAssignments.id }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, input.id), or(eq(orderAssignments.status, "assigned"), eq(orderAssignments.status, "accepted"), eq(orderAssignments.status, "picked_up")), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).limit(1);
-        if (assignment[0]) throw new Error("لا يمكن حذف مندوب لديه طلب قيد التنفيذ");
-        // Keep historical assignments intact; archive the driver instead of violating FK history.
-        await db.update(drivers).set({ active: false, available: false }).where(eq(drivers.id, input.id));
+        const driver = await db.select({ id: drivers.id, name: drivers.name }).from(drivers).where(eq(drivers.id, input.id)).limit(1);
+        if (!driver[0]) throw new Error("المندوب غير موجود");
+        const activeAssignments = await db.select({ id: orderAssignments.id }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, input.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
+        for (const assignment of activeAssignments) await db.update(orderAssignments).set({ status: "cancelled", driverName: null, driverId: null }).where(eq(orderAssignments.id, assignment.id));
+        await db.update(orderAssignments).set({ driverName: driver[0].name, driverId: null }).where(eq(orderAssignments.driverId, input.id));
+        await db.delete(drivers).where(eq(drivers.id, input.id));
         return { success: true };
       }),
       assign: publicProcedure.input(z.object({ orderId: z.number().int().positive(), driverId: z.number().int().positive(), note: z.string().trim().max(300).optional() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const driver = await db.select({ id: drivers.id, active: drivers.active, available: drivers.available }).from(drivers).where(eq(drivers.id, input.driverId)).limit(1);
+        const driver = await db.select({ id: drivers.id, name: drivers.name, active: drivers.active, available: drivers.available }).from(drivers).where(eq(drivers.id, input.driverId)).limit(1);
         if (!driver[0] || !driver[0].active || !driver[0].available) throw new Error("المندوب غير متاح للتعيين");
         const order = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, input.orderId)).limit(1);
         if (!order[0]) throw new Error("الطلب غير موجود");
-        await db.insert(orderAssignments).values({ orderId: input.orderId, driverId: input.driverId, note: input.note || null }).onDuplicateKeyUpdate({ set: { driverId: input.driverId, status: "assigned", note: input.note || null, assignedAt: new Date() } });
+        await db.insert(orderAssignments).values({ orderId: input.orderId, driverId: input.driverId, driverName: driver[0].name, note: input.note || null }).onDuplicateKeyUpdate({ set: { driverId: input.driverId, driverName: driver[0].name, status: "assigned", note: input.note || null, assignedAt: new Date() } });
+        await db.update(drivers).set({ available: false }).where(eq(drivers.id, input.driverId));
         return { success: true };
       }),
     }),
@@ -2451,12 +2459,12 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const settings = await getSettings();
-        const rows = await db.select({ orderId: orders.id, customerName: orders.customerName, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, updatedAt: orders.updatedAt, driverName: drivers.name }).from(orders).leftJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).leftJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(eq(orders.status, "completed")).orderBy(desc(orders.updatedAt)).limit(500);
+        const rows = await db.select({ orderId: orders.id, customerName: orders.customerName, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, updatedAt: orders.updatedAt, liveDriverName: drivers.name, archivedDriverName: orderAssignments.driverName }).from(orders).leftJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).leftJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(eq(orders.status, "completed")).orderBy(desc(orders.updatedAt)).limit(500);
         const percent = Math.min(100, Math.max(0, Number(settings.driverDeliveryPercent ?? 0)));
         const items = rows.map(row => {
           const deliveryFee = Number(row.deliveryFee ?? 0);
           const driverFee = Math.round(deliveryFee * percent / 100);
-          return { orderId: row.orderId, customerName: row.customerName, driverName: row.driverName ?? "غير مسند", deliveryFee: toNewSyp(deliveryFee), driverFee: toNewSyp(driverFee), lahzaNet: toNewSyp(deliveryFee - driverFee), totalAmount: toNewSyp(Number(row.totalAmount ?? 0)), completedAt: row.updatedAt };
+          return { orderId: row.orderId, customerName: row.customerName, driverName: row.liveDriverName ?? row.archivedDriverName ?? "غير مسند", deliveryFee: toNewSyp(deliveryFee), driverFee: toNewSyp(driverFee), lahzaNet: toNewSyp(deliveryFee - driverFee), totalAmount: toNewSyp(Number(row.totalAmount ?? 0)), completedAt: row.updatedAt };
         });
         return { driverPercent: percent, orders: items, totals: { deliveryFee: items.reduce((sum, item) => sum + item.deliveryFee, 0), driverFee: items.reduce((sum, item) => sum + item.driverFee, 0), lahzaNet: items.reduce((sum, item) => sum + item.lahzaNet, 0) } };
       }),
