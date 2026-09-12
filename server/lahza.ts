@@ -2340,7 +2340,8 @@ export const lahzaRouter = router({
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const assignment = await db.select({ id: orderAssignments.id }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, input.id), or(eq(orderAssignments.status, "assigned"), eq(orderAssignments.status, "accepted"), eq(orderAssignments.status, "picked_up")), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).limit(1);
         if (assignment[0]) throw new Error("لا يمكن حذف مندوب لديه طلب قيد التنفيذ");
-        await db.delete(drivers).where(eq(drivers.id, input.id));
+        // Keep historical assignments intact; archive the driver instead of violating FK history.
+        await db.update(drivers).set({ active: false, available: false }).where(eq(drivers.id, input.id));
         return { success: true };
       }),
       assign: publicProcedure.input(z.object({ orderId: z.number().int().positive(), driverId: z.number().int().positive(), note: z.string().trim().max(300).optional() })).mutation(async ({ ctx, input }) => {
