@@ -18,6 +18,7 @@ import { deleteOfferImage, uploadOfferImage } from "./offerMedia";
 import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
 import { sendPushNotification } from "./pushNotifications";
+import { sendWahaText } from "./waha";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
@@ -311,6 +312,10 @@ export const tickerSettingsInputSchema = z.object({
   tickerPrimary: z.string().optional(),
   tickerSecondary: z.string().optional(),
 }).transform(input => readTickerSettings(input));
+
+async function ensureCustomerOtpTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `customer_otp_codes` (`phone` VARCHAR(24) NOT NULL PRIMARY KEY, `codeHash` VARCHAR(255) NOT NULL, `expiresAt` TIMESTAMP NOT NULL, `attempts` INT NOT NULL DEFAULT 0, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"));
+}
 
 async function hashSecret(value: string) {
   const salt = randomBytes(16).toString("hex");
@@ -1245,6 +1250,34 @@ export const lahzaRouter = router({
     }),
   }),
   customerAccounts: router({
+    requestOtp: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerOtpTable(db);
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const codeHash = await hashSecret(code);
+      await db.execute(sql`INSERT INTO \`customer_otp_codes\` (\`phone\`, \`codeHash\`, \`expiresAt\`, \`attempts\`) VALUES (${input.phone}, ${codeHash}, DATE_ADD(NOW(), INTERVAL 5 MINUTE), 0) ON DUPLICATE KEY UPDATE \`codeHash\` = VALUES(\`codeHash\`), \`expiresAt\` = VALUES(\`expiresAt\`), \`attempts\` = 0`);
+      const delivery = await sendWahaText(input.phone, { body: `رمز التحقق الخاص بتطبيق لحظة هو: ${code}\nصالح لمدة 5 دقائق. لا تشارك هذا الرمز مع أي شخص.` });
+      if (!delivery.sent) throw new Error("تعذر إرسال رمز التحقق عبر واتساب حالياً");
+      return { success: true, expiresInSeconds: 300 };
+    }),
+    verifyOtp: publicProcedure.input(z.object({ phone: internationalPhoneSchema, code: z.string().regex(/^\d{6}$/, "أدخل رمزاً من 6 أرقام") })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCustomerOtpTable(db);
+      const [rows] = await db.execute(sql`SELECT \`codeHash\`, \`expiresAt\`, \`attempts\` FROM \`customer_otp_codes\` WHERE \`phone\` = ${input.phone} LIMIT 1`);
+      const record = (Array.isArray(rows) ? rows[0] : null) as { codeHash?: string; expiresAt?: Date | string; attempts?: number } | null;
+      if (!record?.codeHash) throw new Error("اطلب رمز تحقق جديداً");
+      if (Number(record.attempts ?? 0) >= 5) throw new Error("تجاوزت عدد المحاولات، اطلب رمزاً جديداً");
+      if (new Date(record.expiresAt ?? 0).getTime() <= Date.now()) throw new Error("انتهت صلاحية الرمز، اطلب رمزاً جديداً");
+      const valid = await verifySecret(input.code, record.codeHash);
+      if (!valid) {
+        await db.execute(sql`UPDATE \`customer_otp_codes\` SET \`attempts\` = \`attempts\` + 1 WHERE \`phone\` = ${input.phone}`);
+        throw new Error("رمز التحقق غير صحيح");
+      }
+      await db.execute(sql`DELETE FROM \`customer_otp_codes\` WHERE \`phone\` = ${input.phone}`);
+      return { success: true };
+    }),
     register: publicProcedure.input(z.object({ phone: internationalPhoneSchema, name: z.string().trim().min(2).max(80), city: z.enum(["منبج", "جرابلس"]) })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
@@ -2402,4 +2435,3 @@ export const lahzaRouter = router({
     }),
   }),
 });
-import { sendWahaText } from "./waha";
