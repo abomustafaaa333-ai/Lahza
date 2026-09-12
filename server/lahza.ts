@@ -249,8 +249,8 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   const orderItems = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
   const itemsText = orderItems.length ? orderItems.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatNewSyp(item.unitPrice)} — المجموع: ${formatNewSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
   const driverMessage = { title: `طلب جديد #${orderId}`, body: `المتجر: ${store.name}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatNewSyp(orderDetails?.deliveryFee ?? 0)}\nالإجمالي: ${formatNewSyp(orderDetails?.totalAmount ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${orderDetails?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nالمسافة من المتجر: ${distance}م\nهل أنت جاهز لتنفيذ الطلب؟` };
-  void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: جاهز أو غير جاهز.` });
-  void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "جاهز" }, { id: "not_ready", text: "غير جاهز" }]).then(result => {
+  void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: نعم أو لا.` });
+  void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]).then(result => {
     if (!result.sent) console.warn("Interactive driver buttons unavailable; text message was already sent", { orderId, driverId: nearest.id });
   });
   return nearest.id;
@@ -269,8 +269,9 @@ export async function handleWahaWebhook(body: unknown) {
   }
   const buttonReply = payload._data?.dynamicReplyButtons?.at(-1)?.buttonText?.displayText;
   const buttonId = payload._data?.dynamicReplyButtons?.at(-1)?.buttonId;
-  const reply = (buttonReply || payload.body || (buttonId === "ready" ? "جاهز" : buttonId === "not_ready" ? "غير جاهز" : "")).trim().replace(/[.!؟?]+$/g, "");
-  if (reply !== "جاهز" && reply !== "غير جاهز") return;
+  const rawReply = (buttonReply || payload.body || (buttonId === "ready" ? "نعم" : buttonId === "not_ready" ? "لا" : "")).trim().replace(/[.!؟?]+$/g, "");
+  const reply = rawReply === "نعم" || rawReply === "جاهز" ? "جاهز" : rawReply === "لا" || rawReply === "غير جاهز" ? "غير جاهز" : "";
+  if (!reply) return;
   const db = await getDb();
   if (!db) return;
   const availableDrivers = await db.select().from(drivers);
