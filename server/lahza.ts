@@ -243,18 +243,21 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
 }
 
 export async function handleWahaWebhook(body: unknown) {
-  const event = body as { event?: string; payload?: { from?: string; body?: string; fromMe?: boolean; _data?: { dynamicReplyButtons?: Array<{ buttonId?: string; buttonText?: { displayText?: string } }> } } };
+  const event = body as { event?: string; payload?: { from?: string; participant?: string; body?: string; fromMe?: boolean; _data?: { from?: string; author?: string; participant?: string; dynamicReplyButtons?: Array<{ buttonId?: string; buttonText?: { displayText?: string } }> } } };
   if (event.event && event.event !== "message.any" && event.event !== "message") return;
   const payload = event.payload;
   if (!payload || payload.fromMe || !payload.from) return;
-  const phone = `+${payload.from.replace(/[^0-9]/g, "").replace(/:.*$/, "")}`;
+  const senderIds = [payload.from, payload.participant, payload._data?.from, payload._data?.author, payload._data?.participant].filter((value): value is string => Boolean(value));
+  const senderPhones = senderIds.filter(value => !value.includes("@lid") && !value.includes("@g.us")).map(value => `+${value.replace(/\D/g, "")}`).filter(value => /^\+\d{7,15}$/.test(value));
   const buttonReply = payload._data?.dynamicReplyButtons?.at(-1)?.buttonText?.displayText;
   const buttonId = payload._data?.dynamicReplyButtons?.at(-1)?.buttonId;
   const reply = (buttonReply || payload.body || (buttonId === "ready" ? "جاهز" : buttonId === "not_ready" ? "غير جاهز" : "")).trim().replace(/[.!؟?]+$/g, "");
   if (reply !== "جاهز" && reply !== "غير جاهز") return;
   const db = await getDb();
   if (!db) return;
-  const driver = (await db.select().from(drivers).where(eq(drivers.phone, phone)).limit(1))[0];
+  const availableDrivers = await db.select().from(drivers);
+  const driver = availableDrivers.find(candidate => senderPhones.some(phone => phone === candidate.phone || phone.replace(/^\+/, "") === candidate.phone.replace(/^\+/, "")));
+  console.info("WAHA driver reply identity", { senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
   if (!driver) return;
   const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
   if (!assignment) {
