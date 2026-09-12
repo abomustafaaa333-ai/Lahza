@@ -3467,3 +3467,24 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
     font-size: 2.15rem;
   }
 }
+
+/* Top notifications and consistent micro-interactions. */
+.top-action-cluster { position: fixed; top: .78rem; left: .9rem; z-index: 60; display: flex; align-items: center; gap: .45rem; }
+.top-action-cluster .persistent-cart-button { position: relative; top: auto; left: auto; }
+.persistent-notifications-button { position: relative; display: grid; width: 2.95rem; height: 2.95rem; place-items: center; border: 1px solid rgba(255,255,255,.95); border-radius: 1rem; color: #00666b; background: rgba(255,255,255,.96); box-shadow: 0 .65rem 1.4rem -1rem rgba(0,102,107,.8); transition: transform .16s cubic-bezier(.23,1,.32,1), background .16s ease, color .16s ease, box-shadow .16s ease; }
+.persistent-notifications-button:hover { color: #fff; background: #00666b; box-shadow: 0 .75rem 1.5rem -1rem rgba(0,102,107,.95); }
+.persistent-notifications-button:active { transform: scale(.94); }
+.persistent-notifications-button b { position: absolute; top: -.28rem; right: -.28rem; display: grid; min-width: 1.1rem; height: 1.1rem; place-items: center; border: 2px solid #fff; border-radius: 999px; color: #fff; background: #ff6b2d; font-size: .55rem; }
+.notification-dialog { width: min(calc(100% - 1.5rem), 28rem); border: 1px solid #bfe3df; border-radius: 1.6rem; background: linear-gradient(160deg, #f0fffd, #fff); }
+.notification-dialog-list { display: grid; max-height: 55vh; gap: .6rem; overflow-y: auto; }
+.notification-dialog-item { display: flex; align-items: flex-start; gap: .7rem; width: 100%; border: 1px solid #d9eeeb; border-radius: 1rem; padding: .75rem; color: #174b4d; background: rgba(255,255,255,.8); text-align: right; transition: transform .16s cubic-bezier(.23,1,.32,1), border-color .16s ease, background .16s ease; }
+.notification-dialog-item:hover { border-color: #74c9c3; background: #fff; transform: translateY(-1px); }
+.notification-dialog-item:active { transform: scale(.98); }
+.notification-dialog-item > span:last-child { display: grid; min-width: 0; gap: .25rem; }
+.notification-dialog-item strong { color: #4a2618; font-size: .78rem; }
+.notification-dialog-item small { color: #6d7e7d; font-size: .68rem; line-height: 1.7; }
+.notification-dialog-icon { display: grid; flex: 0 0 auto; width: 2rem; height: 2rem; place-items: center; border-radius: .7rem; color: #fff; background: #00666b; }
+.notification-dialog-icon-orange { background: #ff742d; }
+.notification-dialog-empty { display: grid; justify-items: center; gap: .55rem; padding: 2rem 1rem; color: #6d7e7d; font-size: .75rem; text-align: center; }
+@media (max-width: 380px) { .top-action-cluster { top: .62rem; left: .55rem; gap: .3rem; } .persistent-notifications-button { width: 2.8rem; height: 2.8rem; } }
+@media (prefers-reduced-motion: reduce) { .persistent-notifications-button, .notification-dialog-item { transition: none; } }
