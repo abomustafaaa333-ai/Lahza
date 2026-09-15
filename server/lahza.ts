@@ -342,10 +342,44 @@ export async function handleWahaWebhook(body: unknown) {
   await dispatchOrderToNearestDriver(db, assignment.order.id, assignment.order.orderCity, line?.storeId ?? null, assignment.order.customerName, assignment.order.locationText, assignment.order.locationUrl, [driver.id]);
 }
 
+async function notifyAssignmentTimeout(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverName: string, driverPhone: string) {
+  const [employees, activeSupervisors] = await Promise.all([
+    db.select({ phone: lahzaEmployees.phone }).from(lahzaEmployees).where(eq(lahzaEmployees.active, true)).limit(50),
+    db.select({ phone: supervisors.username }).from(supervisors).where(eq(supervisors.active, true)).limit(50),
+  ]);
+  const settings = await getSettings();
+  const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...employees.map(row => row.phone), ...activeSupervisors.map(row => row.phone)]
+    .filter((phone, index, all) => phone && all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
+  const alert = { title: "انتهت مهلة رد المندوب", body: "المندوب " + driverName + " لم يرد على الطلب #" + orderId + " خلال 3 دقائق. تم الانتقال تلقائياً للبحث عن مندوب آخر." };
+  await Promise.allSettled(phones.map(phone => sendWahaText(phone, alert)));
+}
+
+async function expireUnansweredDriverAssignments(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const cutoff = new Date(Date.now() - 3 * 60_000);
+  const pending = await db.select({ assignment: orderAssignments, order: orders, driver: drivers })
+    .from(orderAssignments)
+    .innerJoin(orders, eq(orders.id, orderAssignments.orderId))
+    .innerJoin(drivers, eq(drivers.id, orderAssignments.driverId))
+    .where(and(eq(orderAssignments.status, "assigned"), lte(orderAssignments.assignedAt, cutoff), inArray(orders.status, ["pending", "confirmed"])))
+    .limit(100);
+  let expired = 0;
+  for (const row of pending) {
+    const result = await db.update(orderAssignments).set({ status: "cancelled" }).where(and(eq(orderAssignments.id, row.assignment.id), eq(orderAssignments.status, "assigned")));
+    if (!result[0]?.affectedRows) continue;
+    await db.update(drivers).set({ available: true }).where(eq(drivers.id, row.driver.id));
+    await notifyAssignmentTimeout(db, row.order.id, row.driver.name, row.driver.phone);
+    const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, row.order.id)).limit(1))[0];
+    await dispatchOrderToNearestDriver(db, row.order.id, row.order.orderCity, line?.storeId ?? null, row.order.customerName, row.order.locationText, row.order.locationUrl, [row.driver.id]);
+    expired++;
+  }
+  if (expired) console.info("Expired unanswered driver assignments", { count: expired });
+  return expired;
+}
 export async function autoCompleteDueOrders() {
   const db = await getDb();
   if (!db) return 0;
   await ensureJarabulusGatewaySchema(db);
+  await expireUnansweredDriverAssignments(db);
   const now = new Date();
   const due = await db.select().from(orders).where(and(
     inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]),
