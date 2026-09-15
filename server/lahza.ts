@@ -421,9 +421,10 @@ export async function autoCompleteDueOrders() {
   for (const order of due) {
     await db.update(orders).set({ status: "completed", statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
     await db.update(drivers).set({ available: true }).where(eq(drivers.id, (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, order.id)).limit(1))[0]?.driverId ?? -1));
-    await createOrderStatusNotification(db, order, "completed");
+    // Automatic timeout may close the stale workflow, but must not tell the customer
+    // that the order was delivered. Customer completion is announced only after
+    // the courier explicitly sends command 10 through WhatsApp.
     await awardCustomerPoint(db, order.customerPhone, "order_completed", order.id);
-    await notifyOperationsOrderCompleted(db, order.id);
   }
   const followUpCutoff = new Date(Date.now() - 20 * 60_000);
   const followUps = await db.select({ order: orders, assignment: orderAssignments, driver: drivers }).from(orders).innerJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orders.status, "preparing"), eq(orderAssignments.status, "accepted"))).limit(100);
