@@ -311,14 +311,20 @@ export async function handleWahaWebhook(body: unknown) {
   const buttonId = payload._data?.dynamicReplyButtons?.at(-1)?.buttonId;
   const rawReply = (buttonReply || payload.body || (buttonId === "ready" ? "نعم" : buttonId === "not_ready" ? "لا" : "")).trim().replace(/[.!؟?]+$/g, "");
   const completeCommand = rawReply === "10";
-  const reply = rawReply === "نعم" || rawReply === "جاهز" ? "جاهز" : rawReply === "لا" || rawReply === "غير جاهز" ? "غير جاهز" : "";
-  if (!reply && !completeCommand) return;
+  const availabilityReply = rawReply === "جاهز" || rawReply === "غير جاهز" ? rawReply : "";
+  const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";
+  if (!availabilityReply && !orderReply && !completeCommand) return;
   const db = await getDb();
   if (!db) return;
   const availableDrivers = await db.select().from(drivers);
   const driver = availableDrivers.find(candidate => senderPhones.some(phone => phone === candidate.phone || phone.replace(/^\+/, "") === candidate.phone.replace(/^\+/, "")));
   console.info("WAHA driver reply identity", { senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
   if (!driver) return;
+  if (availabilityReply) {
+    await db.update(drivers).set({ available: availabilityReply === "جاهز" }).where(eq(drivers.id, driver.id));
+    void sendWahaText(driver.phone, { body: availabilityReply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك." });
+    return;
+  }
   if (completeCommand) {
     const activeAssignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
     if (!activeAssignment) {
@@ -335,23 +341,12 @@ export async function handleWahaWebhook(body: unknown) {
     void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل، وأصبحت متاحاً لاستقبال طلب جديد.` });
     return;
   }
-  const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
+  const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"), gte(orderAssignments.assignedAt, new Date(Date.now() - 3 * 60_000)), inArray(orders.status, ["pending", "confirmed"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
   if (!assignment) {
-    if (reply === "جاهز") {
-      const previous = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "cancelled"))).orderBy(desc(orderAssignments.updatedAt), desc(orderAssignments.assignedAt)).limit(1))[0];
-      if (previous) {
-        const current = (await db.select({ assignment: orderAssignments }).from(orderAssignments).where(and(eq(orderAssignments.orderId, previous.order.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up", "delivered"]))).limit(1))[0];
-        if (current && current.assignment.driverId !== driver.id) {
-          void sendWahaText(driver.phone, { body: `تم تنفيذ الطلب #${previous.order.id} من قبل مندوب آخر.` });
-          return;
-        }
-      }
-    }
-    await db.update(drivers).set({ available: reply === "جاهز" }).where(eq(drivers.id, driver.id));
-    void sendWahaText(driver.phone, { body: reply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك." });
+    // نعم/لا خارج مهلة الإسناد أو دون طلب حالي: ignore completely.
     return;
   }
-  if (reply === "جاهز") {
+  if (orderReply === "نعم") {
     await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, assignment.assignment.id));
     await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب عبر واتساب" }).where(eq(orders.id, assignment.order.id));
     const driverWhatsappNumber = driver.phone.replace(/\D/g, "");
