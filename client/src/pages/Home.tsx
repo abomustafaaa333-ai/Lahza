@@ -728,11 +728,11 @@ export default function Home() {
   const deliveryDistanceMeters = storeLat !== null && storeLng !== null && customerLat !== null && customerLng !== null
     ? straightLineDistanceMeters(storeLat, storeLng, customerLat, customerLng)
     : 0;
-  const billableDeliveryKm = Math.max(1, Math.ceil(deliveryDistanceMeters / 1000));
-  const deliveryFeeNewSyp = checkoutMode === "delivery" ? toNewSyp(billableDeliveryKm * deliveryPricePerKm) : 0;
+  const billableDeliveryKm = Math.max(1, Math.ceil((2_000 + deliveryDistanceMeters) / 1000));
+  const deliveryFeeNewSyp = checkoutMode === "delivery" ? billableDeliveryKm * deliveryPricePerKm : 0;
   const grandTotalNewSyp = toNewSyp(total) + deliveryFeeNewSyp;
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
-  const cartDeliveryFeeNewSyp = toNewSyp(billableDeliveryKm * deliveryPricePerKm);
+  const cartDeliveryFeeNewSyp = billableDeliveryKm * deliveryPricePerKm;
   const cartGrandTotalNewSyp = toNewSyp(discountedCartTotal) + cartDeliveryFeeNewSyp;
   const deliveryEta = cart.length >= 6 ? "40–55 دقيقة" : cart.length >= 3 ? "35–50 دقيقة" : "30–45 دقيقة";
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة", storeName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", ratingStars: 3, featuredStatus: "approved" as const })) : partnerOffersQuery.data ?? [];

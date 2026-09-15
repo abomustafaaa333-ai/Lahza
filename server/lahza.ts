@@ -224,7 +224,7 @@ async function repriceOrderForAssignedDriver(db: NonNullable<Awaited<ReturnType<
   ]);
   const row = order[0];
   if (!store[0]?.locationLat || !store[0]?.locationLng || driver[0]?.locationLat === null || driver[0]?.locationLat === undefined || driver[0]?.locationLng === null || driver[0]?.locationLng === undefined || row?.locationLat === null || row?.locationLat === undefined || row?.locationLng === null || row?.locationLng === undefined) return null;
-  const totalDistanceMeters = distanceBetweenE6(store[0].locationLat, store[0].locationLng, row.locationLat, row.locationLng);
+  const totalDistanceMeters = 2_000 + distanceBetweenE6(store[0].locationLat, store[0].locationLng, row.locationLat, row.locationLng);
   const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, (await getSettings()).deliveryPricePerKm);
   const itemsTotal = Math.max(0, Number(row.totalAmount ?? 0) - Number(row.deliveryFee ?? 0));
   await db.update(orders).set({ deliveryDistanceMeters: Math.round(totalDistanceMeters), deliveryFee: pricing.deliveryFee, totalAmount: itemsTotal + pricing.deliveryFee }).where(eq(orders.id, orderId));
@@ -1915,7 +1915,7 @@ export const lahzaRouter = router({
         if (!deliveryStore?.locationLat || !deliveryStore.locationLng || input.locationLat === undefined || input.locationLng === undefined) {
           throw new Error("تعذر حساب رسوم التوصيل: تأكد من تحديد موقعك وأن المتجر يملك إحداثيات صحيحة");
         }
-        deliveryDistanceMeters = Math.round(distanceBetweenE6(deliveryStore.locationLat, deliveryStore.locationLng, Math.round(input.locationLat * 1_000_000), Math.round(input.locationLng * 1_000_000)));
+        deliveryDistanceMeters = Math.round(2_000 + distanceBetweenE6(deliveryStore.locationLat, deliveryStore.locationLng, Math.round(input.locationLat * 1_000_000), Math.round(input.locationLng * 1_000_000)));
         deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.deliveryPricePerKm).deliveryFee;
         totalAmount = finalItemsTotal + deliveryFee;
       }
