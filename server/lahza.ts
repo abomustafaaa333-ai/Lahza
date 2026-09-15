@@ -224,7 +224,7 @@ async function repriceOrderForAssignedDriver(db: NonNullable<Awaited<ReturnType<
   ]);
   const row = order[0];
   if (!store[0]?.locationLat || !store[0]?.locationLng || driver[0]?.locationLat === null || driver[0]?.locationLat === undefined || driver[0]?.locationLng === null || driver[0]?.locationLng === undefined || row?.locationLat === null || row?.locationLat === undefined || row?.locationLng === null || row?.locationLng === undefined) return null;
-  const totalDistanceMeters = distanceBetweenE6(driver[0].locationLat, driver[0].locationLng, store[0].locationLat, store[0].locationLng) + distanceBetweenE6(store[0].locationLat, store[0].locationLng, row.locationLat, row.locationLng);
+  const totalDistanceMeters = distanceBetweenE6(store[0].locationLat, store[0].locationLng, row.locationLat, row.locationLng);
   const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, (await getSettings()).deliveryPricePerKm);
   const itemsTotal = Math.max(0, Number(row.totalAmount ?? 0) - Number(row.deliveryFee ?? 0));
   await db.update(orders).set({ deliveryDistanceMeters: Math.round(totalDistanceMeters), deliveryFee: pricing.deliveryFee, totalAmount: itemsTotal + pricing.deliveryFee }).where(eq(orders.id, orderId));
@@ -278,7 +278,7 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   const orderDetails = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, paymentMethod: orders.paymentMethod, locationLat: orders.locationLat, locationLng: orders.locationLng }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   if (orderDetails?.locationLat !== null && orderDetails?.locationLat !== undefined && orderDetails.locationLng !== null && orderDetails.locationLng !== undefined) {
     const storeToCustomerMeters = distanceBetweenE6(store.locationLat, store.locationLng, orderDetails.locationLat, orderDetails.locationLng);
-    const totalDistanceMeters = distance + storeToCustomerMeters;
+    const totalDistanceMeters = storeToCustomerMeters;
     const settings = await getSettings();
     const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, settings.deliveryPricePerKm);
     const itemsTotal = Math.max(0, Number(orderDetails.totalAmount ?? 0) - Number(orderDetails.deliveryFee ?? 0));
@@ -1087,6 +1087,9 @@ export const lahzaRouter = router({
     get: publicProcedure.query(async ({ ctx }) => {
       const settings = await getSettings();
       return {
+        pricePerKm: settings.deliveryPricePerKm,
+        pricingMode: "store_to_customer_distance" as const,
+        fixedDriverStoreDistanceKm: 2,
         manbijPercent: settings.manbijDeliveryPercent,
         jarabulusPercent: settings.jarabulusDeliveryPercent,
         jarabulusMinimumOrder: jarabulusOrderMinimum(settings),
@@ -1826,7 +1829,7 @@ export const lahzaRouter = router({
       const products = ids.length ? await db.select().from(catalogItems).where(inArray(catalogItems.id, ids)) : [];
       const productMap = new Map(products.map(product => [product.id, product]));
       const productStoreIds = Array.from(new Set(products.flatMap(product => product.storeId ? [product.storeId] : [])));
-      const productStores = productStoreIds.length ? await db.select({ id: stores.id, city: stores.city, active: stores.active, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled }).from(stores).where(inArray(stores.id, productStoreIds)) : [];
+      const productStores = productStoreIds.length ? await db.select({ id: stores.id, city: stores.city, active: stores.active, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled, locationLat: stores.locationLat, locationLng: stores.locationLng, name: stores.name }).from(stores).where(inArray(stores.id, productStoreIds)) : [];
       const storeById = new Map(productStores.map(store => [store.id, store]));
       if (input.orderType === "delivery" && orderCity === "jarabulus" && products.some(product => !product.storeId || !isStoreVisibleInCustomerCity(storeById.get(product.storeId) ?? { city: "jarabulus", jarabulusGatewayEnabled: false }, "jarabulus"))) {
         throw new Error("يمكن طلب منتجات متاجر منبج المعتمدة لبوابة جرابلس فقط");
@@ -1912,9 +1915,13 @@ export const lahzaRouter = router({
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.jarabulusDeliveryPercent);
         totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "delivery") {
-        // The exact fee is set after dispatch, when both driver and customer coordinates are known.
-        deliveryPricingPending = true;
-        totalAmount = finalItemsTotal;
+        const deliveryStore = resolvedLines.map(line => line.catalogItemId ? productMap.get(line.catalogItemId)?.storeId : null).map(storeId => storeId ? storeById.get(storeId) : null).find((store): store is typeof productStores[number] => Boolean(store));
+        if (!deliveryStore?.locationLat || !deliveryStore.locationLng || input.locationLat === undefined || input.locationLng === undefined) {
+          throw new Error("تعذر حساب رسوم التوصيل: تأكد من تحديد موقعك وأن المتجر يملك إحداثيات صحيحة");
+        }
+        deliveryDistanceMeters = Math.round(distanceBetweenE6(deliveryStore.locationLat, deliveryStore.locationLng, Math.round(input.locationLat * 1_000_000), Math.round(input.locationLng * 1_000_000)));
+        deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.deliveryPricePerKm).deliveryFee;
+        totalAmount = finalItemsTotal + deliveryFee;
       }
 
       const created = await db.insert(orders).values({
