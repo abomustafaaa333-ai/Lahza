@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, SYP_CONVERSION_FACTOR, toLegacySyp, toNewSyp } from "../shared/lahza";
 import { getAdminHomeShortcut, getHomeShortcut } from "../shared/adminHomeShortcut";
 import { isStoreClosedForCustomer } from "../shared/storeAvailability";
-import { calculateDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, canShowFeaturedOffer, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, initialCustomerOrderStatus, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, supportContactInput, tickerSettingsInputSchema } from "./lahza";
+import { calculateDeliveryFee, calculateDistanceBasedDeliveryFee, calculateLineTotal, calculateOfferExpiry, calculatePercentageDeliveryFee, canReserveIntercityTrip, canShowFeaturedOffer, DELIVERY_PRICING_PENDING_NOTE, filterRestaurantStores, hasMatchingAuthRuntime, initialCustomerOrderStatus, isAuthRuntimeId, meetsMinimumDeliveryOrder, MINIMUM_DELIVERY_ORDER_SYP, normalizeProductSearchText, orderInputSchema, partnerOfferInput, partnerProductInput, pendingDeliveryCalculation, readTickerSettings, storeInput, supportContactInput, tickerSettingsInputSchema } from "./lahza";
 import { isOfferExpiredAt } from "./expiredOffers";
 import { demoProductTemplates } from "./demoCatalog";
 
@@ -105,6 +105,16 @@ describe("الليرة السورية الجديدة", () => {
     expect(formatSyp(50_000)).toContain("ل.س");
     expect(formatNewSyp(300)).toContain("ل.س");
     expect(formatNewSyp(50.08)).not.toContain("٫");
+  });
+});
+
+describe("التسعير حسب مسافة مسار التوصيل", () => {
+  it("يجمع المسار الكامل ويحوّل الرسم إلى قيمة التخزين القديمة", () => {
+    expect(calculateDistanceBasedDeliveryFee(2_100, 25)).toEqual({ billableKm: 3, deliveryFeeNewSyp: 75, deliveryFee: 7_500 });
+  });
+
+  it("يفرض كيلومتراً واحداً كحد أدنى ولا يسمح بسعر سالب", () => {
+    expect(calculateDistanceBasedDeliveryFee(0, -10)).toEqual({ billableKm: 1, deliveryFeeNewSyp: 0, deliveryFee: 0 });
   });
 });
 

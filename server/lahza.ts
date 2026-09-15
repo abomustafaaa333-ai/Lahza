@@ -97,6 +97,12 @@ export function calculateDeliveryFee(distanceMeters: number, pricePerKm: number)
   return { billableKm, deliveryFee: billableKm * Math.max(0, pricePerKm) };
 }
 
+export function calculateDistanceBasedDeliveryFee(totalDistanceMeters: number, pricePerKmNewSyp: number) {
+  const billableKm = Math.max(1, Math.ceil(Math.max(0, totalDistanceMeters) / 1000));
+  const deliveryFeeNewSyp = billableKm * Math.max(0, Math.round(Number(pricePerKmNewSyp) || 0));
+  return { billableKm, deliveryFeeNewSyp, deliveryFee: toLegacySyp(deliveryFeeNewSyp) };
+}
+
 export function calculatePercentageDeliveryFee(itemsTotalInLegacySyp: number, percentage: number) {
   return toLegacySyp(calculatePercentageDeliveryFeeNewSyp(itemsTotalInLegacySyp, percentage));
 }
@@ -139,6 +145,7 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
   await ensureColumn("orders", "manualStatusOverride", "BOOLEAN NOT NULL DEFAULT FALSE");
   await ensureColumn("system_settings", "jarabulusMinimumOrder", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_MINIMUM_ORDER_SYP}`);
   await ensureColumn("system_settings", "jarabulusPreparationMinutes", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_PREPARATION_MINUTES}`);
+  await ensureColumn("system_settings", "deliveryPricePerKm", "INT NOT NULL DEFAULT 2");
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `order_notifications` (`id` INT NOT NULL AUTO_INCREMENT, `orderId` INT NOT NULL, `customerPhone` VARCHAR(24) NOT NULL, `status` ENUM('pending','confirmed','preparing','on_the_way','completed','cancelled','rejected') NOT NULL, `title` VARCHAR(120) NOT NULL, `body` VARCHAR(300) NOT NULL, `readAt` TIMESTAMP NULL DEFAULT NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), CONSTRAINT `order_notifications_orderId_orders_id_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE CASCADE)"));
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `push_tokens` (`id` INT NOT NULL AUTO_INCREMENT, `token` VARCHAR(4096) NOT NULL, `deviceId` VARCHAR(80) NOT NULL, `customerPhone` VARCHAR(24) NULL, `platform` VARCHAR(20) NOT NULL DEFAULT 'android', `active` BOOLEAN NOT NULL DEFAULT TRUE, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), UNIQUE KEY `push_tokens_token_unique` (`token`(191)))"));
 }
@@ -209,6 +216,21 @@ function distanceBetweenE6(lat1: number, lng1: number, lat2: number, lng2: numbe
   return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+async function repriceOrderForAssignedDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverId: number, storeId: number) {
+  const [store, driver, order] = await Promise.all([
+    db.select({ locationLat: stores.locationLat, locationLng: stores.locationLng }).from(stores).where(eq(stores.id, storeId)).limit(1),
+    db.select({ locationLat: drivers.locationLat, locationLng: drivers.locationLng }).from(drivers).where(eq(drivers.id, driverId)).limit(1),
+    db.select({ totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, locationLat: orders.locationLat, locationLng: orders.locationLng }).from(orders).where(eq(orders.id, orderId)).limit(1),
+  ]);
+  const row = order[0];
+  if (!store[0]?.locationLat || !store[0]?.locationLng || driver[0]?.locationLat === null || driver[0]?.locationLat === undefined || driver[0]?.locationLng === null || driver[0]?.locationLng === undefined || row?.locationLat === null || row?.locationLat === undefined || row?.locationLng === null || row?.locationLng === undefined) return null;
+  const totalDistanceMeters = distanceBetweenE6(driver[0].locationLat, driver[0].locationLng, store[0].locationLat, store[0].locationLng) + distanceBetweenE6(store[0].locationLat, store[0].locationLng, row.locationLat, row.locationLng);
+  const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, (await getSettings()).deliveryPricePerKm);
+  const itemsTotal = Math.max(0, Number(row.totalAmount ?? 0) - Number(row.deliveryFee ?? 0));
+  await db.update(orders).set({ deliveryDistanceMeters: Math.round(totalDistanceMeters), deliveryFee: pricing.deliveryFee, totalAmount: itemsTotal + pricing.deliveryFee }).where(eq(orders.id, orderId));
+  return pricing;
+}
+
 function maskPhone(phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 7) return "***";
@@ -253,7 +275,17 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
   const distance = Math.round(distanceBetweenE6(store.locationLat, store.locationLng, nearest.locationLat!, nearest.locationLng!));
   console.info("Automatic dispatch recipient", { orderId, driverId: nearest.id, phone: maskPhone(nearest.phone), chatId: `${nearest.phone.replace(/\D/g, "")}@c.us`.replace(/^(\d{6})\d+(\d{4}@c\.us)$/, "$1***$2"), distanceMeters: distance });
-  const orderDetails = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  const orderDetails = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, paymentMethod: orders.paymentMethod, locationLat: orders.locationLat, locationLng: orders.locationLng }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  if (orderDetails?.locationLat !== null && orderDetails?.locationLat !== undefined && orderDetails.locationLng !== null && orderDetails.locationLng !== undefined) {
+    const storeToCustomerMeters = distanceBetweenE6(store.locationLat, store.locationLng, orderDetails.locationLat, orderDetails.locationLng);
+    const totalDistanceMeters = distance + storeToCustomerMeters;
+    const settings = await getSettings();
+    const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, settings.deliveryPricePerKm);
+    const itemsTotal = Math.max(0, Number(orderDetails.totalAmount ?? 0) - Number(orderDetails.deliveryFee ?? 0));
+    await db.update(orders).set({ deliveryDistanceMeters: Math.round(totalDistanceMeters), deliveryFee: pricing.deliveryFee, totalAmount: itemsTotal + pricing.deliveryFee }).where(eq(orders.id, orderId));
+    orderDetails.deliveryFee = pricing.deliveryFee;
+    orderDetails.totalAmount = itemsTotal + pricing.deliveryFee;
+  }
   const orderItems = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
   const itemsText = orderItems.length ? orderItems.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatNewSyp(item.unitPrice)} — المجموع: ${formatNewSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
   const driverMessage = { title: `طلب جديد #${orderId}`, body: `المتجر: ${store.name}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatNewSyp(orderDetails?.deliveryFee ?? 0)}\nالإجمالي: ${formatNewSyp(orderDetails?.totalAmount ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${orderDetails?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nالمسافة من المتجر: ${distance}م\nهل أنت جاهز لتنفيذ الطلب؟` };
@@ -1879,8 +1911,9 @@ export const lahzaRouter = router({
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.jarabulusDeliveryPercent);
         totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "delivery") {
-        deliveryFee = calculatePercentageDeliveryFee(itemsTotal, orderCity === "jarabulus" ? settings.jarabulusDeliveryPercent : settings.manbijDeliveryPercent);
-        totalAmount = finalItemsTotal + deliveryFee;
+        // The exact fee is set after dispatch, when both driver and customer coordinates are known.
+        deliveryPricingPending = true;
+        totalAmount = finalItemsTotal;
       }
 
       const created = await db.insert(orders).values({
@@ -2400,14 +2433,15 @@ export const lahzaRouter = router({
           jarabulusPreparationMinutes: jarabulusOrderPreparationMinutes(settings),
           pointsRewardPercent: settings.pointsRewardPercent,
           driverPercent: settings.driverDeliveryPercent ?? 0,
+          pricePerKm: settings.deliveryPricePerKm ?? 2,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, pricePerKm: newSypMoneyInput.min(1).max(10_000_000) })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureJarabulusGatewaySchema(db);
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, deliveryPricePerKm: input.pricePerKm }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),
@@ -2478,6 +2512,8 @@ export const lahzaRouter = router({
         if (!driver[0] || !driver[0].active || !driver[0].available) throw new Error("المندوب غير متاح للتعيين");
         const order = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, input.orderId)).limit(1);
         if (!order[0]) throw new Error("الطلب غير موجود");
+        const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, input.orderId)).limit(1))[0];
+        if (line?.storeId) await repriceOrderForAssignedDriver(db, input.orderId, input.driverId, line.storeId);
         await db.insert(orderAssignments).values({ orderId: input.orderId, driverId: input.driverId, driverName: driver[0].name, note: input.note || null }).onDuplicateKeyUpdate({ set: { driverId: input.driverId, driverName: driver[0].name, status: "assigned", note: input.note || null, assignedAt: new Date() } });
         await db.update(drivers).set({ available: false }).where(eq(drivers.id, input.driverId));
         return { success: true };
