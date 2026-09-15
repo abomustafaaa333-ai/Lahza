@@ -332,10 +332,6 @@ export async function handleWahaWebhook(body: unknown) {
     await createOrderStatusNotification(db, activeAssignment.order, "completed");
     await awardCustomerPoint(db, activeAssignment.order.customerPhone, "order_completed", activeAssignment.order.id);
     await notifyOperationsOrderCompleted(db, activeAssignment.order.id);
-    const completionMessage = { title: "تم تسليم طلبك", body: `تم إنهاء الطلب #${activeAssignment.order.id} وتسجيله كمكتمل.` };
-    const customerTokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, activeAssignment.order.customerPhone), eq(pushTokens.active, true)));
-    await sendPushNotification(customerTokens.map(row => row.token), completionMessage);
-    void sendWahaText(activeAssignment.order.customerPhone, completionMessage);
     void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل، وأصبحت متاحاً لاستقبال طلب جديد.` });
     return;
   }
