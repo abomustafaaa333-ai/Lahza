@@ -1012,6 +1012,9 @@ header[class*="header-service-theme-"] .header-search-wrap { transform: translat
 header[class*="header-service-theme-"] .service-intro-copy {
   min-width: 0;
   max-width: none;
+  width: 100%;
+  margin-inline: 0;
+  text-align: right;
   overflow: visible;
 }
 header[class*="header-service-theme-"] .service-intro-copy strong,

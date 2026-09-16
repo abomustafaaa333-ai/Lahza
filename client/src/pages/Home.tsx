@@ -222,9 +222,9 @@ function SupportHelpCard({ onOpen, contactCount }: { onOpen: () => void; contact
 
 function ServiceIntroCarousel({ onActiveChange, onExplore, onGateway, city }: { onActiveChange: (index: number) => void; onExplore: () => void; onGateway: () => void; city: CityKey }) {
   const slides = [
-    { icon: PackageCheck, title: "وصّل لي", detail: "عندك غرض بدك نوصلك ياه؟ منستلمه عنك ومنوصله لبيتك بأمان." },
-    { icon: ShoppingBasket, title: "اطلب أي منتج لباب بيتك", detail: "اختار طلبك من متاجر منبج وخليه يوصلك لباب بيتك بسهولة." },
-    { icon: CarFront, title: "اطلب سيارة", detail: "بتجيك وين ما كنت في منبج وبتاخدك لوين ما بدك." },
+    { title: "وصّل لي", detail: "عندك غرض بدك نوصلك ياه؟ منستلمه عنك ومنوصله لبيتك بأمان." },
+    { title: "اطلب أي منتج لباب بيتك", detail: "اختار طلبك من متاجر منبج وخليه يوصلك لباب بيتك بسهولة." },
+    { title: "اطلب سيارة", detail: "بتجيك وين ما كنت في منبج وبتاخدك لوين ما بدك." },
   ];
   const [active, setActive] = useState(0);
   const changeActive = (index: number) => { setActive(index); onActiveChange(index); };
@@ -233,8 +233,7 @@ function ServiceIntroCarousel({ onActiveChange, onExplore, onGateway, city }: { 
     return () => window.clearInterval(timer);
   }, [slides.length]);
   const slide = slides[active];
-  const Icon = slide.icon;
-  return <section className="service-intro-panel" aria-label="خدمات لحظة"><div className="service-intro-copy"><span className="service-intro-kicker">خدمات لحظة</span><span className="service-intro-tagline">{CITY_LABELS[city]} بين يديك</span><strong>{slide.title}</strong><small>{slide.detail}</small><button type="button" className="service-intro-cta" onClick={onExplore}>استكشف الآن <ChevronLeft className="h-4 w-4" /></button></div><span className="service-intro-icon" aria-hidden="true"><Icon className="h-10 w-10" strokeWidth={2.1} /></span><div className="service-intro-offer-mark" aria-label="أقوى العروض لدى لحظة"><span className="service-intro-offer-mark-icon"><BadgePercent className="h-5 w-5" /></span><strong>أقوى العروض</strong><b>لدى لحظة</b>{city === "jarabulus" ? <button type="button" className="service-gateway-button" onClick={onGateway}>اطلب من منبج <ChevronLeft className="h-4 w-4" /></button> : null}</div><div className="service-intro-dots">{slides.map((item, index) => <button key={item.title} type="button" className={index === active ? "service-intro-dot-active" : ""} onClick={() => changeActive(index)} aria-label={`الشريحة ${index + 1}`} />)}</div></section>;
+  return <section className="service-intro-panel" aria-label="خدمات لحظة"><div className="service-intro-copy"><span className="service-intro-kicker">خدمات لحظة</span><span className="service-intro-tagline">{CITY_LABELS[city]} بين يديك</span><strong>{slide.title}</strong><small>{slide.detail}</small><button type="button" className="service-intro-cta" onClick={onExplore}>استكشف الآن <ChevronLeft className="h-4 w-4" /></button></div><div className="service-intro-dots">{slides.map((item, index) => <button key={item.title} type="button" className={index === active ? "service-intro-dot-active" : ""} onClick={() => changeActive(index)} aria-label={`الشريحة ${index + 1}`} />)}</div></section>;
 }
 
 function PersistentCartButton({ onCart, cartCount }: { onCart: () => void; cartCount: number }) {
