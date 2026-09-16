@@ -1902,10 +1902,6 @@ export const lahzaRouter = router({
     }),
     create: publicProcedure.input(orderInputSchema).mutation(async ({ ctx, input }) => {
       const db = await ensureCatalogSeed();
-      // Customer orders can be created before any admin endpoint has run.
-      // Normalize the legacy orders schema here so Wossel Li can store a
-      // SQL NULL in the taxi-only field on Railway as well.
-      await ensureJarabulusGatewaySchema(db);
       const orderCity = ctx.city;
       if (input.orderCity && input.orderCity !== orderCity) throw new Error("المدينة المختارة للطلب غير مطابقة لواجهة التطبيق");
       if (input.orderType === "taxi" && orderCity === "jarabulus") throw new Error("خدمة سيارات الأجرة المحلية غير متاحة في بوابة جرابلس حالياً");
@@ -2043,10 +2039,10 @@ export const lahzaRouter = router({
         deliveryDistanceMeters,
         deliveryFee,
         preparationMinutes,
-        // Taxi type belongs only to taxi orders. Explicitly clear it for
-        // Wossel Li so a stale client payload can never put the pickup text
-        // (for example, "الساحة") into the taxi enum column.
-        taxiType: input.orderType === "taxi" ? input.taxiType ?? null : null,
+        // Taxi type belongs only to taxi orders. Do not include this column
+        // at all for Wossel Li; the legacy Railway schema already defaults it
+        // to NULL and this avoids enum coercion of empty client values.
+        ...(input.orderType === "taxi" ? { taxiType: input.taxiType ?? null } : {}),
         pickupLocation: input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام",
         pickupContactPhone: input.pickupContactPhone ?? null,
         itemDescription: input.itemDescription ?? null,
