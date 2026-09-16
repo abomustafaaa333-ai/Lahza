@@ -193,13 +193,13 @@ describe("الأقسام ومحتوى الواجهة الجديد", () => {
     expect(normalizeTickerText("  نص محفوظ  ", DEFAULT_TICKER_PRIMARY)).toBe("نص محفوظ");
   });
 
-  it("يحضّر قيم الشريطين قبل الحفظ ولا يمرر حقولاً فارغة إلى قاعدة البيانات", () => {
-    expect(tickerSettingsInputSchema.parse({ tickerPrimary: "عرض اليوم", tickerSecondary: "توصيل سريع" })).toEqual({ tickerPrimary: "عرض اليوم", tickerSecondary: "توصيل سريع" });
-    expect(tickerSettingsInputSchema.parse({})).toEqual({ tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
+  it("يحضّر نصوص الواجهة قبل الحفظ ولا يمرر حقولاً فارغة إلى قاعدة البيانات", () => {
+    expect(tickerSettingsInputSchema.parse({ tickerPrimary: "عرض اليوم", tickerSecondary: "توصيل سريع" })).toMatchObject({ tickerPrimary: "عرض اليوم", tickerSecondary: "توصيل سريع" });
+    expect(tickerSettingsInputSchema.parse({})).toMatchObject({ tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
   });
 
   it("ينشئ قيمتي SQL صريحتين للشريطين حتى عند وصول مدخلات ناقصة", () => {
-    expect(readTickerSettings({ tickerPrimary: "نص صالح" })).toEqual({
+    expect(readTickerSettings({ tickerPrimary: "نص صالح" })).toMatchObject({
       tickerPrimary: "نص صالح",
       tickerSecondary: DEFAULT_TICKER_SECONDARY,
     });
