@@ -687,7 +687,13 @@ export default function Home() {
       setWosselItemDescription("");
       setScreen("driverSearch");
     },
-    onError: error => toast.error(error.message),
+    onError: error => {
+      const rawMessage = error.message || "";
+      const message = /failed query|insert into `orders`|params:/i.test(rawMessage)
+        ? "تعذر إنشاء الطلب حالياً. تم تسجيل المشكلة، حاول مرة أخرى بعد لحظات."
+        : rawMessage;
+      toast.error(message || "تعذر إرسال الطلب حالياً");
+    },
   });
   const checkStoreAvailability = trpc.lahza.storefront.availability.useMutation({ onError: error => toast.error(error.message) });
   const touchPresence = trpc.lahza.customers.touch.useMutation();
