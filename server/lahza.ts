@@ -23,6 +23,7 @@ import { resolveWahaLid, sendWahaReplyButtons, sendWahaText } from "./waha";
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
+const DRIVER_COOKIE = "lahza_driver_session";
 const DEMO_CUSTOMER_PHONE = "+963997311078";
 const DEMO_CUSTOMER_NAME = "عميل لحظة التجريبي";
 const TEST_CUSTOMER_PHONE = "+963997777777";
@@ -78,6 +79,8 @@ type AdminSession = { role: AdminRole; supervisorId?: number; city?: CityKey };
 type PartnerSession = { partnerId: number };
 type AdminSessionPayload = AdminSession & { runtimeId: string };
 type PartnerSessionPayload = PartnerSession & { runtimeId: string };
+type DriverSession = { driverId: number };
+type DriverSessionPayload = DriverSession & { runtimeId: string };
 
 export function filterRestaurantStores<T extends { restaurantType: (typeof restaurantTypes)[number] }>(items: T[], category: (typeof categories)[number], restaurantType?: (typeof restaurantTypes)[number]) {
   if (category !== "restaurants" || !restaurantType || restaurantType === "all") return items;
@@ -570,6 +573,8 @@ async function ensureDispatchLocationSchema(db: NonNullable<Awaited<ReturnType<t
     const names = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
     if (!names.has("locationLat")) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`locationLat\` INT NULL`));
     if (!names.has("locationLng")) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`locationLng\` INT NULL`));
+    if (table === "drivers" && !names.has("trackingToken")) await db.execute(sql.raw("ALTER TABLE `drivers` ADD COLUMN `trackingToken` VARCHAR(128) NULL"));
+    if (table === "drivers" && !names.has("passwordHash")) await db.execute(sql.raw("ALTER TABLE `drivers` ADD COLUMN `passwordHash` VARCHAR(255) NULL"));
   }
 }
 
@@ -606,6 +611,14 @@ async function createPartnerSession(payload: PartnerSessionPayload) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("12h")
+    .sign(sessionKey());
+}
+
+async function createDriverSession(payload: DriverSessionPayload) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("30d")
     .sign(sessionKey());
 }
 
@@ -657,6 +670,19 @@ async function readPartnerSession(ctx: TrpcContext): Promise<PartnerSession | nu
   }
 }
 
+async function readDriverSession(ctx: TrpcContext): Promise<DriverSession | null> {
+  const token = parse(ctx.req.headers.cookie ?? "")[DRIVER_COOKIE];
+  const runtimeId = getAuthRuntimeId(ctx);
+  if (!token || !runtimeId) return null;
+  try {
+    const { payload } = await jwtVerify(token, sessionKey());
+    if (typeof payload.driverId !== "number" || !hasMatchingAuthRuntime(runtimeId, payload.runtimeId)) return null;
+    return { driverId: payload.driverId };
+  } catch {
+    return null;
+  }
+}
+
 async function requireAdmin(ctx: TrpcContext, allowed: AdminRole[] = [...adminRoles]) {
   const session = await readSession(ctx);
   if (!session || !allowed.includes(session.role)) {
@@ -694,6 +720,12 @@ function setPartnerCookie(ctx: TrpcContext, token: string) {
     ...getSessionCookieOptions(ctx.req),
   });
   ctx.res.clearCookie(ADMIN_COOKIE, getSessionCookieOptions(ctx.req));
+}
+
+function setDriverCookie(ctx: TrpcContext, token: string) {
+  ctx.res.cookie(DRIVER_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: 30 * 24 * 60 * 60 * 1000 });
+  ctx.res.clearCookie(ADMIN_COOKIE, getSessionCookieOptions(ctx.req));
+  ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
 }
 
 async function getSettings() {
@@ -891,6 +923,7 @@ export const driverInput = z.object({
   available: z.boolean().default(true),
   locationLat: coordinateSchema.optional(),
   locationLng: coordinateSchema.optional(),
+  password: passwordSchema.optional(),
 });
 
 export const notificationCampaignInput = z.object({
@@ -1272,6 +1305,33 @@ export const lahzaRouter = router({
       await db.update(drivers).set({ locationLat: Math.round(input.latitude * 1_000_000), locationLng: Math.round(input.longitude * 1_000_000) }).where(eq(drivers.id, driver.id));
       return { success: true };
     }),
+  }),
+  driverAuth: router({
+    session: publicProcedure.query(async ({ ctx }) => {
+      const session = await readDriverSession(ctx);
+      if (!session) return null;
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const driver = (await db.select({ id: drivers.id, name: drivers.name, phone: drivers.phone, available: drivers.available, active: drivers.active, trackingToken: drivers.trackingToken }).from(drivers).where(and(eq(drivers.id, session.driverId), eq(drivers.active, true))).limit(1))[0];
+      if (!driver) return null;
+      const assignments = await db.select({ orderId: orderAssignments.orderId, assignmentStatus: orderAssignments.status, orderStatus: orders.status, customerName: orders.customerName, locationText: orders.locationText, createdAt: orders.createdAt }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(orderAssignments.updatedAt)).limit(10);
+      return { ...driver, assignments };
+    }),
+    login: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema, password: passwordSchema })).mutation(async ({ ctx, input }) => {
+      const runtimeId = getAuthRuntimeId(ctx);
+      if (!runtimeId) throw new Error("تعذر تأمين جلسة المندوب، أعد فتح التطبيق وحاول مرة أخرى");
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const driver = (await db.select().from(drivers).where(and(eq(drivers.phone, input.phone), eq(drivers.active, true))).limit(1))[0];
+      if (!driver) throw new Error("رقم الهاتف أو كلمة مرور المندوب غير صحيحة");
+      if (!driver.passwordHash) {
+        if (input.password !== "0000") throw new Error("رقم الهاتف أو كلمة مرور المندوب غير صحيحة");
+        await db.update(drivers).set({ passwordHash: await hashSecret("0000") }).where(eq(drivers.id, driver.id));
+      } else if (!await verifySecret(input.password, driver.passwordHash)) throw new Error("رقم الهاتف أو كلمة مرور المندوب غير صحيحة");
+      setDriverCookie(ctx, await createDriverSession({ driverId: driver.id, runtimeId }));
+      return { id: driver.id, name: driver.name };
+    }),
+    logout: publicProcedure.mutation(({ ctx }) => { ctx.res.clearCookie(DRIVER_COOKIE, getSessionCookieOptions(ctx.req)); return { success: true }; }),
   }),
   customCategories: router({
     listActive: publicProcedure.query(async () => {
@@ -2151,12 +2211,14 @@ export const lahzaRouter = router({
       if (input.phone === (settings.ownerPhone || DEFAULT_OWNER_PHONE)) return { role: "owner" as const };
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const [supervisor, partner] = await Promise.all([
+      const [supervisor, partner, driver] = await Promise.all([
         db.select({ id: supervisors.id }).from(supervisors).where(and(eq(supervisors.username, input.phone), eq(supervisors.active, true))).limit(1),
         db.select({ id: partners.id }).from(partners).where(and(eq(partners.username, input.phone), eq(partners.active, true))).limit(1),
+        db.select({ id: drivers.id }).from(drivers).where(and(eq(drivers.phone, input.phone), eq(drivers.active, true))).limit(1),
       ]);
       if (supervisor[0]) return { role: "supervisor" as const };
       if (partner[0]) return { role: "partner" as const };
+      if (driver[0]) return { role: "driver" as const };
       return null;
     }),
     discountCodes: router({
@@ -2541,22 +2603,22 @@ export const lahzaRouter = router({
         const exists = (await db.select().from(drivers).where(eq(drivers.phone, input.phone)).limit(1))[0];
         if (exists?.active) throw new Error("رقم المندوب مستخدم بالفعل");
         if (exists) {
-          const { locationLat, locationLng, ...driverData } = input;
-          await db.update(drivers).set({ ...driverData, active: true, available: true, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, exists.id));
-          void sendWahaText(input.phone, { body: "لقد تم تعيينك مندوباً في شركة لحظة." });
+          const { locationLat, locationLng, password, ...driverData } = input;
+          await db.update(drivers).set({ ...driverData, active: true, available: true, passwordHash: exists.passwordHash || await hashSecret(password || "0000"), locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, exists.id));
+          void sendWahaText(input.phone, { body: `لقد تم تعيينك مندوباً في شركة لحظة. كلمة المرور الأولية: ${password || "0000"}` });
           return { success: true, reactivated: true };
         }
-        const { locationLat, locationLng, ...driverData } = input;
-        await db.insert(drivers).values({ ...driverData, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) });
-        void sendWahaText(input.phone, { body: "لقد تم تعيينك مندوباً في شركة لحظة." });
+        const { locationLat, locationLng, password, ...driverData } = input;
+        await db.insert(drivers).values({ ...driverData, passwordHash: await hashSecret(password || "0000"), locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) });
+        void sendWahaText(input.phone, { body: `لقد تم تعيينك مندوباً في شركة لحظة. كلمة المرور الأولية: ${password || "0000"}` });
         return { success: true };
       }),
       update: publicProcedure.input(driverInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const { id, locationLat, locationLng, ...patch } = input;
-        await db.update(drivers).set({ ...patch, active: true, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, id));
+        const { id, locationLat, locationLng, password, ...patch } = input;
+        await db.update(drivers).set({ ...patch, ...(password ? { passwordHash: await hashSecret(password) } : {}), active: true, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

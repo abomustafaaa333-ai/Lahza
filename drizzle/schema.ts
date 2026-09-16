@@ -332,6 +332,7 @@ export const drivers = mysqlTable("drivers", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 80 }).notNull(),
   phone: varchar("phone", { length: 24 }).notNull().unique(),
+  passwordHash: varchar("passwordHash", { length: 255 }),
   vehicleType: mysqlEnum("vehicleType", ["motorcycle", "car", "van"]).notNull().default("motorcycle"),
   region: varchar("region", { length: 120 }).notNull().default("منبج"),
   active: boolean("active").notNull().default(true),
