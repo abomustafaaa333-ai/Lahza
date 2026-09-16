@@ -160,6 +160,10 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `push_tokens` (`id` INT NOT NULL AUTO_INCREMENT, `token` VARCHAR(4096) NOT NULL, `deviceId` VARCHAR(80) NOT NULL, `customerPhone` VARCHAR(24) NULL, `platform` VARCHAR(20) NOT NULL DEFAULT 'android', `active` BOOLEAN NOT NULL DEFAULT TRUE, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), UNIQUE KEY `push_tokens_token_unique` (`token`(191)))"));
 }
 
+async function ensureWosselLiOrderTypeSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await db.execute(sql.raw("ALTER TABLE `orders` MODIFY COLUMN `orderType` ENUM('delivery','taxi','wossel_li') NOT NULL"));
+}
+
 export function isStoreVisibleInCustomerCity(store: { city: CityKey; jarabulusGatewayEnabled: boolean }, city: CityKey) {
   return city === "jarabulus"
     ? store.city === "manbij" && store.jarabulusGatewayEnabled
@@ -1902,6 +1906,7 @@ export const lahzaRouter = router({
     }),
     create: publicProcedure.input(orderInputSchema).mutation(async ({ ctx, input }) => {
       const db = await ensureCatalogSeed();
+      if (input.orderType === "wossel_li") await ensureWosselLiOrderTypeSchema(db);
       const orderCity = ctx.city;
       if (input.orderCity && input.orderCity !== orderCity) throw new Error("المدينة المختارة للطلب غير مطابقة لواجهة التطبيق");
       if (input.orderType === "taxi" && orderCity === "jarabulus") throw new Error("خدمة سيارات الأجرة المحلية غير متاحة في بوابة جرابلس حالياً");
