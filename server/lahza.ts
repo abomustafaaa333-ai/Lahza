@@ -724,20 +724,21 @@ async function getSettings() {
   return created[0]!;
 }
 
-async function getDrivingQuote(customerLat: number, customerLng: number) {
+async function getDrivingQuote(customerLat: number, customerLng: number, originLat?: number, originLng?: number) {
   const settings = await getSettings();
-  const originLat = settings.originLatE6 / 1_000_000;
-  const originLng = settings.originLngE6 / 1_000_000;
-  const route = await getRoadRoute({ latitude: originLat, longitude: originLng }, { latitude: customerLat, longitude: customerLng });
-  const { billableKm, deliveryFee } = calculateDeliveryFee(Math.round(route.distanceMeters + 2_000), settings.deliveryPricePerKm);
+  const routeOriginLat = originLat ?? settings.originLatE6 / 1_000_000;
+  const routeOriginLng = originLng ?? settings.originLngE6 / 1_000_000;
+  const route = await getRoadRoute({ latitude: routeOriginLat, longitude: routeOriginLng }, { latitude: customerLat, longitude: customerLng });
+  const pricing = calculateDistanceBasedDeliveryFee(Math.round(route.distanceMeters + 2_000), settings.deliveryPricePerKm);
   return {
-    origin: { lat: originLat, lng: originLng },
+    origin: { lat: routeOriginLat, lng: routeOriginLng },
     distanceMeters: route.distanceMeters,
     distanceText: `${(route.distanceMeters / 1000).toFixed(1)} كم`,
     distanceKm: Math.round((route.distanceMeters / 1000) * 10) / 10,
-    billableKm,
+    billableKm: pricing.billableKm,
     pricePerKm: settings.deliveryPricePerKm,
-    deliveryFee,
+    deliveryFee: pricing.deliveryFee,
+    deliveryFeeNewSyp: pricing.deliveryFeeNewSyp,
     durationMinutes: Math.ceil(route.durationSeconds / 60) + 20,
   };
 }
@@ -1250,7 +1251,7 @@ export const lahzaRouter = router({
     }),
   }),
   delivery: router({
-    quote: publicProcedure.input(z.object({ locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180) })).mutation(async ({ input }) => getDrivingQuote(input.locationLat, input.locationLng)),
+    quote: publicProcedure.input(z.object({ locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180), originLat: coordinateSchema.min(-90).max(90).optional(), originLng: coordinateSchema.min(-180).max(180).optional() })).mutation(async ({ input }) => getDrivingQuote(input.locationLat, input.locationLng, input.originLat, input.originLng)),
   }),
   driverAuth: router({
     session: publicProcedure.query(async ({ ctx }) => {

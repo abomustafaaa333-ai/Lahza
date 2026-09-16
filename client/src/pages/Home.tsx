@@ -438,6 +438,7 @@ export default function Home() {
   const [customerLat, setCustomerLat] = useState<number | null>(null);
   const [customerLng, setCustomerLng] = useState<number | null>(null);
   const [locationVerified, setLocationVerified] = useState(false);
+  const [deliveryQuoteData, setDeliveryQuoteData] = useState<{ distanceMeters: number; billableKm: number; deliveryFeeNewSyp: number; durationMinutes: number } | null>(null);
   const [useManualLocation, setUseManualLocation] = useState(false);
   const [locating, setLocating] = useState(false);
   const [notes, setNotes] = useState("");
@@ -558,6 +559,7 @@ export default function Home() {
   const [gatewayMode, setGatewayMode] = useState(false);
 
   const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && screen === "checkout", retry: false });
+  const deliveryQuote = trpc.lahza.delivery.quote.useMutation();
   const partnerOffersQuery = trpc.lahza.publicFeaturedOffers.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false, staleTime: 120_000 });
   const popularProductsQuery = trpc.lahza.storefront.popularProducts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false, staleTime: 300_000 });
   const storeOffersQuery = trpc.lahza.intercity.offers.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
@@ -615,6 +617,24 @@ export default function Home() {
     setSelectedStore({ id: sharedStore.id, name: sharedStore.name, category: sharedStore.category as LahzaCategory, imageUrl: sharedStore.imageUrl, storeOpen: sharedStore.storeOpen });
     setScreen("store");
   }, [sharedStoreQuery.data, selectedStore?.id]);
+  useEffect(() => {
+    if (isStaticDemo || checkoutMode !== "delivery" || !selectedStore?.locationLat || !selectedStore.locationLng || customerLat === null || customerLng === null) {
+      setDeliveryQuoteData(null);
+      return;
+    }
+    let active = true;
+    void deliveryQuote.mutateAsync({
+      locationLat: customerLat,
+      locationLng: customerLng,
+      originLat: selectedStore.locationLat / 1_000_000,
+      originLng: selectedStore.locationLng / 1_000_000,
+    }).then(result => {
+      if (active) setDeliveryQuoteData({ distanceMeters: result.distanceMeters, billableKm: result.billableKm, deliveryFeeNewSyp: result.deliveryFeeNewSyp, durationMinutes: result.durationMinutes });
+    }).catch(() => {
+      if (active) setDeliveryQuoteData(null);
+    });
+    return () => { active = false; };
+  }, [isStaticDemo, checkoutMode, selectedStore?.id, selectedStore?.locationLat, selectedStore?.locationLng, customerLat, customerLng]);
   const adminLogin = trpc.lahza.admin.login.useMutation({
     onSuccess: result => {
       utils.lahza.admin.session.setData(undefined, { role: result.role });
@@ -729,16 +749,14 @@ export default function Home() {
   const deliveryPricePerKm = deliveryFeesQuery.data?.pricePerKm ?? 2;
   const storeLat = selectedStore?.locationLat ? selectedStore.locationLat / 1_000_000 : null;
   const storeLng = selectedStore?.locationLng ? selectedStore.locationLng / 1_000_000 : null;
-  const deliveryDistanceMeters = storeLat !== null && storeLng !== null && customerLat !== null && customerLng !== null
-    ? straightLineDistanceMeters(storeLat, storeLng, customerLat, customerLng)
-    : 0;
-  const billableDeliveryKm = Math.max(1, Math.ceil((2_000 + deliveryDistanceMeters) / 1000));
-  const deliveryFeeNewSyp = checkoutMode === "delivery" ? billableDeliveryKm * deliveryPricePerKm : 0;
+  const deliveryDistanceMeters = deliveryQuoteData?.distanceMeters ?? 0;
+  const billableDeliveryKm = deliveryQuoteData?.billableKm ?? 0;
+  const deliveryFeeNewSyp = checkoutMode === "delivery" ? (deliveryQuoteData?.deliveryFeeNewSyp ?? 0) : 0;
   const grandTotalNewSyp = toNewSyp(total) + deliveryFeeNewSyp;
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
-  const cartDeliveryFeeNewSyp = billableDeliveryKm * deliveryPricePerKm;
+  const cartDeliveryFeeNewSyp = deliveryQuoteData?.deliveryFeeNewSyp ?? 0;
   const cartGrandTotalNewSyp = toNewSyp(discountedCartTotal) + cartDeliveryFeeNewSyp;
-  const deliveryEta = cart.length >= 6 ? "40–55 دقيقة" : cart.length >= 3 ? "35–50 دقيقة" : "30–45 دقيقة";
+  const deliveryEta = deliveryQuoteData ? `${deliveryQuoteData.durationMinutes} دقيقة تقريباً` : "يتم الحساب بعد تحديد موقعك";
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة", storeName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", ratingStars: 3, featuredStatus: "approved" as const })) : partnerOffersQuery.data ?? [];
   const homePopularProducts = isStaticDemo ? [] : (popularProductsQuery.data ?? []);
   const featuredStoreCards = useMemo(() => {
