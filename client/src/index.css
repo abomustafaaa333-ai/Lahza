@@ -2840,6 +2840,16 @@ header[class*="header-service-theme-"] .header-search-wrap {
 @keyframes city-welcome-scroll { from { transform: translateX(0); } to { transform: translateX(50%); } }
 @media (prefers-reduced-motion: reduce) { .city-welcome-ticker-track { animation: none; width: 100%; justify-content: center; } }
 
+/* وضع زر «شاهد العروض» في الجهة اليسرى داخل القسم الفيروزي */
+header[class*="header-service-theme-"] .service-intro-actions {
+  direction: ltr !important;
+  justify-content: space-between !important;
+}
+header[class*="header-service-theme-"] .service-intro-offers-cta {
+  order: -1 !important;
+  direction: rtl !important;
+}
+
 /* محاذاة محتوى صورة العرض فوق عنوان المتاجر المميزة في الواجهتين */
 .global-offer-bar .hero-image-frame .hero-offer-caption,
 .home-offer-gallery .hero-image-frame .hero-offer-caption,
