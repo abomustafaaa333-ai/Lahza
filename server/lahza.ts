@@ -11,7 +11,7 @@ import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
 import { demoProductImages, demoProductTemplates, type DemoStoreCategory } from "./demoCatalog";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { getDirections } from "./maps";
+import { getRoadRoute } from "./maps";
 import { cleanExpiredOffers } from "./expiredOffers";
 import { cleanExpiredOrders, isOrderArchived } from "./orderLifecycle";
 import { deleteOfferImage, uploadOfferImage } from "./offerMedia";
@@ -751,24 +751,17 @@ async function getDrivingQuote(customerLat: number, customerLng: number) {
   const settings = await getSettings();
   const originLat = settings.originLatE6 / 1_000_000;
   const originLng = settings.originLngE6 / 1_000_000;
-  const response = await getDirections({
-    origin: `${originLat},${originLng}`,
-    destination: `${customerLat},${customerLng}`,
-    mode: "driving",
-    language: "ar",
-    region: "sy",
-  });
-  const leg = response.routes?.[0]?.legs?.[0];
-  if (response.status !== "OK" || !leg?.distance?.value) throw new Error("تعذر حساب مسافة الطريق حالياً. حاول مجدداً بعد لحظات.");
-  const { billableKm, deliveryFee } = calculateDeliveryFee(leg.distance.value, settings.deliveryPricePerKm);
+  const route = await getRoadRoute({ latitude: originLat, longitude: originLng }, { latitude: customerLat, longitude: customerLng });
+  const { billableKm, deliveryFee } = calculateDeliveryFee(Math.round(route.distanceMeters + 2_000), settings.deliveryPricePerKm);
   return {
     origin: { lat: originLat, lng: originLng },
-    distanceMeters: leg.distance.value,
-    distanceText: leg.distance.text,
-    distanceKm: Math.round((leg.distance.value / 1000) * 10) / 10,
+    distanceMeters: route.distanceMeters,
+    distanceText: `${(route.distanceMeters / 1000).toFixed(1)} كم`,
+    distanceKm: Math.round((route.distanceMeters / 1000) * 10) / 10,
     billableKm,
     pricePerKm: settings.deliveryPricePerKm,
     deliveryFee,
+    durationMinutes: Math.ceil(route.durationSeconds / 60) + 20,
   };
 }
 
@@ -1983,14 +1976,11 @@ export const lahzaRouter = router({
       let deliveryDistanceMeters = 0;
       let deliveryFee = 0;
       let deliveryPricingPending = false;
+      let routeDurationSeconds = 0;
       let intercityTrip: typeof intercityTrips.$inferSelect | null = null;
       const fulfillmentScope = orderCity === "jarabulus" && input.orderType === "delivery" ? "manbij_to_jarabulus" as const : "local" as const;
-      const wosselStraightLineRoundTripMeters = input.orderType === "wossel_li"
-        ? Math.round(distanceBetweenE6(settings.originLatE6, settings.originLngE6, Math.round(input.locationLat! * 1_000_000), Math.round(input.locationLng! * 1_000_000)) * 2)
-        : 0;
-      const wosselBillableDistanceMeters = wosselStraightLineRoundTripMeters + 2_000;
-      const preparationMinutes = input.orderType === "wossel_li"
-        ? Math.max(1, Math.ceil(wosselBillableDistanceMeters / 1000) * 3)
+      let preparationMinutes = input.orderType === "wossel_li"
+        ? 0
         : fulfillmentScope === "manbij_to_jarabulus"
         ? jarabulusOrderPreparationMinutes(settings)
         : Math.max(partnerPreparationMinutes, resolvedLines.length >= 6 ? 55 : resolvedLines.length >= 3 ? 50 : 45);
@@ -2009,12 +1999,22 @@ export const lahzaRouter = router({
         if (!deliveryStore?.locationLat || !deliveryStore.locationLng || input.locationLat === undefined || input.locationLng === undefined) {
           throw new Error("تعذر حساب رسوم التوصيل: تأكد من تحديد موقعك وأن المتجر يملك إحداثيات صحيحة");
         }
-        deliveryDistanceMeters = Math.round(2_000 + distanceBetweenE6(deliveryStore.locationLat, deliveryStore.locationLng, Math.round(input.locationLat * 1_000_000), Math.round(input.locationLng * 1_000_000)));
+        const route = await getRoadRoute({ latitude: deliveryStore.locationLat / 1_000_000, longitude: deliveryStore.locationLng / 1_000_000 }, { latitude: input.locationLat, longitude: input.locationLng });
+        routeDurationSeconds = route.durationSeconds;
+        deliveryDistanceMeters = Math.round(route.distanceMeters + 2_000);
         deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.deliveryPricePerKm).deliveryFee;
+        preparationMinutes = Math.ceil(routeDurationSeconds / 60) + 20;
         totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "wossel_li") {
-        deliveryDistanceMeters = wosselBillableDistanceMeters;
+        if (input.locationLat === undefined || input.locationLng === undefined) throw new Error("يجب تحديد موقع التسليم بدقة لحساب المسافة الحقيقية");
+        const center = { latitude: settings.originLatE6 / 1_000_000, longitude: settings.originLngE6 / 1_000_000 };
+        const destination = { latitude: input.locationLat, longitude: input.locationLng };
+        const outbound = await getRoadRoute(center, destination);
+        const returnRoute = await getRoadRoute(destination, center);
+        routeDurationSeconds = outbound.durationSeconds + returnRoute.durationSeconds;
+        deliveryDistanceMeters = Math.round(outbound.distanceMeters + returnRoute.distanceMeters + 2_000);
         deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm).deliveryFee;
+        preparationMinutes = Math.ceil(routeDurationSeconds / 60) + 20;
         totalAmount = deliveryFee;
       }
 
