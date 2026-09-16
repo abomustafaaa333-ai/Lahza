@@ -3300,8 +3300,8 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   gap: .55rem;
 }
 .category-grid .category-icon {
-  width: 2.9rem;
-  height: 2.9rem;
+  width: 2cm;
+  height: 2cm;
   border-radius: .85rem;
 }
 .category-grid .category-icon svg {
@@ -3347,6 +3347,10 @@ header[class*="header-service-theme-"] .service-intro-offer-mark { overflow: vis
   .category-grid .category-card {
     min-height: 5.4rem;
     padding: .45rem .55rem;
+  }
+  .category-grid .category-icon {
+    width: 2cm;
+    height: 2cm;
   }
   .home-category-row > .home-category-card {
     flex-basis: 6.8rem;
