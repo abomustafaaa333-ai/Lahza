@@ -49,7 +49,7 @@ export async function getRoadRoute(origin: { latitude: number; longitude: number
   }
 
   try {
-    const response = await fetch("https://api.heigit.org/v2/directions/driving-car/geojson", {
+    const response = await fetch("https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson", {
       method: "POST",
       headers: { Authorization: orsKey, "Content-Type": "application/json" },
       body: JSON.stringify({ coordinates: [[origin.longitude, origin.latitude], [destination.longitude, destination.latitude]] }),
@@ -58,7 +58,7 @@ export async function getRoadRoute(origin: { latitude: number; longitude: number
     if (!response.ok) {
       const details = await response.text().catch(() => "");
       console.error(`OpenRouteService request failed (${response.status})`, details.slice(0, 500));
-      throw new Error("تعذر حساب مسافة الطريق الحقيقية عبر OpenRouteService. تحقق من صحة المفتاح وإعدادات Railway");
+      throw new Error(`تعذر حساب مسافة الطريق الحقيقية عبر OpenRouteService (HTTP ${response.status}). تحقق من المفتاح وإعدادات Railway`);
     }
 
     const data = await response.json() as { features?: Array<{ properties?: { segments?: Array<{ distance?: number; duration?: number }> } }> };
