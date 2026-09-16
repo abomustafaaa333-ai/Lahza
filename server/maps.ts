@@ -52,7 +52,12 @@ export async function getRoadRoute(origin: { latitude: number; longitude: number
     const response = await fetch("https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson", {
       method: "POST",
       headers: { Authorization: orsKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ coordinates: [[origin.longitude, origin.latitude], [destination.longitude, destination.latitude]] }),
+      body: JSON.stringify({
+        coordinates: [[origin.longitude, origin.latitude], [destination.longitude, destination.latitude]],
+        // Delivery pins can be inside buildings or off-road. Snap each point
+        // to the nearest routable road within 5 km while keeping real routing.
+        radiuses: [5000, 5000],
+      }),
     });
 
     if (!response.ok) {
