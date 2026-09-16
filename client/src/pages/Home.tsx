@@ -439,6 +439,7 @@ export default function Home() {
   const [customerLng, setCustomerLng] = useState<number | null>(null);
   const [locationVerified, setLocationVerified] = useState(false);
   const [deliveryQuoteData, setDeliveryQuoteData] = useState<{ distanceMeters: number; billableKm: number; deliveryFeeNewSyp: number; durationMinutes: number } | null>(null);
+  const [deliveryQuoteStatus, setDeliveryQuoteStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [useManualLocation, setUseManualLocation] = useState(false);
   const [locating, setLocating] = useState(false);
   const [notes, setNotes] = useState("");
@@ -620,8 +621,11 @@ export default function Home() {
   useEffect(() => {
     if (isStaticDemo || checkoutMode !== "delivery" || !selectedStore?.locationLat || !selectedStore.locationLng || customerLat === null || customerLng === null) {
       setDeliveryQuoteData(null);
+      setDeliveryQuoteStatus("idle");
       return;
     }
+    setDeliveryQuoteData(null);
+    setDeliveryQuoteStatus("loading");
     let active = true;
     void deliveryQuote.mutateAsync({
       locationLat: customerLat,
@@ -629,9 +633,16 @@ export default function Home() {
       originLat: selectedStore.locationLat / 1_000_000,
       originLng: selectedStore.locationLng / 1_000_000,
     }).then(result => {
-      if (active) setDeliveryQuoteData({ distanceMeters: result.distanceMeters, billableKm: result.billableKm, deliveryFeeNewSyp: result.deliveryFeeNewSyp, durationMinutes: result.durationMinutes });
+      if (active) {
+        setDeliveryQuoteData({ distanceMeters: result.distanceMeters, billableKm: result.billableKm, deliveryFeeNewSyp: result.deliveryFeeNewSyp, durationMinutes: result.durationMinutes });
+        setDeliveryQuoteStatus("ready");
+      }
     }).catch(() => {
-      if (active) setDeliveryQuoteData(null);
+      if (active) {
+        setDeliveryQuoteData(null);
+        setDeliveryQuoteStatus("error");
+        toast.error("تعذر حساب مسافة الطريق الحقيقية. أعد تحديد الموقع للمحاولة مجدداً.");
+      }
     });
     return () => { active = false; };
   }, [isStaticDemo, checkoutMode, selectedStore?.id, selectedStore?.locationLat, selectedStore?.locationLng, customerLat, customerLng]);
@@ -756,7 +767,7 @@ export default function Home() {
   const hasPharmacy = cart.some(item => item.category === "pharmacy");
   const cartDeliveryFeeNewSyp = deliveryQuoteData?.deliveryFeeNewSyp ?? 0;
   const cartGrandTotalNewSyp = toNewSyp(discountedCartTotal) + cartDeliveryFeeNewSyp;
-  const deliveryEta = deliveryQuoteData ? `${deliveryQuoteData.durationMinutes} دقيقة تقريباً` : "يتم الحساب بعد تحديد موقعك";
+  const deliveryEta = deliveryQuoteData ? `${deliveryQuoteData.durationMinutes} دقيقة تقريباً` : deliveryQuoteStatus === "loading" ? "جارٍ حساب مسافة الطريق..." : deliveryQuoteStatus === "error" ? "تعذر حساب مسافة الطريق" : "يتم الحساب بعد تحديد موقعك";
   const partnerOffers = isStaticDemo ? staticDemoProducts.filter(product => product.category === "offers").map(product => ({ id: product.id, text: product.unitPrice > 0 ? `${product.name} — ${formatSyp(product.unitPrice)}` : product.name, partnerName: "شريك لحظة", storeName: "متجر لحظة التجريبي", storeId: -1, storeCategory: "offers", ratingStars: 3, featuredStatus: "approved" as const })) : partnerOffersQuery.data ?? [];
   const homePopularProducts = isStaticDemo ? [] : (popularProductsQuery.data ?? []);
   const featuredStoreCards = useMemo(() => {
