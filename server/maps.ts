@@ -74,12 +74,16 @@ export async function getRoadRoute(origin: { latitude: number; longitude: number
     }
 
     const data = await response.json() as { features?: Array<{ properties?: { segments?: Array<{ distance?: number; duration?: number }> } }> };
-    const segment = data.features?.[0]?.properties?.segments?.[0];
-    if (!segment?.distance || segment.duration === undefined) {
+    const segments = data.features?.[0]?.properties?.segments ?? [];
+    const validSegments = segments.filter((segment): segment is { distance: number; duration: number } => Number.isFinite(segment.distance) && Number.isFinite(segment.duration));
+    if (!validSegments.length) {
       throw new Error("لم تُرجع OpenRouteService مساراً صالحاً بين الموقعين");
     }
 
-    return { distanceMeters: segment.distance, durationSeconds: segment.duration };
+    return {
+      distanceMeters: validSegments.reduce((total, segment) => total + segment.distance, 0),
+      durationSeconds: validSegments.reduce((total, segment) => total + segment.duration, 0),
+    };
   } catch (error) {
     if (error instanceof Error && (error.message.startsWith("تعذر حساب") || error.message.startsWith("لم تُرجع"))) {
       throw error;
