@@ -13,6 +13,7 @@ async function startServer() {
 
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.get("/health", (_req, res) => res.status(200).json({ ok: true, service: "lahza" }));
   app.post("/api/waha/webhook", (req, res) => {
     void handleWahaWebhook(req.body).catch(error => console.warn("Unable to process WAHA webhook", error));
     res.status(202).json({ accepted: true });
@@ -22,18 +23,13 @@ async function startServer() {
   if (process.env.NODE_ENV === "development") await setupVite(app, server);
   else serveStatic(app);
 
-  try {
-    await ensureDemoStoresSeed();
-  } catch (error) {
-    console.warn("Unable to seed demo stores", error);
-  }
+  const port = Number(process.env.PORT ?? 3000);
+  server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
 
+  void ensureDemoStoresSeed().catch(error => console.warn("Unable to seed demo stores", error));
   const runOrderCompletion = () => void autoCompleteDueOrders().catch(error => console.warn("Unable to auto-complete due orders", error));
   runOrderCompletion();
   setInterval(runOrderCompletion, 60_000);
-
-  const port = Number(process.env.PORT ?? 3000);
-  server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
 }
 
 startServer().catch(error => {
