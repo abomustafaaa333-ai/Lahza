@@ -1079,7 +1079,7 @@ export const orderInputSchema = z.object({
 }).superRefine((input, context) => {
   if (input.orderType === "delivery" && input.lines.length === 0) context.addIssue({ code: "custom", message: "أضف صنفاً واحداً على الأقل" });
   if (input.orderType === "taxi" && (!input.taxiType || !input.pickupLocation || !input.destination)) context.addIssue({ code: "custom", message: "أكمل بيانات التاكسي" });
-  if (input.orderType === "wossel_li" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined || !input.locationText || !input.pickupLocation || !input.pickupContactPhone || !input.itemDescription)) context.addIssue({ code: "custom", message: "أكمل موقع التسليم وبيانات الاستلام والغرض" });
+  if (input.orderType === "wossel_li" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined || !input.locationText || !input.pickupContactPhone || !input.itemDescription)) context.addIssue({ code: "custom", message: "أكمل موقع التسليم ورقم جهة الاستلام ونوع الغرض" });
   if (input.locationMode === "gps" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined)) context.addIssue({ code: "custom", message: "حدد موقعك عبر زر تحديد موقعي أو اختر كتابة الموقع يدوياً" });
   if (input.locationMode === "manual" && !input.locationText) context.addIssue({ code: "custom", message: "اكتب وصفاً واضحاً لموقعك اليدوي" });
 });
@@ -2037,7 +2037,7 @@ export const lahzaRouter = router({
         deliveryFee,
         preparationMinutes,
         taxiType: input.taxiType ?? null,
-        pickupLocation: input.pickupLocation ?? null,
+        pickupLocation: input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام",
         pickupContactPhone: input.pickupContactPhone ?? null,
         itemDescription: input.itemDescription ?? null,
         itemWeight: input.itemWeight ?? null,
@@ -2076,7 +2076,7 @@ export const lahzaRouter = router({
         const primaryStoreId = products.find(product => product.storeId)?.storeId ?? null;
         await dispatchOrderToNearestDriver(db, orderId, orderCity, primaryStoreId, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
       } else if (input.orderType === "wossel_li") {
-        await dispatchWosselLiToNearestDriver(db, orderId, input.customerName, input.pickupLocation!, input.pickupContactPhone!, input.locationText!, input.locationUrl!, input.itemDescription!);
+        await dispatchWosselLiToNearestDriver(db, orderId, input.customerName, input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", input.pickupContactPhone!, input.locationText!, input.locationUrl!, input.itemDescription!);
       }
       return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending, orderCity, fulfillmentScope, preparationMinutes, minimumOrder };
     }),
