@@ -339,7 +339,6 @@ export const drivers = mysqlTable("drivers", {
   available: boolean("available").notNull().default(true),
   locationLat: int("locationLat"),
   locationLng: int("locationLng"),
-  trackingToken: varchar("trackingToken", { length: 128 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

@@ -229,13 +229,6 @@
     {
       "idx": 32,
       "version": "5",
-      "when": 1789551000000,
-      "tag": "0033_driver_tracking",
-      "breakpoints": true
-    },
-    {
-      "idx": 33,
-      "version": "5",
       "when": 1789552000000,
       "tag": "0034_driver_password",
       "breakpoints": true
