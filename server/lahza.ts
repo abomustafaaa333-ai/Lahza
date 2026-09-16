@@ -1920,9 +1920,12 @@ export const lahzaRouter = router({
       let deliveryPricingPending = false;
       let intercityTrip: typeof intercityTrips.$inferSelect | null = null;
       const fulfillmentScope = orderCity === "jarabulus" && input.orderType === "delivery" ? "manbij_to_jarabulus" as const : "local" as const;
-      const wosselQuote = input.orderType === "wossel_li" ? await getDrivingQuote(input.locationLat!, input.locationLng!) : null;
+      const wosselStraightLineRoundTripMeters = input.orderType === "wossel_li"
+        ? Math.round(distanceBetweenE6(settings.originLatE6, settings.originLngE6, Math.round(input.locationLat! * 1_000_000), Math.round(input.locationLng! * 1_000_000)) * 2)
+        : 0;
+      const wosselBillableDistanceMeters = wosselStraightLineRoundTripMeters + 2_000;
       const preparationMinutes = input.orderType === "wossel_li"
-        ? Math.max(1, Math.ceil((Number(wosselQuote?.distanceMeters ?? 0) * 2) / 1000) * 3)
+        ? Math.max(1, Math.ceil(wosselBillableDistanceMeters / 1000) * 3)
         : fulfillmentScope === "manbij_to_jarabulus"
         ? jarabulusOrderPreparationMinutes(settings)
         : Math.max(partnerPreparationMinutes, resolvedLines.length >= 6 ? 55 : resolvedLines.length >= 3 ? 50 : 45);
@@ -1945,7 +1948,7 @@ export const lahzaRouter = router({
         deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.deliveryPricePerKm).deliveryFee;
         totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "wossel_li") {
-        deliveryDistanceMeters = Math.round(Number(wosselQuote?.distanceMeters ?? 0) * 2);
+        deliveryDistanceMeters = wosselBillableDistanceMeters;
         deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm).deliveryFee;
         totalAmount = deliveryFee;
       }
