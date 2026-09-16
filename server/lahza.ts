@@ -2039,10 +2039,10 @@ export const lahzaRouter = router({
         deliveryDistanceMeters,
         deliveryFee,
         preparationMinutes,
-        // Taxi type belongs only to taxi orders. Do not include this column
-        // at all for Wossel Li; the legacy Railway schema already defaults it
-        // to NULL and this avoids enum coercion of empty client values.
-        ...(input.orderType === "taxi" ? { taxiType: input.taxiType ?? null } : {}),
+        // Some older Railway databases still require this legacy enum column
+        // to have a value. Wossel Li never displays or uses this technical
+        // fallback; it only keeps inserts compatible with both schemas.
+        taxiType: input.orderType === "taxi" ? input.taxiType ?? "standard" : "standard",
         pickupLocation: input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام",
         pickupContactPhone: input.pickupContactPhone ?? null,
         itemDescription: input.itemDescription ?? null,
