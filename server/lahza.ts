@@ -264,15 +264,17 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   if (!nearest) {
     // Notify every configured Lahza contact. Older installations may have the
     // number in lahza_employees or supervisors instead of support_contacts.
-    const [contacts, employees, activeSupervisors] = await Promise.all([
+    const [contacts, employees, activeSupervisors, allDrivers] = await Promise.all([
       db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10),
       db.select({ phone: lahzaEmployees.phone }).from(lahzaEmployees).where(eq(lahzaEmployees.active, true)).limit(10),
       db.select({ phone: supervisors.username }).from(supervisors).where(and(eq(supervisors.active, true), eq(supervisors.city, orderCity))).limit(10),
+      db.select({ phone: drivers.phone }).from(drivers),
     ]);
     const settings = await getSettings();
+    const driverPhoneKeys = new Set(allDrivers.map(driver => driver.phone.replace(/\D/g, "")));
     const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts, ...employees, ...activeSupervisors]
       .map(contact => (typeof contact === "string" ? contact : contact.phone).trim())
-      .filter((phone, index, all) => phone && all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
+      .filter((phone, index, all) => phone && !driverPhoneKeys.has(phone.replace(/\D/g, "")) && all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
     const alert = { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} من متجر ${store.name} للعميل ${customerName} لا يوجد له مندوب متاح حالياً. يرجى التدخل يدوياً.` };
     const results = await Promise.allSettled(phones.map(phone => sendWahaText(phone, alert)));
     console.warn("No-driver alert dispatched", { orderId, recipientCount: phones.length, recipients: phones.map(maskPhone), failures: results.filter(result => result.status === "rejected").length });
