@@ -2036,7 +2036,10 @@ export const lahzaRouter = router({
         deliveryDistanceMeters,
         deliveryFee,
         preparationMinutes,
-        taxiType: input.taxiType ?? null,
+        // Taxi type belongs only to taxi orders. Explicitly clear it for
+        // Wossel Li so a stale client payload can never put the pickup text
+        // (for example, "الساحة") into the taxi enum column.
+        taxiType: input.orderType === "taxi" ? input.taxiType ?? null : null,
         pickupLocation: input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام",
         pickupContactPhone: input.pickupContactPhone ?? null,
         itemDescription: input.itemDescription ?? null,
