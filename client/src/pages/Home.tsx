@@ -693,23 +693,9 @@ export default function Home() {
   const markNotificationRead = trpc.lahza.notifications.markRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); } });
   const registerPushToken = trpc.lahza.notifications.registerPushToken.useMutation();
 
-  useEffect(() => {
-    if (isStaticDemo || !Capacitor.isNativePlatform() || customerAuth?.mode !== "customer" || !customerAuth.phone) return;
-    let active = true;
-    let registrationListener: { remove: () => Promise<void> } | undefined;
-    const setupPushNotifications = async () => {
-      const permission = await PushNotifications.checkPermissions();
-      const granted = permission.receive === "granted" ? permission : await PushNotifications.requestPermissions();
-      if (!active || granted.receive !== "granted") return;
-      await PushNotifications.createChannel({ id: "lahza_notifications", name: "إشعارات لحظة", description: "تأكيد الطلبات والعروض والتذكيرات", importance: 5, visibility: 1, sound: "default" });
-      registrationListener = await PushNotifications.addListener("registration", token => {
-        if (active) registerPushToken.mutate({ token: token.value, deviceId, customerPhone: customerAuth.phone! });
-      });
-      await PushNotifications.register();
-    };
-    void setupPushNotifications().catch(error => console.warn("Push notifications setup failed", error));
-    return () => { active = false; void registrationListener?.remove(); };
-  }, [customerAuth?.mode, customerAuth?.phone, deviceId, isStaticDemo]);
+  // Firebase is optional for this APK. Do not call PushNotifications.register()
+  // unless a google-services.json is bundled; otherwise the Capacitor plugin
+  // throws because FirebaseApp has not been initialized and can crash the app.
 
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) setNotificationPermission(window.Notification.permission);
