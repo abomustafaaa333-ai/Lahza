@@ -2,10 +2,13 @@ export type ShareableOrder = {
   id: number;
   customerName: string;
   customerPhone: string;
-  orderType: "delivery" | "taxi";
+  orderType: "delivery" | "taxi" | "wossel_li";
   taxiType: "standard" | "van" | null;
   pickupLocation: string | null;
   destination: string | null;
+  pickupContactPhone?: string | null;
+  itemDescription?: string | null;
+  itemWeight?: string | null;
   paymentMethod: "sham_cash" | "cash";
   totalAmount: number;
   storeNames?: string[];
@@ -41,17 +44,19 @@ export function buildWhatsAppLocationUrl(customerName: string, mapUrl: string) {
 export function buildEmployeeOrderWhatsAppUrl(employeePhone: string, order: ShareableOrder, mapUrl: string | null) {
   const orderRows = order.orderType === "taxi"
     ? [`الرحلة: ${order.taxiType === "van" ? "فان" : "تاكسي"}`, `من: ${order.pickupLocation ?? "غير محدد"}`, `إلى: ${order.destination ?? "غير محدد"}`]
+    : order.orderType === "wossel_li"
+      ? [`طلب وصّل لي`, `الاستلام من: ${order.pickupLocation ?? "غير محدد"}`, `هاتف جهة الاستلام: ${order.pickupContactPhone ?? "غير محدد"}`, `الغرض: ${order.itemDescription ?? "غير محدد"}`, `الوزن التقريبي: ${order.itemWeight ?? "غير محدد"}`, `التسليم إلى: ${order.locationText ?? "غير محدد"}`]
     : order.lines.map(line => `• ${line.itemName} × ${line.quantity} ${line.unit}`);
   const customerNotes = notesWithoutMapLink(order.notes);
   const message = [
-    `طلب لحظة #${order.id}`,
+    `${order.orderType === "wossel_li" ? "طلب وصّل لي" : "طلب لحظة"} #${order.id}`,
     order.orderType === "delivery" && order.storeNames?.length ? `المتجر: ${order.storeNames.join("، ")}` : "",
     `العميل: ${order.customerName}`,
     `الهاتف: ${order.customerPhone}`,
     ...orderRows,
-    order.orderType === "delivery" && order.deliveryDistanceMeters ? `مسافة الطريق: ${(order.deliveryDistanceMeters / 1000).toFixed(1)} كم` : "",
-    order.orderType === "delivery" && order.deliveryFee !== undefined ? `رسوم التوصيل: ${formatSyp(order.deliveryFee)}` : "",
-    order.orderType === "delivery" && order.locationText ? `عنوان العميل: ${order.locationText}` : "",
+    (order.orderType === "delivery" || order.orderType === "wossel_li") && order.deliveryDistanceMeters ? `المسافة ذهاباً وإياباً: ${(order.deliveryDistanceMeters / 1000).toFixed(1)} كم` : "",
+    (order.orderType === "delivery" || order.orderType === "wossel_li") && order.deliveryFee !== undefined ? `رسوم التوصيل: ${formatSyp(order.deliveryFee)}` : "",
+    (order.orderType === "delivery" || order.orderType === "wossel_li") && order.locationText ? `عنوان التسليم: ${order.locationText}` : "",
     `طريقة الدفع: ${order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}`,
     `الإجمالي: ${formatSyp(order.totalAmount)}`,
     customerNotes ? `ملاحظات العميل: ${customerNotes}` : "",

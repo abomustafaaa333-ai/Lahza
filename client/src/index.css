@@ -2803,6 +2803,9 @@ header[class*="header-service-theme-"] .header-search-wrap {
 .city-welcome-ticker { overflow: hidden; border-bottom: 1px solid #f4c3a6; color: #fffaf6; background: linear-gradient(90deg, #63301b, #a84d20, #63301b); font-size: .78rem; font-weight: 900; white-space: nowrap; }
 .city-welcome-ticker-track { display: flex; width: max-content; gap: 5rem; padding: .52rem 0; animation: city-welcome-scroll 18s linear infinite; }
 .city-welcome-ticker-track span { display: inline-flex; align-items: center; padding-inline: 2rem; }
+.wossel-li-callout { display: flex; align-items: center; justify-content: center; gap: .65rem; width: 100%; border: 1px solid #f4c3a6; border-radius: 1rem; padding: .8rem 1rem; color: #fffaf6; background: linear-gradient(110deg, #63301b, #c75b26, #63301b); font-size: .86rem; font-weight: 800; box-shadow: 0 10px 28px rgba(99,48,27,.15); transition: transform .2s ease, box-shadow .2s ease; }
+.wossel-li-callout:hover { transform: translateY(-1px); box-shadow: 0 14px 32px rgba(99,48,27,.22); }
+.wossel-li-callout strong { color: #fff1df; }
 @keyframes city-welcome-scroll { from { transform: translateX(0); } to { transform: translateX(50%); } }
 @media (prefers-reduced-motion: reduce) { .city-welcome-ticker-track { animation: none; width: 100%; justify-content: center; } }
 

@@ -139,7 +139,7 @@ export const intercityOrders = mysqlTable("intercity_orders", {
 
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
-  orderType: mysqlEnum("orderType", ["delivery", "taxi"]).notNull(),
+  orderType: mysqlEnum("orderType", ["delivery", "taxi", "wossel_li"]).notNull(),
   orderCity: mysqlEnum("orderCity", CITY_KEYS).notNull().default("manbij"),
   fulfillmentScope: mysqlEnum("fulfillmentScope", ["local", "manbij_to_jarabulus"]).notNull().default("local"),
   intercityTripId: int("intercityTripId").references(() => intercityTrips.id, { onDelete: "set null" }),
@@ -159,6 +159,9 @@ export const orders = mysqlTable("orders", {
   manualStatusOverride: boolean("manualStatusOverride").notNull().default(false),
   taxiType: mysqlEnum("taxiType", ["standard", "van"]),
   pickupLocation: varchar("pickupLocation", { length: 220 }),
+  pickupContactPhone: varchar("pickupContactPhone", { length: 24 }),
+  itemDescription: varchar("itemDescription", { length: 500 }),
+  itemWeight: varchar("itemWeight", { length: 80 }),
   destination: varchar("destination", { length: 220 }),
   locationMode: mysqlEnum("locationMode", ["gps", "manual"]).notNull().default("gps"),
   locationText: varchar("locationText", { length: 280 }),
@@ -191,6 +194,7 @@ export const systemSettings = mysqlTable("system_settings", {
   masterPinHash: varchar("masterPinHash", { length: 255 }).notNull(),
   ownerPhone: varchar("ownerPhone", { length: 24 }).notNull().default("+963997311078"),
   deliveryPricePerKm: int("deliveryPricePerKm").notNull().default(2),
+  wosselLiPricePerKm: int("wosselLiPricePerKm").notNull().default(2),
   manbijDeliveryPercent: int("manbijDeliveryPercent").notNull().default(20),
   jarabulusDeliveryPercent: int("jarabulusDeliveryPercent").notNull().default(30),
   jarabulusMinimumOrder: int("jarabulusMinimumOrder").notNull().default(500),

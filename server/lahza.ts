@@ -146,6 +146,10 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
   await ensureColumn("system_settings", "jarabulusMinimumOrder", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_MINIMUM_ORDER_SYP}`);
   await ensureColumn("system_settings", "jarabulusPreparationMinutes", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_PREPARATION_MINUTES}`);
   await ensureColumn("system_settings", "deliveryPricePerKm", "INT NOT NULL DEFAULT 2");
+  await ensureColumn("system_settings", "wosselLiPricePerKm", "INT NOT NULL DEFAULT 2");
+  await ensureColumn("orders", "pickupContactPhone", "VARCHAR(24) NULL");
+  await ensureColumn("orders", "itemDescription", "VARCHAR(500) NULL");
+  await ensureColumn("orders", "itemWeight", "VARCHAR(80) NULL");
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `order_notifications` (`id` INT NOT NULL AUTO_INCREMENT, `orderId` INT NOT NULL, `customerPhone` VARCHAR(24) NOT NULL, `status` ENUM('pending','confirmed','preparing','on_the_way','completed','cancelled','rejected') NOT NULL, `title` VARCHAR(120) NOT NULL, `body` VARCHAR(300) NOT NULL, `readAt` TIMESTAMP NULL DEFAULT NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), CONSTRAINT `order_notifications_orderId_orders_id_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE CASCADE)"));
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `push_tokens` (`id` INT NOT NULL AUTO_INCREMENT, `token` VARCHAR(4096) NOT NULL, `deviceId` VARCHAR(80) NOT NULL, `customerPhone` VARCHAR(24) NULL, `platform` VARCHAR(20) NOT NULL DEFAULT 'android', `active` BOOLEAN NOT NULL DEFAULT TRUE, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), UNIQUE KEY `push_tokens_token_unique` (`token`(191)))"));
 }
@@ -293,6 +297,25 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]).then(result => {
     if (!result.sent) console.warn("Interactive driver buttons unavailable; text message was already sent", { orderId, driverId: nearest.id });
   });
+  return nearest.id;
+}
+
+async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, pickupLocation: string, pickupContactPhone: string, destinationText: string, destinationUrl: string, itemDescription: string) {
+  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true)));
+  const nearest = candidates.filter(driver => driver.locationLat !== null && driver.locationLng !== null).sort((a, b) => distanceBetweenE6(36528100, 37954900, a.locationLat!, a.locationLng!) - distanceBetweenE6(36528100, 37954900, b.locationLat!, b.locationLng!))[0];
+  const settings = await getSettings();
+  const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
+  if (!nearest) {
+    const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts.map(contact => contact.phone)];
+    void Promise.allSettled(phones.map(phone => sendWahaText(phone, { title: "تدخل مطلوب في وصّل لي", body: `طلب وصّل لي #${orderId} للعميل ${customerName} لا يوجد له مندوب متاح حالياً.` })));
+    return null;
+  }
+  await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, driverName: nearest.name, status: "assigned", note: "طلب وصّل لي: استلام من عنوان مكتوب وتسليم إلى موقع GPS" }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, driverName: nearest.name, status: "assigned", note: "طلب وصّل لي: استلام من عنوان مكتوب وتسليم إلى موقع GPS", assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
+  await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
+  const orderDetails = (await db.select({ customerPhone: orders.customerPhone, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  const message = { title: `طلب وصّل لي #${orderId}`, body: `طلب وصّل لي\nصاحب الطلب: ${customerName}\nرقم صاحب الطلب: ${orderDetails?.customerPhone || "غير متوفر"}\n\nاستلام الغرض من:\n${pickupLocation}\nرقم جهة الاستلام: ${pickupContactPhone}\n\nتسليم الغرض إلى:\n${destinationText}\n${destinationUrl}\n\nنوع الغرض: ${itemDescription}\nالمسافة ذهاباً وإياباً: ${Math.ceil(Number(orderDetails?.deliveryDistanceMeters ?? 0) / 1000)} كم\nسعر التوصيل: ${formatNewSyp(orderDetails?.deliveryFee ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nأجب بكلمة: نعم أو لا.` };
+  void sendWahaText(nearest.phone, message);
+  void sendWahaReplyButtons(nearest.phone, message, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]);
   return nearest.id;
 }
 
@@ -985,7 +1008,7 @@ export function canShowFeaturedOffer(featuredStatus: "none" | "pending" | "appro
   return featuredStatus === "approved" && active && (!expiresAt || expiresAt > now);
 }
 
-export function initialCustomerOrderStatus(orderType: "delivery" | "taxi", lines: Array<{ priceKnown: boolean; unitPrice: number }>) {
+export function initialCustomerOrderStatus(orderType: "delivery" | "taxi" | "wossel_li", lines: Array<{ priceKnown: boolean; unitPrice: number }>) {
   return orderType === "delivery" && lines.length > 0 && lines.every(line => line.priceKnown && line.unitPrice > 0) ? "preparing" : "pending";
 }
 
@@ -1006,7 +1029,7 @@ async function getActiveCustomCategory(db: NonNullable<Awaited<ReturnType<typeof
 }
 
 export const orderInputSchema = z.object({
-  orderType: z.enum(["delivery", "taxi"]),
+  orderType: z.enum(["delivery", "taxi", "wossel_li"]),
   orderCity: z.enum(CITY_KEYS).optional(),
   intercityTripId: z.number().int().positive().optional(),
   customerName: z.string().trim().min(2, "أدخل الاسم").max(80),
@@ -1023,11 +1046,15 @@ export const orderInputSchema = z.object({
   lines: z.array(lineInput).max(30),
   taxiType: z.enum(["standard", "van"]).optional(),
   pickupLocation: z.string().trim().max(220).optional(),
+  pickupContactPhone: syrianCustomerPhoneSchema.optional(),
+  itemDescription: z.string().trim().min(2).max(500).optional(),
+  itemWeight: z.string().trim().max(80).optional(),
   destination: z.string().trim().max(220).optional(),
   notes: z.string().trim().max(500).optional(),
 }).superRefine((input, context) => {
   if (input.orderType === "delivery" && input.lines.length === 0) context.addIssue({ code: "custom", message: "أضف صنفاً واحداً على الأقل" });
   if (input.orderType === "taxi" && (!input.taxiType || !input.pickupLocation || !input.destination)) context.addIssue({ code: "custom", message: "أكمل بيانات التاكسي" });
+  if (input.orderType === "wossel_li" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined || !input.locationText || !input.pickupLocation || !input.pickupContactPhone || !input.itemDescription)) context.addIssue({ code: "custom", message: "أكمل موقع التسليم وبيانات الاستلام والغرض" });
   if (input.locationMode === "gps" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined)) context.addIssue({ code: "custom", message: "حدد موقعك عبر زر تحديد موقعي أو اختر كتابة الموقع يدوياً" });
   if (input.locationMode === "manual" && !input.locationText) context.addIssue({ code: "custom", message: "اكتب وصفاً واضحاً لموقعك اليدوي" });
 });
@@ -1079,6 +1106,7 @@ export const lahzaRouter = router({
       const settings = await getSettings();
       return {
         pricePerKm: settings.deliveryPricePerKm,
+        wosselLiPricePerKm: settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm,
         pricingMode: "store_to_customer_distance" as const,
         fixedDriverStoreDistanceKm: 2,
         manbijPercent: settings.manbijDeliveryPercent,
@@ -1892,7 +1920,10 @@ export const lahzaRouter = router({
       let deliveryPricingPending = false;
       let intercityTrip: typeof intercityTrips.$inferSelect | null = null;
       const fulfillmentScope = orderCity === "jarabulus" && input.orderType === "delivery" ? "manbij_to_jarabulus" as const : "local" as const;
-      const preparationMinutes = fulfillmentScope === "manbij_to_jarabulus"
+      const wosselQuote = input.orderType === "wossel_li" ? await getDrivingQuote(input.locationLat!, input.locationLng!) : null;
+      const preparationMinutes = input.orderType === "wossel_li"
+        ? Math.max(1, Math.ceil((Number(wosselQuote?.distanceMeters ?? 0) * 2) / 1000) * 3)
+        : fulfillmentScope === "manbij_to_jarabulus"
         ? jarabulusOrderPreparationMinutes(settings)
         : Math.max(partnerPreparationMinutes, resolvedLines.length >= 6 ? 55 : resolvedLines.length >= 3 ? 50 : 45);
       if (input.intercityTripId) {
@@ -1913,6 +1944,10 @@ export const lahzaRouter = router({
         deliveryDistanceMeters = Math.round(2_000 + distanceBetweenE6(deliveryStore.locationLat, deliveryStore.locationLng, Math.round(input.locationLat * 1_000_000), Math.round(input.locationLng * 1_000_000)));
         deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.deliveryPricePerKm).deliveryFee;
         totalAmount = finalItemsTotal + deliveryFee;
+      } else if (input.orderType === "wossel_li") {
+        deliveryDistanceMeters = Math.round(Number(wosselQuote?.distanceMeters ?? 0) * 2);
+        deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm).deliveryFee;
+        totalAmount = deliveryFee;
       }
 
       const created = await db.insert(orders).values({
@@ -1935,6 +1970,9 @@ export const lahzaRouter = router({
         preparationMinutes,
         taxiType: input.taxiType ?? null,
         pickupLocation: input.pickupLocation ?? null,
+        pickupContactPhone: input.pickupContactPhone ?? null,
+        itemDescription: input.itemDescription ?? null,
+        itemWeight: input.itemWeight ?? null,
         destination: input.destination ?? null,
         locationMode: input.locationMode,
         locationText: input.locationText ?? null,
@@ -1969,6 +2007,8 @@ export const lahzaRouter = router({
       if (input.orderType === "delivery") {
         const primaryStoreId = products.find(product => product.storeId)?.storeId ?? null;
         await dispatchOrderToNearestDriver(db, orderId, orderCity, primaryStoreId, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
+      } else if (input.orderType === "wossel_li") {
+        await dispatchWosselLiToNearestDriver(db, orderId, input.customerName, input.pickupLocation!, input.pickupContactPhone!, input.locationText!, input.locationUrl!, input.itemDescription!);
       }
       return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending, orderCity, fulfillmentScope, preparationMinutes, minimumOrder };
     }),
@@ -2433,14 +2473,15 @@ export const lahzaRouter = router({
           pointsRewardPercent: settings.pointsRewardPercent,
           driverPercent: settings.driverDeliveryPercent ?? 0,
           pricePerKm: settings.deliveryPricePerKm ?? 2,
+          wosselLiPricePerKm: settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm ?? 2,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, pricePerKm: newSypMoneyInput.min(1).max(10_000_000) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000) })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureJarabulusGatewaySchema(db);
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, deliveryPricePerKm: input.pricePerKm }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),
