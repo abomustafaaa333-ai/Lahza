@@ -2021,7 +2021,9 @@ export const lahzaRouter = router({
         totalAmount = deliveryFee;
       }
 
-      const created = await db.insert(orders).values({
+      let created: any;
+      try {
+        created = await db.insert(orders).values({
         orderType: input.orderType,
         status: input.orderType === "delivery" ? "pending" : initialStatus,
         orderCity,
@@ -2054,7 +2056,15 @@ export const lahzaRouter = router({
         locationLat: input.locationLat === undefined ? null : Math.round(input.locationLat * 1_000_000),
         locationLng: input.locationLng === undefined ? null : Math.round(input.locationLng * 1_000_000),
         notes: [input.notes, intercityTrip ? `حجز جرابلس قديم: ${intercityTrip.title} · ${intercityTrip.bookingCloseLabel} · ${intercityTrip.arrivalLabel}` : "", fulfillmentScope === "manbij_to_jarabulus" ? JARABULUS_DISTANCE_DELIVERY_NOTE : "", deliveryPricingPending ? DELIVERY_PRICING_PENDING_NOTE : ""].filter(Boolean).join("\n") || null,
-      });
+        });
+      } catch (insertError) {
+        const raw = insertError instanceof Error ? insertError.message : String(insertError);
+        const cause = insertError && typeof insertError === "object" && "cause" in insertError ? (insertError as { cause?: unknown }).cause : null;
+        const causeText = cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "";
+        console.error("Order insert failed", { orderType: input.orderType, message: raw, cause: causeText });
+        const concise = `${raw}\n${causeText}`.match(/(Data truncated[^\n]*|Column '[^']+'[^\n]*|doesn't have a default value|Unknown column[^\n]*|Table '[^']+'[^\n]*|Cannot add or update[^\n]*)/i)?.[1];
+        throw new Error(concise ? `تعذر حفظ الطلب: ${concise}` : "تعذر حفظ الطلب في قاعدة البيانات؛ راجع سجلات الخادم للتفاصيل.");
+      }
       const orderId = Number(created[0].insertId);
       await createOrderStatusNotification(db, { id: orderId, customerPhone: input.customerPhone, fulfillmentScope, preparationMinutes }, initialStatus);
       if (pointsUsed) {
