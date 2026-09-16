@@ -372,6 +372,9 @@ export async function handleWahaWebhook(body: unknown) {
   if (orderReply === "نعم") {
     await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, assignment.assignment.id));
     await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب عبر واتساب" }).where(eq(orders.id, assignment.order.id));
+    const trackingToken = driver.trackingToken || randomBytes(32).toString("hex");
+    if (!driver.trackingToken) await db.update(drivers).set({ trackingToken }).where(eq(drivers.id, driver.id));
+    const trackingBaseUrl = process.env.PUBLIC_APP_URL?.replace(/\/$/, "") || (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : "");
     const driverWhatsappNumber = driver.phone.replace(/\D/g, "");
     const driverWhatsappUrl = `https://wa.me/${driverWhatsappNumber}`;
     const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${assignment.order.id} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${driver.phone}\nللتواصل عبر واتساب: ${driverWhatsappUrl}` };
@@ -379,7 +382,7 @@ export async function handleWahaWebhook(body: unknown) {
     const customerTokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, assignment.order.customerPhone), eq(pushTokens.active, true)));
     await sendPushNotification(customerTokens.map(row => row.token), customerMessage);
     void sendWahaText(assignment.order.customerPhone, customerMessage);
-    void sendWahaText(driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${assignment.order.id}.` });
+    void sendWahaText(driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${assignment.order.id}.${trackingBaseUrl ? `\nلتمكين تتبع موقعك للعميل، افتح هذا الرابط مرة واحدة واسمح بالوصول إلى الموقع في الخلفية:\n${trackingBaseUrl}/?driverTrack=${trackingToken}` : ""}` });
     return;
   }
   await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, assignment.assignment.id));
@@ -1250,6 +1253,26 @@ export const lahzaRouter = router({
   delivery: router({
     quote: publicProcedure.input(z.object({ locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180) })).mutation(async ({ input }) => getDrivingQuote(input.locationLat, input.locationLng)),
   }),
+  driverTracking: router({
+    active: publicProcedure.input(z.object({ token: z.string().trim().min(32).max(128) })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const driver = (await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.trackingToken, input.token)).limit(1))[0];
+      if (!driver) return { active: false, orderId: null };
+      const assignment = (await db.select({ orderId: orderAssignments.orderId, status: orderAssignments.status, orderStatus: orders.status }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["accepted", "picked_up"]), inArray(orders.status, ["preparing", "on_the_way"]))).orderBy(desc(orderAssignments.updatedAt)).limit(1))[0];
+      return { active: Boolean(assignment), orderId: assignment?.orderId ?? null };
+    }),
+    update: publicProcedure.input(z.object({ token: z.string().trim().min(32).max(128), orderId: z.number().int().positive(), latitude: coordinateSchema.min(-90).max(90), longitude: coordinateSchema.min(-180).max(180) })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const driver = (await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.trackingToken, input.token)).limit(1))[0];
+      if (!driver) throw new Error("رابط تتبع المندوب غير صالح");
+      const assignment = (await db.select({ id: orderAssignments.id }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.orderId, input.orderId), eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["accepted", "picked_up"]), inArray(orders.status, ["preparing", "on_the_way"]))).limit(1))[0];
+      if (!assignment) throw new Error("لا يوجد طلب نشط للتتبع");
+      await db.update(drivers).set({ locationLat: Math.round(input.latitude * 1_000_000), locationLng: Math.round(input.longitude * 1_000_000) }).where(eq(drivers.id, driver.id));
+      return { success: true };
+    }),
+  }),
   customCategories: router({
     listActive: publicProcedure.query(async () => {
       const db = await getDb();
@@ -2021,7 +2044,8 @@ export const lahzaRouter = router({
       const order = (await db.select().from(orders).where(and(eq(orders.id, input.orderId), eq(orders.customerPhone, input.customerPhone))).limit(1))[0];
       if (!order) throw new Error("لم نجد طلباً بهذه البيانات");
       const lines = await db.select().from(orderLines).where(eq(orderLines.orderId, order.id));
-      return { ...order, lines };
+      const driver = (await db.select({ name: drivers.name, locationLat: drivers.locationLat, locationLng: drivers.locationLng, updatedAt: drivers.updatedAt }).from(orderAssignments).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orderAssignments.orderId, order.id), inArray(orderAssignments.status, ["accepted", "picked_up", "delivered"]))).orderBy(desc(orderAssignments.updatedAt)).limit(1))[0];
+      return { ...order, lines, driverLocation: driver && driver.locationLat !== null && driver.locationLng !== null ? { name: driver.name, latitude: driver.locationLat / 1_000_000, longitude: driver.locationLng / 1_000_000, updatedAt: driver.updatedAt } : null };
     }),
     history: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema })).query(async ({ input }) => {
       const db = await getDb();
