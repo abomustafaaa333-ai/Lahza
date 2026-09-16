@@ -352,6 +352,23 @@ export async function handleWahaWebhook(body: unknown) {
   if (orderReply === "نعم") {
     await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, assignment.assignment.id));
     await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب عبر واتساب" }).where(eq(orders.id, assignment.order.id));
+    const partnerItems = await db.select({ partnerId: partners.id, partnerPhone: partners.username, partnerName: partners.name, itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal })
+      .from(orderLines)
+      .innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id))
+      .innerJoin(stores, eq(catalogItems.storeId, stores.id))
+      .innerJoin(partners, eq(stores.partnerId, partners.id))
+      .where(eq(orderLines.orderId, assignment.order.id));
+    const partnerGroups = new Map<number, typeof partnerItems>();
+    for (const item of partnerItems) {
+      const group = partnerGroups.get(item.partnerId) ?? [];
+      group.push(item);
+      partnerGroups.set(item.partnerId, group);
+    }
+    partnerGroups.forEach(items => {
+      const first = items[0];
+      const itemsText = items.map((item: (typeof partnerItems)[number], index: number) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatNewSyp(item.unitPrice)} — المجموع: ${formatNewSyp(item.lineTotal)}`).join("\n");
+      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${assignment.order.id}`, body: `يرجى تجهيز الطلب #${assignment.order.id}\n\n${itemsText}\n\nالإجمالي: ${formatNewSyp(assignment.order.totalAmount)}` });
+    });
     const driverWhatsappNumber = driver.phone.replace(/\D/g, "");
     const driverWhatsappUrl = `https://wa.me/${driverWhatsappNumber}`;
     const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${assignment.order.id} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${driver.phone}\nللتواصل عبر واتساب: ${driverWhatsappUrl}` };
