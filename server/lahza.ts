@@ -2072,11 +2072,18 @@ export const lahzaRouter = router({
           notes: line.notes ?? null,
         })));
       }
-      if (input.orderType === "delivery") {
-        const primaryStoreId = products.find(product => product.storeId)?.storeId ?? null;
-        await dispatchOrderToNearestDriver(db, orderId, orderCity, primaryStoreId, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
-      } else if (input.orderType === "wossel_li") {
-        await dispatchWosselLiToNearestDriver(db, orderId, input.customerName, input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", input.pickupContactPhone!, input.locationText!, input.locationUrl!, input.itemDescription!);
+      // The order is already saved at this point. Dispatch/WhatsApp is a
+      // follow-up operation and must not make a successful order look failed
+      // when assignment or the notification provider is temporarily unavailable.
+      try {
+        if (input.orderType === "delivery") {
+          const primaryStoreId = products.find(product => product.storeId)?.storeId ?? null;
+          await dispatchOrderToNearestDriver(db, orderId, orderCity, primaryStoreId, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
+        } else if (input.orderType === "wossel_li") {
+          await dispatchWosselLiToNearestDriver(db, orderId, input.customerName, input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", input.pickupContactPhone!, input.locationText!, input.locationUrl!, input.itemDescription!);
+        }
+      } catch (dispatchError) {
+        console.error("Order saved but driver dispatch failed", { orderId, orderType: input.orderType, dispatchError });
       }
       return { success: true, orderId, totalAmount, deliveryDistanceMeters, deliveryFee, deliveryPricingPending, orderCity, fulfillmentScope, preparationMinutes, minimumOrder };
     }),
