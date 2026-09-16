@@ -63,16 +63,6 @@ function CitySelectionGate({ onSelect }: { onSelect: (city: CityKey) => void }) 
 const CUSTOMER_AUTH_STORAGE_KEY = "lahza_customer_auth_v1";
 const CART_CHECKOUT_STORAGE_KEY = "lahza_cart_checkout_v1";
 
-function straightLineDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const radians = (value: number) => value * Math.PI / 180;
-  const firstLat = radians(lat1);
-  const secondLat = radians(lat2);
-  const deltaLat = radians(lat2 - lat1);
-  const deltaLng = radians(lng2 - lng1);
-  const a = Math.sin(deltaLat / 2) ** 2 + Math.cos(firstLat) * Math.cos(secondLat) * Math.sin(deltaLng / 2) ** 2;
-  return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 type PersistedCheckout = {
   cart: CartLine[];
   screen: Screen;
