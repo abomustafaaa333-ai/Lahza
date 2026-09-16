@@ -1723,6 +1723,11 @@ export const lahzaRouter = router({
         await db.update(partners).set({ storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, imageUrl: input.imageUrl || null, workHours: input.workHours ? JSON.stringify(input.workHours) : undefined }).where(eq(partners.id, partner.id));
         return { success: true };
       }),
+      updateLocation: publicProcedure.input(z.object({ storeId: z.number().int().positive(), locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180) })).mutation(async ({ ctx, input }) => {
+        const { db, store } = await requirePartnerStore(ctx, input.storeId);
+        await db.update(stores).set({ locationLat: Math.round(input.locationLat * 1_000_000), locationLng: Math.round(input.locationLng * 1_000_000) }).where(eq(stores.id, store.id));
+        return { success: true, locationLat: input.locationLat, locationLng: input.locationLng };
+      }),
       uploadImage: publicProcedure.input(z.object({ dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
         const { partner } = await requirePartner(ctx);
         return uploadOfferImage(input.dataUrl, partner.id, `partner-${randomBytes(12).toString("hex")}`);
