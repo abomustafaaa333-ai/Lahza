@@ -223,21 +223,6 @@ function distanceBetweenE6(lat1: number, lng1: number, lat2: number, lng2: numbe
   return 6_371_000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-async function repriceOrderForAssignedDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverId: number, storeId: number) {
-  const [store, driver, order] = await Promise.all([
-    db.select({ locationLat: stores.locationLat, locationLng: stores.locationLng }).from(stores).where(eq(stores.id, storeId)).limit(1),
-    db.select({ locationLat: drivers.locationLat, locationLng: drivers.locationLng }).from(drivers).where(eq(drivers.id, driverId)).limit(1),
-    db.select({ totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, locationLat: orders.locationLat, locationLng: orders.locationLng }).from(orders).where(eq(orders.id, orderId)).limit(1),
-  ]);
-  const row = order[0];
-  if (!store[0]?.locationLat || !store[0]?.locationLng || driver[0]?.locationLat === null || driver[0]?.locationLat === undefined || driver[0]?.locationLng === null || driver[0]?.locationLng === undefined || row?.locationLat === null || row?.locationLat === undefined || row?.locationLng === null || row?.locationLng === undefined) return null;
-  const totalDistanceMeters = 2_000 + distanceBetweenE6(store[0].locationLat, store[0].locationLng, row.locationLat, row.locationLng);
-  const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, (await getSettings()).deliveryPricePerKm);
-  const itemsTotal = Math.max(0, Number(row.totalAmount ?? 0) - Number(row.deliveryFee ?? 0));
-  await db.update(orders).set({ deliveryDistanceMeters: Math.round(totalDistanceMeters), deliveryFee: pricing.deliveryFee, totalAmount: itemsTotal + pricing.deliveryFee }).where(eq(orders.id, orderId));
-  return pricing;
-}
-
 function maskPhone(phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 7) return "***";
@@ -284,20 +269,10 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
   const distance = Math.round(distanceBetweenE6(store.locationLat, store.locationLng, nearest.locationLat!, nearest.locationLng!));
   console.info("Automatic dispatch recipient", { orderId, driverId: nearest.id, phone: maskPhone(nearest.phone), chatId: `${nearest.phone.replace(/\D/g, "")}@c.us`.replace(/^(\d{6})\d+(\d{4}@c\.us)$/, "$1***$2"), distanceMeters: distance });
-  const orderDetails = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, paymentMethod: orders.paymentMethod, locationLat: orders.locationLat, locationLng: orders.locationLng }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
-  if (orderDetails?.locationLat !== null && orderDetails?.locationLat !== undefined && orderDetails.locationLng !== null && orderDetails.locationLng !== undefined) {
-    const storeToCustomerMeters = distanceBetweenE6(store.locationLat, store.locationLng, orderDetails.locationLat, orderDetails.locationLng);
-    const totalDistanceMeters = storeToCustomerMeters;
-    const settings = await getSettings();
-    const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, settings.deliveryPricePerKm);
-    const itemsTotal = Math.max(0, Number(orderDetails.totalAmount ?? 0) - Number(orderDetails.deliveryFee ?? 0));
-    await db.update(orders).set({ deliveryDistanceMeters: Math.round(totalDistanceMeters), deliveryFee: pricing.deliveryFee, totalAmount: itemsTotal + pricing.deliveryFee }).where(eq(orders.id, orderId));
-    orderDetails.deliveryFee = pricing.deliveryFee;
-    orderDetails.totalAmount = itemsTotal + pricing.deliveryFee;
-  }
+  const orderDetails = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   const orderItems = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
   const itemsText = orderItems.length ? orderItems.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatNewSyp(item.unitPrice)} — المجموع: ${formatNewSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
-  const driverMessage = { title: `طلب جديد #${orderId}`, body: `المتجر: ${store.name}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatNewSyp(orderDetails?.deliveryFee ?? 0)}\nالإجمالي: ${formatNewSyp(orderDetails?.totalAmount ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${orderDetails?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nالمسافة من المتجر: ${distance}م\nهل أنت جاهز لتنفيذ الطلب؟` };
+  const driverMessage = { title: `طلب جديد #${orderId}`, body: `المتجر: ${store.name}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatNewSyp(orderDetails?.deliveryFee ?? 0)}\nالإجمالي: ${formatNewSyp(orderDetails?.totalAmount ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${orderDetails?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(orderDetails?.deliveryDistanceMeters ?? 0))}م\nهل أنت جاهز لتنفيذ الطلب؟` };
   void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: نعم أو لا.` });
   void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]).then(result => {
     if (!result.sent) console.warn("Interactive driver buttons unavailable; text message was already sent", { orderId, driverId: nearest.id });
@@ -2625,8 +2600,6 @@ export const lahzaRouter = router({
         if (!driver[0] || !driver[0].active || !driver[0].available) throw new Error("المندوب غير متاح للتعيين");
         const order = await db.select({ id: orders.id }).from(orders).where(eq(orders.id, input.orderId)).limit(1);
         if (!order[0]) throw new Error("الطلب غير موجود");
-        const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, input.orderId)).limit(1))[0];
-        if (line?.storeId) await repriceOrderForAssignedDriver(db, input.orderId, input.driverId, line.storeId);
         await db.insert(orderAssignments).values({ orderId: input.orderId, driverId: input.driverId, driverName: driver[0].name, note: input.note || null }).onDuplicateKeyUpdate({ set: { driverId: input.driverId, driverName: driver[0].name, status: "assigned", note: input.note || null, assignedAt: new Date() } });
         await db.update(drivers).set({ available: false }).where(eq(drivers.id, input.driverId));
         return { success: true };
