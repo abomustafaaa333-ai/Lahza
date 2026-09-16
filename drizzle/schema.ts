@@ -205,6 +205,7 @@ export const systemSettings = mysqlTable("system_settings", {
   originLngE6: int("originLngE6").notNull().default(37954900),
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),
   tickerSecondary: varchar("tickerSecondary", { length: 220 }).notNull().default("لحظة — منبج بين يديك"),
+  wosselLiNotice: varchar("wosselLiNotice", { length: 500 }).notNull().default("ملاحظة هامة: خدمة وصّل لي مخصصة لتوصيل الأغراض من مكان إلى مكان، وليست خدمة شراء."),
   categoryOverrides: text("categoryOverrides"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

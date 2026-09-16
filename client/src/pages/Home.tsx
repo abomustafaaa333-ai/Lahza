@@ -1170,7 +1170,7 @@ export default function Home() {
       <div key={screen === "checkout" ? `checkout-${checkoutStep}` : screen} className={`screen-transition ${screen === "home" ? "screen-transition-home" : "screen-transition-internal"}`}>
       {screen === "home" ? (
         <>
-          <button type="button" className="wossel-li-callout" onClick={() => { setCheckoutMode("wossel_li"); setScreen("checkout"); }}><span className="wossel-li-callout-copy">عندك غرض بدك نوصلك ياه لبيتك؟</span><span className="wossel-li-callout-action"><PackagePlus className="h-5 w-5" /><strong>وصّل لي</strong></span></button>
+          <div className="wossel-li-callout" role="note"><PackageCheck className="h-5 w-5 shrink-0 text-[#008b91]" /><span className="wossel-li-callout-copy">{interfaceSettingsQuery.data?.wosselLiNotice ?? "ملاحظة هامة: خدمة وصّل لي مخصصة لتوصيل الأغراض من مكان إلى مكان، وليست خدمة شراء."}</span></div>
           <section className="app-shell pb-10 home-discover-section">
             <div className="home-section-heading"><div><h2 className="section-title">اكتشف ما تحتاجه</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div>
             <div className="home-category-row" dir="rtl" aria-label="أقسام لحظة">

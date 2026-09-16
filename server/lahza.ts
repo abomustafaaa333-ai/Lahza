@@ -120,10 +120,13 @@ export function canReserveIntercityTrip(capacity: number, reservedOrders: number
   return Number.isInteger(capacity) && capacity > 0 && reservedOrders >= 0 && reservedOrders < capacity;
 }
 
-export function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSecondary?: unknown }) {
+const DEFAULT_WOSSEL_LI_NOTICE = "ملاحظة هامة: خدمة وصّل لي مخصصة لتوصيل الأغراض من مكان إلى مكان، وليست خدمة شراء.";
+
+export function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSecondary?: unknown; wosselLiNotice?: unknown }) {
   return {
     tickerPrimary: normalizeTickerText(settings.tickerPrimary, DEFAULT_TICKER_PRIMARY),
     tickerSecondary: normalizeTickerText(settings.tickerSecondary, DEFAULT_TICKER_SECONDARY),
+    wosselLiNotice: normalizeTickerText(settings.wosselLiNotice, DEFAULT_WOSSEL_LI_NOTICE),
   };
 }
 
@@ -457,9 +460,9 @@ export async function autoCompleteDueOrders() {
   return due.length;
 }
 
-async function addTickerColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "tickerPrimary" | "tickerSecondary", defaultValue: string) {
+async function addTickerColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "tickerPrimary" | "tickerSecondary" | "wosselLiNotice", defaultValue: string) {
   try {
-    await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` VARCHAR(220) NOT NULL DEFAULT '${defaultValue.replace(/'/g, "''")}'`));
+    await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` VARCHAR(500) NOT NULL DEFAULT '${defaultValue.replace(/'/g, "''")}'`));
   } catch (error) {
     if (!isDuplicateColumnError(error)) throw error;
   }
@@ -478,6 +481,9 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
   }
   if (!availableColumns.has("tickerSecondary")) {
     await addTickerColumnIfMissing(db, "tickerSecondary", DEFAULT_TICKER_SECONDARY);
+  }
+  if (!availableColumns.has("wosselLiNotice")) {
+    await addTickerColumnIfMissing(db, "wosselLiNotice", DEFAULT_WOSSEL_LI_NOTICE);
   }
 }
 
@@ -550,7 +556,7 @@ async function saveTickerSettings(db: NonNullable<Awaited<ReturnType<typeof getD
   await ensureTickerColumns(db);
   await db.execute(sql`
     UPDATE \`system_settings\`
-    SET \`tickerPrimary\` = ${tickerSettings.tickerPrimary}, \`tickerSecondary\` = ${tickerSettings.tickerSecondary}
+    SET \`tickerPrimary\` = ${tickerSettings.tickerPrimary}, \`tickerSecondary\` = ${tickerSettings.tickerSecondary}, \`wosselLiNotice\` = ${tickerSettings.wosselLiNotice}
     WHERE \`id\` = 1
   `);
 }
@@ -558,6 +564,7 @@ async function saveTickerSettings(db: NonNullable<Awaited<ReturnType<typeof getD
 export const tickerSettingsInputSchema = z.object({
   tickerPrimary: z.string().optional(),
   tickerSecondary: z.string().optional(),
+  wosselLiNotice: z.string().optional(),
 }).transform(input => readTickerSettings(input));
 
 async function ensureCustomerOtpTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
@@ -743,7 +750,7 @@ async function getSettings() {
     return current[0];
   }
   const masterPinHash = await hashSecret(DEFAULT_MASTER_PIN);
-  await db.insert(systemSettings).values({ id: 1, masterPinHash, ownerPhone: DEFAULT_OWNER_PHONE, manbijDeliveryPercent: 20, jarabulusDeliveryPercent: 30, jarabulusMinimumOrder: DEFAULT_JARABULUS_MINIMUM_ORDER_SYP, jarabulusPreparationMinutes: DEFAULT_JARABULUS_PREPARATION_MINUTES, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY });
+  await db.insert(systemSettings).values({ id: 1, masterPinHash, ownerPhone: DEFAULT_OWNER_PHONE, manbijDeliveryPercent: 20, jarabulusDeliveryPercent: 30, jarabulusMinimumOrder: DEFAULT_JARABULUS_MINIMUM_ORDER_SYP, jarabulusPreparationMinutes: DEFAULT_JARABULUS_PREPARATION_MINUTES, tickerPrimary: DEFAULT_TICKER_PRIMARY, tickerSecondary: DEFAULT_TICKER_SECONDARY, wosselLiNotice: DEFAULT_WOSSEL_LI_NOTICE });
   const created = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   return created[0]!;
 }
