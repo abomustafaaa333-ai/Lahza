@@ -1902,6 +1902,10 @@ export const lahzaRouter = router({
     }),
     create: publicProcedure.input(orderInputSchema).mutation(async ({ ctx, input }) => {
       const db = await ensureCatalogSeed();
+      // Customer orders can be created before any admin endpoint has run.
+      // Normalize the legacy orders schema here so Wossel Li can store a
+      // SQL NULL in the taxi-only field on Railway as well.
+      await ensureJarabulusGatewaySchema(db);
       const orderCity = ctx.city;
       if (input.orderCity && input.orderCity !== orderCity) throw new Error("المدينة المختارة للطلب غير مطابقة لواجهة التطبيق");
       if (input.orderType === "taxi" && orderCity === "jarabulus") throw new Error("خدمة سيارات الأجرة المحلية غير متاحة في بوابة جرابلس حالياً");
