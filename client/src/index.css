@@ -2880,6 +2880,21 @@ header[class*="header-service-theme-"] .service-intro-offers-cta {
 header[class*="header-service-theme-"] .service-intro-cta { align-self: auto !important; }
 header[class*="header-service-theme-"] .service-intro-offers-cta { margin-inline-start: auto !important; }
 
+/* ضبط مواضع الزرين حسب المسافات المطلوبة */
+header[class*="header-service-theme-"] .service-intro-cta {
+  transform: translateX(.5cm) !important;
+}
+header[class*="header-service-theme-"] .service-intro-offers-cta {
+  transform: translateX(-2cm) !important;
+}
+
+/* شريط الملاحظة بارتفاع ١ سم ومن دون الأيقونة الجانبية */
+.wossel-li-callout {
+  min-height: 1cm !important;
+  height: 1cm !important;
+}
+.wossel-li-callout > svg { display: none !important; }
+
 /* وضع زر «شاهد العروض» في الجهة اليسرى داخل القسم الفيروزي */
 header[class*="header-service-theme-"] .service-intro-actions {
   direction: ltr !important;
