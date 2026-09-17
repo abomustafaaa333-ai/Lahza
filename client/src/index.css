@@ -2840,6 +2840,46 @@ header[class*="header-service-theme-"] .header-search-wrap {
 @keyframes city-welcome-scroll { from { transform: translateX(0); } to { transform: translateX(50%); } }
 @media (prefers-reduced-motion: reduce) { .city-welcome-ticker-track { animation: none; width: 100%; justify-content: center; } }
 
+/* شريط ملاحظة وصّل لي: متحرك ورفيع بارتفاع ٠.٧٠ سم تقريباً */
+.wossel-li-callout {
+  min-height: .70cm !important;
+  height: .70cm !important;
+  overflow: hidden !important;
+  flex-wrap: nowrap !important;
+  padding: 0 .7rem !important;
+  border-radius: .7rem !important;
+}
+.wossel-li-callout-copy {
+  display: inline-block !important;
+  min-width: max-content !important;
+  white-space: nowrap !important;
+  animation: wossel-li-notice-scroll 18s linear infinite !important;
+}
+.wossel-li-callout > svg { flex: 0 0 auto !important; }
+@keyframes wossel-li-notice-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(70%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wossel-li-callout-copy { animation: none !important; }
+}
+
+/* القسم الفيروزي: شاهد العروض يساراً واكتشف خدمات لحظة يميناً */
+header[class*="header-service-theme-"] .service-intro-actions {
+  direction: rtl !important;
+  flex-wrap: nowrap !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+}
+header[class*="header-service-theme-"] .service-intro-cta,
+header[class*="header-service-theme-"] .service-intro-offers-cta {
+  order: 0 !important;
+  flex: 0 1 auto !important;
+  white-space: nowrap !important;
+}
+header[class*="header-service-theme-"] .service-intro-cta { align-self: auto !important; }
+header[class*="header-service-theme-"] .service-intro-offers-cta { margin-inline-start: auto !important; }
+
 /* وضع زر «شاهد العروض» في الجهة اليسرى داخل القسم الفيروزي */
 header[class*="header-service-theme-"] .service-intro-actions {
   direction: ltr !important;
