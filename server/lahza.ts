@@ -2775,11 +2775,13 @@ export const lahzaRouter = router({
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const scheduledAt = input.scheduledAt ? new Date(input.scheduledAt) : null;
         await db.insert(notificationCampaigns).values({ ...input, scheduledAt, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null });
+        let delivery: { sent: number; failed: number; failedTokens: string[]; reason: string; errorCodes?: string[] } = { sent: 0, failed: 0, failedTokens: [], reason: "not_sent" };
         if (input.active && (!scheduledAt || scheduledAt <= new Date())) {
           const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(eq(pushTokens.active, true));
-          await sendPushNotification(tokens.map(row => row.token), input);
+          delivery = await sendPushNotification(tokens.map(row => row.token), input);
+          if (delivery.failedTokens.length) await db.update(pushTokens).set({ active: false }).where(inArray(pushTokens.token, delivery.failedTokens));
         }
-        return { success: true };
+        return { success: true, delivery: { sent: delivery.sent, failed: delivery.failed, reason: delivery.reason, errorCodes: "errorCodes" in delivery ? delivery.errorCodes : [] } };
       }),
       update: publicProcedure.input(notificationCampaignInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx);

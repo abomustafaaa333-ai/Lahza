@@ -30,7 +30,8 @@ export function isFirebasePushReady() {
 
 export async function sendPushNotification(tokens: string[], message: { title: string; body: string; targetPath?: string }) {
   const messaging = getFirebaseMessaging();
-  if (!messaging || tokens.length === 0) return { sent: 0, failed: 0 };
+  if (!messaging) return { sent: 0, failed: tokens.length, failedTokens: tokens, reason: "firebase_not_configured" as const };
+  if (tokens.length === 0) return { sent: 0, failed: 0, failedTokens: [], reason: "no_registered_devices" as const };
   try {
     const response = await messaging.sendEachForMulticast({
       tokens,
@@ -38,9 +39,11 @@ export async function sendPushNotification(tokens: string[], message: { title: s
       data: { targetPath: message.targetPath || "/" },
       android: { priority: "high", notification: { channelId: "lahza_notifications", sound: "default" } },
     });
-    return { sent: response.successCount, failed: response.failureCount };
+    const failedTokens = response.responses.flatMap((result, index) => result.success ? [] : [tokens[index]]);
+    const errorCodes = Array.from(new Set(response.responses.flatMap(result => result.error?.code ? [result.error.code] : [])));
+    return { sent: response.successCount, failed: response.failureCount, failedTokens, errorCodes, reason: response.failureCount ? "some_failed" as const : "sent" as const };
   } catch (error) {
     console.error("Firebase push delivery failed", error);
-    return { sent: 0, failed: tokens.length };
+    return { sent: 0, failed: tokens.length, failedTokens: tokens, reason: "firebase_send_error" as const };
   }
 }
