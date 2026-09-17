@@ -252,7 +252,7 @@ function PersistentCartButton({ onCart, cartCount }: { onCart: () => void; cartC
 function Header({ onSearch, onExplore, onOffers, onGateway, searchPlaceholder, city }: { onSearch: () => void; onExplore: () => void; onOffers: () => void; onGateway: () => void; searchPlaceholder: string; city: CityKey }) {
   const [serviceTheme, setServiceTheme] = useState(0);
   return (
-    <header className={`relative z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme}`}>
+    <header className={`relative z-30 border-b border-[#ff6b2d] pt-3 backdrop-blur-xl header-service-theme-${serviceTheme} header-city-${city}`}>
       <div className="app-shell header-top-row flex h-[76px] items-center justify-end gap-3">
         <a className="current-location-button" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><span className="current-location-label" aria-label="خدمة الزبائن"><MessageCircle className="h-5 w-5" /><span>خدمة الزبائن</span><ChevronLeft className="h-4 w-4 rotate-90" /></span></a>
       </div>

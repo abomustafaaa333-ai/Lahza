@@ -2973,6 +2973,25 @@ header[class*="header-service-theme-"] .service-intro-panel {
   }
 }
 
+/* جرابلس فقط: بداية معلومات القسم على نفس خط بداية شريط البحث العلوي */
+header.header-city-jarabulus .service-intro-copy {
+  align-self: flex-start;
+  width: calc(100% - 11rem);
+  max-width: none !important;
+  margin-right: 0 !important;
+  margin-left: auto !important;
+  text-align: right;
+}
+header.header-city-jarabulus .service-intro-copy > * {
+  align-self: flex-start;
+  text-align: right;
+}
+@media (max-width: 600px) {
+  header.header-city-jarabulus .service-intro-copy {
+    width: calc(100% - 8.5rem);
+  }
+}
+
 /* محاذاة محتوى صورة العرض فوق عنوان المتاجر المميزة في الواجهتين */
 .global-offer-bar .hero-image-frame .hero-offer-caption,
 .home-offer-gallery .hero-image-frame .hero-offer-caption,
