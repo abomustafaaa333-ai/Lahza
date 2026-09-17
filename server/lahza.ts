@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { automaticDiscounts, catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
+import { automaticDiscounts, catalogItems, contestCampaigns, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
@@ -587,6 +587,26 @@ async function ensureEventColumns(db: NonNullable<Awaited<ReturnType<typeof getD
 
 function readEventSettings(settings: { eventImageUrl?: unknown; eventLinkUrl?: unknown; eventEnabled?: unknown; eventStayVisible?: unknown; eventShowSeconds?: unknown; eventRepeatMinutes?: unknown }) {
   return { eventImageUrl: typeof settings.eventImageUrl === "string" ? settings.eventImageUrl : "", eventLinkUrl: typeof settings.eventLinkUrl === "string" ? settings.eventLinkUrl : "", eventEnabled: Boolean(settings.eventEnabled), eventStayVisible: Boolean(settings.eventStayVisible), eventShowSeconds: Math.max(1, Math.min(60, Number(settings.eventShowSeconds) || 5)), eventRepeatMinutes: Math.max(0, Math.min(1440, Number(settings.eventRepeatMinutes) || 0)) };
+}
+
+const CONTEST_TEMPLATES = [
+  [1, "daily_open", "افتح لحظة يومياً", "مكافأة يومية وسلسلة دخول متتالية", "يفتح العميل التطبيق مرة كل يوم ويحصل على نقاط، وتُمنح جائزة عند بلوغ سلسلة الأيام.", "نقاط أو خصم توصيل أو قسيمة أسبوعية", "حساب هاتف واحد لكل يوم؛ لا تُحتسب إعادة التحميل.", { dailyPoints: 5, streakDays: 7 }],
+  [2, "hidden_code", "رمز لحظة المخفي", "البحث عن رمز داخل أقسام التطبيق", "يُخفى رمز قصير في إعلان أو متجر أو قسم، ويُقبل أول عدد محدد من الإجابات الصحيحة.", "20 نقطة أو قسيمة فورية", "رمز واحد لكل عميل؛ يحدد المالك تاريخ الانتهاء وعدد الفائزين.", { winners: 100, points: 20 }],
+  [3, "order_and_win", "اطلب واكسب", "تحويل الطلبات المكتملة إلى فرص سحب", "يمنح كل طلب مكتمل فرصة، ثم يختار النظام الفائزين بعد انتهاء الحملة.", "توصيل مجاني أو رصيد أو جائزة متجر", "لا تُحتسب الطلبات الملغاة أو المرفوضة.", { completedOrderPoints: 25, drawAfterDays: 7 }],
+  [4, "choose_box", "اختر الصندوق", "اختيار يومي من بطاقات مفاجآت", "يعرض التطبيق ثلاثة صناديق، يختار العميل صندوقاً واحداً يومياً وتُسجل النتيجة.", "نقاط أو خصم أو توصيل مجاني", "اختيار واحد يومياً لكل رقم هاتف.", { choices: 3, attemptsPerDay: 1 }],
+  [5, "guess_price", "خمن السعر", "التخمين الأقرب لسعر سلة أو منتج", "يرسل العميل تخميناً واحداً، ويفوز الأقرب أو المطابق حسب إعداد الحملة.", "قسيمة المنتج أو خصم الطلب التالي", "تخمين واحد لكل عميل.", { attempts: 1, winnerRule: "closest" }],
+  [6, "vote_offer", "صوّت واختر العرض القادم", "تصويت العملاء على عرض لاحق", "يختار العميل عرضاً من عدة خيارات، ثم يظهر الخيار الفائز بعد إغلاق التصويت.", "نقاط أو دخول سحب", "تصويت واحد لكل حساب.", { votesPerCustomer: 1, options: 3 }],
+  [7, "refer_friend", "شارك صديقك", "دعوة عميل جديد مع مكافأة للطرفين", "تُمنح المكافأة بعد تسجيل الصديق، وتُستكمل المكافأة الأكبر بعد أول طلب مكتمل.", "50 نقطة للتسجيل و100 نقطة بعد أول طلب", "لا تُحتسب الدعوات لنفس الرقم أو الجهاز.", { signupPoints: 50, firstOrderPoints: 100, maxInvites: 10 }],
+  [8, "favorite_store", "رشح متجرك المفضل", "ترشيح متجر محلي ودعم ظهوره", "يختار العميل متجراً واحداً، ويدخل المشاركون في سحب بسيط.", "قسيمة من المتجر الفائز", "ترشيح واحد لكل حملة.", { nominationsPerCustomer: 1 }],
+  [9, "moment_photo", "صورة من لحظتك", "مشاركة تجربة العميل اختيارياً", "يرسل العميل صورة أو نصاً، وتُراجع المشاركات قبل نشرها ويختار المالك الفائز.", "قسيمة أو ظهور مميز", "الموافقة على النشر مطلوبة.", { moderationRequired: true, winners: 3 }],
+  [10, "seasonal_event", "مسابقة المناسبة المحلية", "حملة موسمية مرتبطة بحدث أو مدينة", "قالب مرن لرمضان والعيد وافتتاح متجر أو فعالية محلية، يحدد فيه المالك السؤال والمدة والجوائز.", "جائزة موسمية أو قسائم محلية", "تحديد المدينة والموعد والشروط قبل التفعيل.", { cityScope: "all", requiresTerms: true }],
+] as const;
+
+async function ensureContestSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `contest_campaigns` (`id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY, `contestNumber` INT NOT NULL UNIQUE, `slug` VARCHAR(80) NOT NULL UNIQUE, `contestType` VARCHAR(40) NOT NULL, `title` VARCHAR(160) NOT NULL, `summary` VARCHAR(500) NOT NULL, `mechanics` TEXT NOT NULL, `rewardSuggestion` VARCHAR(300) NOT NULL, `requirements` TEXT NOT NULL, `configJson` TEXT NOT NULL, `status` ENUM('ready','draft','active','paused','finished') NOT NULL DEFAULT 'ready', `startsAt` TIMESTAMP NULL, `endsAt` TIMESTAMP NULL, `active` TINYINT(1) NOT NULL DEFAULT 0, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)"));
+  const existing = await db.select({ number: contestCampaigns.contestNumber }).from(contestCampaigns);
+  const present = new Set(existing.map(item => item.number));
+  for (const [number, slug, title, summary, mechanics, rewardSuggestion, requirements, config] of CONTEST_TEMPLATES) if (!present.has(number)) await db.insert(contestCampaigns).values({ contestNumber: number, slug, contestType: slug, title, summary, mechanics, rewardSuggestion, requirements, configJson: JSON.stringify(config), status: "ready", active: false });
 }
 
 async function ensureDefaultStaffPasswords(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
@@ -2945,6 +2965,10 @@ export const lahzaRouter = router({
         await db.delete(notificationCampaigns).where(eq(notificationCampaigns.id, input.id));
         return { success: true };
       }),
+    }),
+    contests: router({
+      list: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureContestSchema(db); return db.select().from(contestCampaigns).orderBy(contestCampaigns.contestNumber); }),
+      update: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["ready", "draft", "active", "paused", "finished"]).optional(), active: z.boolean().optional(), startsAt: z.string().datetime().nullable().optional(), endsAt: z.string().datetime().nullable().optional(), rewardSuggestion: z.string().min(2).max(300).optional(), requirements: z.string().min(2).max(2000).optional(), configJson: z.string().max(4000).optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureContestSchema(db); const { id, startsAt, endsAt, ...patch } = input; await db.update(contestCampaigns).set({ ...patch, startsAt: startsAt === undefined ? undefined : startsAt ? new Date(startsAt) : null, endsAt: endsAt === undefined ? undefined : endsAt ? new Date(endsAt) : null }).where(eq(contestCampaigns.id, id)); return { success: true }; }),
     }),
     supportContacts: router({
       list: publicProcedure.query(async ({ ctx }) => {

@@ -418,6 +418,25 @@ export const notificationCampaigns = mysqlTable("notification_campaigns", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const contestCampaigns = mysqlTable("contest_campaigns", {
+  id: int("id").autoincrement().primaryKey(),
+  contestNumber: int("contestNumber").notNull().unique(),
+  slug: varchar("slug", { length: 80 }).notNull().unique(),
+  contestType: varchar("contestType", { length: 40 }).notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  summary: varchar("summary", { length: 500 }).notNull(),
+  mechanics: text("mechanics").notNull(),
+  rewardSuggestion: varchar("rewardSuggestion", { length: 300 }).notNull(),
+  requirements: text("requirements").notNull(),
+  configJson: text("configJson").notNull(),
+  status: mysqlEnum("status", ["ready", "draft", "active", "paused", "finished"]).notNull().default("ready"),
+  startsAt: timestamp("startsAt"),
+  endsAt: timestamp("endsAt"),
+  active: boolean("active").notNull().default(false),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
 export const customerNotifications = mysqlTable("customer_notifications", {
   id: int("id").autoincrement().primaryKey(),
   campaignId: int("campaignId").notNull().references(() => notificationCampaigns.id, { onDelete: "cascade" }),
