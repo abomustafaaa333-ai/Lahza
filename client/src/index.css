@@ -3037,6 +3037,26 @@ header[class*="header-service-theme-"] .service-intro-cta {
 header[class*="header-service-theme-"] .service-intro-offers-cta {
   transform: translate(calc(-1.5cm - .2rem), -.5cm) !important;
 }
+/* توحيد الزرين مع شارة «منبج بين يديك» في الحجم والتعبئة */
+header[class*="header-service-theme-"] .service-intro-cta,
+header[class*="header-service-theme-"] .service-intro-offers-cta {
+  height: auto !important;
+  min-height: 0 !important;
+  border: 1px solid rgba(255,253,248,.72) !important;
+  border-radius: 999px !important;
+  padding: .18rem .58rem !important;
+  color: #fffdf8 !important;
+  background: #FF6B2B !important;
+  box-shadow: 0 .35rem .8rem rgba(0,45,50,.12) !important;
+  font-size: .7rem !important;
+  font-weight: 900 !important;
+  line-height: 1.25 !important;
+}
+header[class*="header-service-theme-"] .service-intro-cta svg,
+header[class*="header-service-theme-"] .service-intro-offers-cta svg {
+  width: .9rem;
+  height: .9rem;
+}
 header[class*="header-service-theme-"] .service-intro-panel {
   min-height: calc(14.5rem - 1cm) !important;
 }
