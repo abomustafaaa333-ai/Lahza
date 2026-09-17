@@ -4,7 +4,7 @@ export type StoreHours = Record<StoreDayKey, StoreDayHours>;
 
 export const STORE_DAY_KEYS: StoreDayKey[] = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 export const STORE_DAY_LABELS: Record<StoreDayKey, string> = { sunday: "الأحد", monday: "الاثنين", tuesday: "الثلاثاء", wednesday: "الأربعاء", thursday: "الخميس", friday: "الجمعة", saturday: "السبت" };
-export const DEFAULT_STORE_HOURS: StoreHours = Object.fromEntries(STORE_DAY_KEYS.map(day => [day, { closed: false, from: "09:00", to: "23:00" }])) as StoreHours;
+export const DEFAULT_STORE_HOURS: StoreHours = Object.fromEntries(STORE_DAY_KEYS.map(day => [day, { closed: false, from: "08:00", to: "02:00" }])) as StoreHours;
 
 const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
 export function normalizeStoreHours(value: unknown): StoreHours | null {
