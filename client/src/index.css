@@ -2929,7 +2929,7 @@ header[class*="header-service-theme-"] .service-intro-cta {
   transform: translateY(-.5cm) !important;
 }
 header[class*="header-service-theme-"] .service-intro-offers-cta {
-  transform: translate(calc(-2.5cm - .2rem), -.5cm) !important;
+  transform: translate(calc(-2cm - .2rem), -.5cm) !important;
 }
 header[class*="header-service-theme-"] .service-intro-panel {
   min-height: calc(14.5rem - 1cm) !important;
