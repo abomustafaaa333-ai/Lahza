@@ -2011,7 +2011,7 @@ export const lahzaRouter = router({
       const finalItemsTotal = discountedItemsTotal - pointsRewardAmount;
       const initialStatus = initialCustomerOrderStatus(input.orderType, resolvedLines);
       const minimumOrder = orderCity === "jarabulus" ? jarabulusOrderMinimum(settings) : MINIMUM_DELIVERY_ORDER_SYP;
-      if (input.orderType === "delivery" && toNewSyp(finalItemsTotal) < minimumOrder) {
+      if (input.orderType === "delivery" && toNewSyp(itemsTotal) < minimumOrder) {
         throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumOrder)}`);
       }
       let deliveryDistanceMeters = 0;
