@@ -852,7 +852,7 @@ header[class*="header-service-theme-"] .service-intro-kicker { color: #ffb17d; f
 header[class*="header-service-theme-"] .service-intro-copy strong { font-size: clamp(1.45rem, 6vw, 2.05rem); line-height: 1.3; }
 header[class*="header-service-theme-"] .service-intro-copy small { color: rgba(255,255,255,.82); font-size: .82rem; }
 header[class*="header-service-theme-"] .service-intro-icon { width: 5.2rem; height: 5.2rem; border: 0; border-radius: 1.6rem; color: #63301b; background: #fff; box-shadow: 0 1rem 1.8rem -1rem rgba(0,0,0,.34); }
-header[class*="header-service-theme-"] .service-intro-dots { bottom: 1rem; }
+  header[class*="header-service-theme-"] .service-intro-dots { bottom: calc(1rem + 0.3cm); }
 header[class*="header-service-theme-"] .service-intro-dots button { background: rgba(255,255,255,.55); }
 @media (max-width: 420px) {
   header[class*="header-service-theme-"] .header-inner { min-height: 4.9rem; }
