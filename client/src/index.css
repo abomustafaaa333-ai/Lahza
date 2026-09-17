@@ -2380,6 +2380,9 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   position: relative;
   top: -1cm;
 }
+.home-discover-section > .home-offer-gallery .hero-image-frame {
+  transform: translateY(-.5cm);
+}
 
 
 /* قصّ الجزء العلوي من القسم الفيروزي لرفع الواجهة كاملة */
