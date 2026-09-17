@@ -439,6 +439,8 @@ export default function Home() {
   const [locationVerified, setLocationVerified] = useState(false);
   const [deliveryQuoteData, setDeliveryQuoteData] = useState<{ distanceMeters: number; billableKm: number; deliveryFeeNewSyp: number; durationMinutes: number } | null>(null);
   const [deliveryQuoteStatus, setDeliveryQuoteStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [deliveryFeeConfirmOpen, setDeliveryFeeConfirmOpen] = useState(false);
+  const [deliveryFeeConfirmed, setDeliveryFeeConfirmed] = useState(false);
   const [useManualLocation, setUseManualLocation] = useState(false);
   const [locating, setLocating] = useState(false);
   const [notes, setNotes] = useState("");
@@ -621,10 +623,12 @@ export default function Home() {
     if (isStaticDemo || checkoutMode !== "delivery" || !selectedStore?.locationLat || !selectedStore.locationLng || customerLat === null || customerLng === null) {
       setDeliveryQuoteData(null);
       setDeliveryQuoteStatus("idle");
+      setDeliveryFeeConfirmed(false);
       return;
     }
     setDeliveryQuoteData(null);
     setDeliveryQuoteStatus("loading");
+    setDeliveryFeeConfirmed(false);
     let active = true;
     void deliveryQuote.mutateAsync({
       locationLat: customerLat,
@@ -882,6 +886,8 @@ export default function Home() {
     }
     setCheckoutMode("delivery");
     setCheckoutStep(1);
+    setDeliveryFeeConfirmed(false);
+    setDeliveryFeeConfirmOpen(false);
     setScreen("checkout");
   };
   const openCart = () => {
@@ -891,6 +897,8 @@ export default function Home() {
     }
     setCheckoutMode("delivery");
     setCheckoutStep(1);
+    setDeliveryFeeConfirmed(false);
+    setDeliveryFeeConfirmOpen(false);
     setScreen("checkout");
   };
   const openMyOrder = () => {
@@ -1001,7 +1009,7 @@ export default function Home() {
     }
   };
 
-  const submitCheckout = async () => {
+  const submitCheckout = async (confirmedDeliveryFee = false) => {
     const isTaxi = checkoutMode === "taxi";
     const isWosselLi = checkoutMode === "wossel_li";
     if (checkoutMode === "delivery" && !deliveryQuoteData) {
@@ -1032,6 +1040,10 @@ export default function Home() {
     }
     if (isTaxi && (!pickup.trim() || !destination.trim())) {
       toast.error("أكمل موقع الانطلاق والوجهة");
+      return;
+    }
+    if (checkoutMode === "delivery" && !deliveryFeeConfirmed && !confirmedDeliveryFee) {
+      setDeliveryFeeConfirmOpen(true);
       return;
     }
     if (isStaticDemo) {
@@ -1258,6 +1270,22 @@ export default function Home() {
 
       </div>
       {screen !== "checkout" && screen !== "driverSearch" ? <nav className="home-bottom-nav" aria-label="التنقل الرئيسي"><button type="button" className={screen === "home" ? "home-bottom-nav-active" : ""} onClick={goHome}><LayoutDashboard className="h-5 w-5" /><span>الرئيسية</span></button><button type="button" className={screen === "delivery" || screen === "stores" || screen === "store" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("delivery")}><Store className="h-5 w-5" /><span>المتاجر</span></button><button type="button" className={screen === "wosselLi" ? "home-bottom-nav-active" : ""} onClick={openWosselLiService} aria-label="خدمة وصّل لي"><PackageCheck className="h-5 w-5" /><span>وصّل لي</span></button><button type="button" className={screen === "taxi" ? "home-bottom-nav-active" : ""} onClick={() => setScreen("taxi")} aria-label="طلب سيارة أجرة"><CarFront className="h-5 w-5" /><span className="home-bottom-nav-taxi-label">طلب سيارة أجرة</span></button><button type="button" className={screen === "account" ? "home-bottom-nav-active" : ""} onClick={openAccount} aria-label="فتح حسابي"><UserRound className="h-5 w-5" /><span>حسابي</span></button></nav> : null}
+      <Dialog open={deliveryFeeConfirmOpen} onOpenChange={setDeliveryFeeConfirmOpen}>
+        <DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl border-orange-200 bg-white p-6 text-[#4a2618]">
+          <DialogHeader>
+            <DialogTitle>تأكيد رسوم التوصيل</DialogTitle>
+            <DialogDescription>ظهرت رسوم التوصيل بعد تحديد موقعك. راجع المبلغ قبل إرسال الطلب.</DialogDescription>
+          </DialogHeader>
+          <div className="my-4 space-y-3 rounded-2xl bg-orange-50 p-4 text-sm font-bold">
+            <div className="flex justify-between gap-4"><span>رسوم التوصيل</span><strong>{formatNewSyp(cartDeliveryFeeNewSyp)}</strong></div>
+            <div className="flex justify-between gap-4 border-t border-orange-200 pt-3"><span>الإجمالي النهائي</span><strong className="text-lg text-[#e95e2a]">{formatNewSyp(cartGrandTotalNewSyp)}</strong></div>
+          </div>
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" onClick={() => setDeliveryFeeConfirmOpen(false)} className="flex-1 rounded-xl border-orange-200">مراجعة الطلب</Button>
+            <Button type="button" onClick={() => { setDeliveryFeeConfirmed(true); setDeliveryFeeConfirmOpen(false); void submitCheckout(true); }} className="flex-1 rounded-xl bg-[#63301b] text-white hover:bg-[#4a2618]">موافق وإرسال الطلب</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <footer className="app-shell pb-8 text-center text-xs font-medium tracking-wide text-slate-400" dir="ltr">Designed by Ahmad barho</footer>
     </main>
   );
