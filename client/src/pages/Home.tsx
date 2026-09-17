@@ -570,7 +570,12 @@ export default function Home() {
     setPullDistance(0);
     if (!shouldRefresh) return;
     setRefreshing(true);
-    void utils.invalidate().finally(() => window.setTimeout(() => setRefreshing(false), 450));
+    const updateServiceWorker = async () => {
+      if (!("serviceWorker" in navigator)) return;
+      const registration = await navigator.serviceWorker.getRegistration();
+      await registration?.update();
+    };
+    void Promise.all([utils.invalidate(), updateServiceWorker()]).then(() => toast.success("تم تحديث البيانات والواجهة")).catch(() => toast.error("تعذر إكمال التحديث، حاول مرة أخرى")).finally(() => window.setTimeout(() => setRefreshing(false), 450));
   };
   const [searchText, setSearchText] = useState("");
   const [missingProductName, setMissingProductName] = useState("");
