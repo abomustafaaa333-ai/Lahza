@@ -156,6 +156,11 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
   await ensureColumn("orders", "pickupContactPhone", "VARCHAR(24) NULL");
   await ensureColumn("orders", "itemDescription", "VARCHAR(500) NULL");
   await ensureColumn("orders", "itemWeight", "VARCHAR(80) NULL");
+  await ensureColumn("orders", "pharmacyPrescriptionUrl", "VARCHAR(500) NULL");
+  await ensureColumn("orders", "pharmacyPrice", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("orders", "pharmacyPricingStatus", "ENUM('not_required','pending','priced','expired') NOT NULL DEFAULT 'not_required'");
+  await ensureColumn("orders", "pharmacyPricingSentAt", "TIMESTAMP NULL");
+  await ensureColumn("orders", "pharmacyPricingReminderSentAt", "TIMESTAMP NULL");
   // Wossel Li orders do not have a taxi type. Normalize older Railway
   // databases as well, so the empty taxi field is stored as SQL NULL.
   await db.execute(sql.raw("ALTER TABLE `orders` MODIFY COLUMN `taxiType` ENUM('standard','van') NULL"));
@@ -359,6 +364,45 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
   return { accepted: true };
 }
 
+async function notifyPharmacyPrescriptionPricing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, imageUrl: string) {
+  const rows = await db.select({ phone: partners.username, name: partners.name }).from(orderLines).innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).innerJoin(stores, eq(catalogItems.storeId, stores.id)).innerJoin(partners, eq(stores.partnerId, partners.id)).where(and(eq(orderLines.orderId, orderId), eq(stores.category, "pharmacy")));
+  const recipients = rows.filter((row, index, all) => all.findIndex(other => other.phone.replace(/\D/g, "") === row.phone.replace(/\D/g, "")) === index);
+  const sentAt = new Date();
+  await db.update(orders).set({ pharmacyPricingStatus: "pending", pharmacyPricingSentAt: sentAt, pharmacyPricingReminderSentAt: null }).where(eq(orders.id, orderId));
+  await Promise.allSettled(recipients.map(row => sendWahaText(row.phone, { title: `وصفة طبية للطلب #${orderId}`, body: `يوجد طلب صيدلية #${orderId} يحتاج تسعيراً. يرجى مراجعة الوصفة الطبية في الرابط التالي:\n${imageUrl}\n\nأرسل السعر برسالة بهذا الشكل: السعر 50000\nالمهلة: 15 دقيقة.` })));
+}
+
+async function processPharmacyPriceReply(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, senderPhones: string[], rawReply: string) {
+  const match = rawReply.match(/(?:السعر|سعر)\s*[:：-]?\s*([0-9٠-٩][0-9٠-٩,،.]*)/i);
+  if (!match) return false;
+  const normalized = match[1].replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/[.,،]/g, "");
+  const priceNewSyp = Number(normalized);
+  if (!Number.isInteger(priceNewSyp) || priceNewSyp <= 0) return false;
+  const partnersFound = await db.select({ id: partners.id, phone: partners.username }).from(partners).where(eq(partners.active, true));
+  const partner = partnersFound.find(candidate => senderPhones.some(phone => phone.replace(/\D/g, "") === candidate.phone.replace(/\D/g, "")));
+  if (!partner) return false;
+  const pending = (await db.select({ order: orders }).from(orderLines).innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).innerJoin(stores, eq(catalogItems.storeId, stores.id)).innerJoin(orders, eq(orderLines.orderId, orders.id)).where(and(eq(stores.partnerId, partner.id), eq(stores.category, "pharmacy"), eq(orders.pharmacyPricingStatus, "pending"), eq(orders.status, "pending"))).orderBy(orders.pharmacyPricingSentAt).limit(1))[0];
+  if (!pending?.order) return false;
+  const priceLegacy = toLegacySyp(priceNewSyp);
+  await db.update(orders).set({ pharmacyPrice: priceLegacy, totalAmount: priceLegacy + pending.order.deliveryFee, pharmacyPricingStatus: "priced" }).where(eq(orders.id, pending.order.id));
+  const priceMessage = { title: "تم تحديد سعر الوصفة", body: `تم تحديد سعر وصفة طلبك #${pending.order.id}: ${formatNewSyp(priceLegacy)}. سيستمر تجهيز الطلب.` };
+  void sendWahaText(pending.order.customerPhone, priceMessage);
+  const assignment = (await db.select({ phone: drivers.phone }).from(orderAssignments).innerJoin(drivers, eq(orderAssignments.driverId, drivers.id)).where(and(eq(orderAssignments.orderId, pending.order.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]))).limit(1))[0];
+  if (assignment) void sendWahaText(assignment.phone, { body: `تم استلام سعر الصيدلي للطلب #${pending.order.id}: ${formatNewSyp(priceLegacy)}. تابع تنفيذ الطلب.` });
+  return true;
+}
+
+async function processPharmacyPricingReminders(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const cutoff = new Date(Date.now() - 15 * 60_000);
+  const pending = await db.select({ order: orders, partnerPhone: partners.username, driverPhone: drivers.phone }).from(orders).innerJoin(orderLines, eq(orderLines.orderId, orders.id)).innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).innerJoin(stores, eq(catalogItems.storeId, stores.id)).innerJoin(partners, eq(stores.partnerId, partners.id)).leftJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).leftJoin(drivers, eq(orderAssignments.driverId, drivers.id)).where(and(eq(orders.pharmacyPricingStatus, "pending"), lte(orders.pharmacyPricingSentAt, cutoff), isNull(orders.pharmacyPricingReminderSentAt))).limit(50);
+  for (const row of pending) {
+    await db.update(orders).set({ pharmacyPricingReminderSentAt: new Date() }).where(eq(orders.id, row.order.id));
+    void sendWahaText(row.partnerPhone, { title: `تذكير تسعير الوصفة #${row.order.id}`, body: `تذكير: يرجى إرسال سعر الوصفة الطبية للطلب #${row.order.id} برسالة: السعر 50000. مضت 15 دقيقة على الإرسال الأول.` });
+    if (row.driverPhone) void sendWahaText(row.driverPhone, { body: `تنبيه للطلب #${row.order.id}: لم يرسل الصيدلي السعر بعد. يرجى التواصل مع الصيدلي وطلب إرسال السعر إلى واتساب لحظة.` });
+  }
+  return pending.length;
+}
+
 export async function handleWahaWebhook(body: unknown) {
   const event = body as { event?: string; payload?: { from?: string; participant?: string; body?: string; fromMe?: boolean; _data?: { from?: string; author?: string; participant?: string; dynamicReplyButtons?: Array<{ buttonId?: string; buttonText?: { displayText?: string } }> } } };
   if (event.event && event.event !== "message.any" && event.event !== "message") return;
@@ -379,6 +423,7 @@ export async function handleWahaWebhook(body: unknown) {
   if (!availabilityReply && !orderReply && !completeCommand) return;
   const db = await getDb();
   if (!db) return;
+  if (await processPharmacyPriceReply(db, senderPhones, rawReply)) return;
   const availableDrivers = await db.select().from(drivers);
   const driver = availableDrivers.find(candidate => senderPhones.some(phone => phone === candidate.phone || phone.replace(/^\+/, "") === candidate.phone.replace(/^\+/, "")));
   console.info("WAHA driver reply identity", { senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
@@ -477,6 +522,7 @@ export async function autoCompleteDueOrders() {
   const db = await getDb();
   if (!db) return 0;
   await ensureJarabulusGatewaySchema(db);
+  await processPharmacyPricingReminders(db);
   await expireUnansweredDriverAssignments(db);
   const now = new Date();
   const due = await db.select().from(orders).where(and(
@@ -1128,10 +1174,11 @@ export const orderInputSchema = z.object({
   pickupContactPhone: syrianCustomerPhoneSchema.optional(),
   itemDescription: z.string().trim().min(2).max(500).optional(),
   itemWeight: z.string().trim().max(80).optional(),
+  pharmacyPrescriptionUrl: z.string().url("رابط الوصفة غير صالح").max(500).optional(),
   destination: z.string().trim().max(220).optional(),
   notes: z.string().trim().max(500).optional(),
 }).superRefine((input, context) => {
-  if (input.orderType === "delivery" && input.lines.length === 0) context.addIssue({ code: "custom", message: "أضف صنفاً واحداً على الأقل" });
+  if (input.orderType === "delivery" && input.lines.length === 0 && !input.pharmacyPrescriptionUrl) context.addIssue({ code: "custom", message: "أضف صنفاً واحداً على الأقل أو أرفق وصفة طبية" });
   if (input.orderType === "taxi" && (!input.taxiType || !input.pickupLocation || !input.destination)) context.addIssue({ code: "custom", message: "أكمل بيانات التاكسي" });
   if (input.orderType === "wossel_li" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined || !input.locationText || !input.pickupContactPhone || !input.itemDescription)) context.addIssue({ code: "custom", message: "أكمل موقع التسليم ورقم جهة الاستلام ونوع الغرض" });
   if (input.locationMode === "gps" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined)) context.addIssue({ code: "custom", message: "حدد موقعك عبر زر تحديد موقعي أو اختر كتابة الموقع يدوياً" });
@@ -1941,6 +1988,7 @@ export const lahzaRouter = router({
     }),
   }),
   orders: router({
+    uploadPrescription: publicProcedure.input(z.object({ dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ input }) => uploadOfferImage(input.dataUrl, 0, `prescription-${randomBytes(12).toString("hex")}`)),
     previewPromotion: publicProcedure.input(z.object({
       code: z.string().trim().min(2).max(40),
       kind: z.enum(["discount", "referral"]),
@@ -2061,7 +2109,7 @@ export const lahzaRouter = router({
       const finalItemsTotal = discountedItemsTotal - pointsRewardAmount;
       const initialStatus = initialCustomerOrderStatus(input.orderType, resolvedLines);
       const minimumOrder = orderCity === "jarabulus" ? jarabulusOrderMinimum(settings) : MINIMUM_DELIVERY_ORDER_SYP;
-      if (input.orderType === "delivery" && toNewSyp(itemsTotal) < minimumOrder) {
+      if (input.orderType === "delivery" && !input.pharmacyPrescriptionUrl && toNewSyp(itemsTotal) < minimumOrder) {
         throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumOrder)}`);
       }
       let deliveryDistanceMeters = 0;
@@ -2137,6 +2185,11 @@ export const lahzaRouter = router({
         pickupContactPhone: input.pickupContactPhone ?? null,
         itemDescription: input.itemDescription ?? null,
         itemWeight: input.itemWeight ?? null,
+        pharmacyPrescriptionUrl: input.pharmacyPrescriptionUrl ?? null,
+        pharmacyPrice: 0,
+        pharmacyPricingStatus: input.pharmacyPrescriptionUrl ? "pending" : "not_required",
+        pharmacyPricingSentAt: null,
+        pharmacyPricingReminderSentAt: null,
         destination: input.destination ?? null,
         locationMode: input.locationMode,
         locationText: input.locationText ?? null,
@@ -2154,6 +2207,7 @@ export const lahzaRouter = router({
         throw new Error(concise ? `تعذر حفظ الطلب: ${concise}` : "تعذر حفظ الطلب في قاعدة البيانات؛ راجع سجلات الخادم للتفاصيل.");
       }
       const orderId = Number(created[0].insertId);
+      if (input.pharmacyPrescriptionUrl) await notifyPharmacyPrescriptionPricing(db, orderId, input.pharmacyPrescriptionUrl);
       await createOrderStatusNotification(db, { id: orderId, customerPhone: input.customerPhone, fulfillmentScope, preparationMinutes }, initialStatus);
       if (pointsUsed) {
         const spent = await db.update(customerPoints).set({ balance: sql`${customerPoints.balance} - 10` }).where(and(eq(customerPoints.customerPhone, input.customerPhone), gte(customerPoints.balance, 10)));
