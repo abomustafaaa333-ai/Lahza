@@ -1038,6 +1038,17 @@ header[class*="header-service-theme-"] .service-intro-cta { align-self: flex-sta
 .service-intro-offers-cta { display: inline-flex; align-items: center; gap: .35rem; border-radius: .9rem; padding: .58rem .85rem; color: #fff; background: linear-gradient(135deg, #ff812f, #f04d19); font-size: .75rem; font-weight: 950; box-shadow: 0 .55rem 1rem -0.7rem rgba(245,82,25,.95); transition: transform .18s ease, filter .18s ease; }
 .service-intro-offers-cta:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .service-intro-offers-cta:active { transform: scale(.97); }
+.service-intro-manbij-cta { position: absolute; top: 50%; left: max(1rem, calc((100% - 760px) / 2 + 1rem)); display: inline-flex; align-items: center; gap: .35rem; min-height: 2.7rem; max-width: 9.2rem; padding: .42rem .55rem; border: 1px solid rgba(255,255,255,.45); border-radius: 1rem; color: #fff; background: rgba(0,56,61,.5); box-shadow: 0 .55rem 1rem -0.65rem rgba(0,35,39,.9); font-size: .76rem; font-weight: 950; text-align: right; transform: translateY(-50%); transition: transform .18s ease, background .18s ease; z-index: 2; }
+.service-intro-manbij-cta:hover { background: rgba(0,75,80,.8); transform: translateY(-50%) translateY(-1px); }
+.service-intro-manbij-cta:active { transform: translateY(-50%) scale(.97); }
+.service-intro-manbij-icon { display: grid; width: 2rem; height: 2rem; flex: 0 0 auto; place-items: center; border-radius: .65rem; color: #fff; background: linear-gradient(135deg, #0b9298, #00666b); }
+.service-intro-manbij-cta > strong { min-width: 0; line-height: 1.2; }
+header[class*="header-service-theme-"] .service-intro-panel:has(.service-intro-manbij-cta) .service-intro-copy { max-width: calc(100% - 11rem); margin-right: auto; }
+@media (max-width: 600px) {
+  .service-intro-manbij-cta { left: .7rem; max-width: 7.7rem; padding-inline: .42rem; font-size: .66rem; }
+  .service-intro-manbij-icon { width: 1.75rem; height: 1.75rem; }
+  header[class*="header-service-theme-"] .service-intro-panel:has(.service-intro-manbij-cta) .service-intro-copy { max-width: calc(100% - 8.5rem) !important; }
+}
 .service-directory-dialog { direction: rtl; }
 .service-directory-grid { display: grid; gap: .75rem; margin-top: 1rem; }
 .service-directory-card { display: flex; align-items: flex-start; gap: .85rem; width: 100%; border: 1px solid #d8eeee; border-radius: 1.35rem; padding: 1rem; color: #173d3f; background: linear-gradient(135deg, #f2ffff, #fff); text-align: right; box-shadow: 0 .6rem 1.2rem -1rem rgba(0,102,107,.4); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
