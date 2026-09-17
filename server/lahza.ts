@@ -909,7 +909,7 @@ const lineInput = z.object({
 const catalogItemInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم الصنف").max(160),
   category: z.enum(categories),
-  unit: z.enum(["وحدة", "جرام", "ليتر", "قنينة", "طلب"]),
+  unit: z.string().trim().min(1).max(16),
   price: newSypMoneyInput,
   available: z.boolean().default(true),
   storeId: z.number().int().positive().optional(),
@@ -999,7 +999,7 @@ export const partnerProductInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم المنتج").max(160),
   category: z.enum(categories),
   storeId: z.number().int().positive(),
-  unit: z.enum(["وحدة", "جرام", "ليتر", "قنينة", "طلب"]),
+  unit: z.string().trim().min(1).max(16),
   price: newSypMoneyInput,
   available: z.boolean().default(true),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
