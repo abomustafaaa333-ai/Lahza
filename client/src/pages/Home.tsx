@@ -1296,7 +1296,7 @@ export default function Home() {
             <DialogDescription>ظهرت رسوم التوصيل بعد تحديد موقعك. راجع المبلغ قبل إرسال الطلب.</DialogDescription>
           </DialogHeader>
           <div className="my-4 space-y-3 rounded-2xl bg-orange-50 p-4 text-sm font-bold">
-            <div className="flex justify-between gap-4"><span>رسوم التوصيل</span><strong>{formatNewSyp(cartDeliveryFeeNewSyp)}</strong></div>
+            <div className="flex justify-between gap-4"><div className="flex justify-between gap-4"><span>قيمة المنتجات</span><strong>{formatNewSyp(toNewSyp(discountedCartTotal))}</strong></div><span>رسوم التوصيل</span><strong>{formatNewSyp(cartDeliveryFeeNewSyp)}</strong></div>
             <div className="flex justify-between gap-4 border-t border-orange-200 pt-3"><span>الإجمالي النهائي</span><strong className="text-lg text-[#e95e2a]">{formatNewSyp(cartGrandTotalNewSyp)}</strong></div>
           </div>
           <div className="flex gap-3">
