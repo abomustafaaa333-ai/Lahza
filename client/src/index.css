@@ -2376,6 +2376,10 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
   position: relative;
   top: -.5cm;
 }
+.home-offer-gallery {
+  position: relative;
+  top: -.5cm;
+}
 
 
 /* قصّ الجزء العلوي من القسم الفيروزي لرفع الواجهة كاملة */
