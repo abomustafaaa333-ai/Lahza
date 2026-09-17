@@ -327,6 +327,38 @@ async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnTyp
   return nearest.id;
 }
 
+async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, driverId: number, orderId: number, accepted: boolean) {
+  const row = (await db.select({ assignment: orderAssignments, order: orders, driver: drivers }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orderAssignments.orderId, orderId), eq(orderAssignments.driverId, driverId), eq(orderAssignments.status, "assigned"))).limit(1))[0];
+  if (!row) throw new Error("هذا الطلب لم يعد متاحاً للتأكيد");
+  if (!accepted) {
+    await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, row.assignment.id));
+    await db.update(drivers).set({ available: true }).where(eq(drivers.id, driverId));
+    const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, orderId)).limit(1))[0];
+    if (row.order.orderType === "wossel_li") await dispatchWosselLiToNearestDriver(db, orderId, row.order.customerName, row.order.pickupLocation || "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", row.order.pickupContactPhone || "غير متوفر", row.order.locationText || "موقع GPS", row.order.locationUrl || "", row.order.itemDescription || "غير محدد");
+    else await dispatchOrderToNearestDriver(db, orderId, row.order.orderCity, line?.storeId ?? null, row.order.customerName, row.order.locationText, row.order.locationUrl, [driverId]);
+    return { accepted: false };
+  }
+  await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, row.assignment.id));
+  await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب" }).where(and(eq(orders.id, orderId), inArray(orders.status, ["pending", "confirmed"])));
+  if (row.order.orderType !== "wossel_li") {
+    const partnerItems = await db.select({ partnerId: partners.id, partnerPhone: partners.username, itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).innerJoin(stores, eq(catalogItems.storeId, stores.id)).innerJoin(partners, eq(stores.partnerId, partners.id)).where(eq(orderLines.orderId, orderId));
+    const grouped = new Map<number, typeof partnerItems>();
+    for (const item of partnerItems) grouped.set(item.partnerId, [...(grouped.get(item.partnerId) ?? []), item]);
+    Array.from(grouped.values()).forEach(items => {
+      const first = items[0];
+      const itemsText = items.map((item: (typeof partnerItems)[number], index: number) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatNewSyp(item.unitPrice)} — المجموع: ${formatNewSyp(item.lineTotal)}`).join("\n");
+      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${orderId}`, body: `يرجى تجهيز الطلب #${orderId}\n\n${itemsText}\n\nالإجمالي: ${formatNewSyp(row.order.totalAmount)}` });
+    });
+  }
+  const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${orderId} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${row.driver.phone}\nللتواصل عبر واتساب: https://wa.me/${row.driver.phone.replace(/\D/g, "")}` };
+  await db.insert(orderNotifications).values({ orderId, customerPhone: row.order.customerPhone, status: "preparing", title: customerMessage.title, body: customerMessage.body });
+  const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, row.order.customerPhone), eq(pushTokens.active, true)));
+  await sendPushNotification(tokens.map(token => token.token), customerMessage);
+  void sendWahaText(row.order.customerPhone, customerMessage);
+  void sendWahaText(row.driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${orderId}.` });
+  return { accepted: true };
+}
+
 export async function handleWahaWebhook(body: unknown) {
   const event = body as { event?: string; payload?: { from?: string; participant?: string; body?: string; fromMe?: boolean; _data?: { from?: string; author?: string; participant?: string; dynamicReplyButtons?: Array<{ buttonId?: string; buttonText?: { displayText?: string } }> } } };
   if (event.event && event.event !== "message.any" && event.event !== "message") return;
@@ -1329,8 +1361,8 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const assignment = (await db.select({ id: orderAssignments.id, status: orderAssignments.status, orderId: orderAssignments.orderId }).from(orderAssignments).where(and(eq(orderAssignments.orderId, input.orderId), eq(orderAssignments.driverId, session.driverId))).limit(1))[0];
       if (!assignment || assignment.status !== "assigned") throw new Error("هذا الطلب لم يعد متاحاً للتأكيد");
-      await db.update(orderAssignments).set({ status: input.accept ? "accepted" : "cancelled", ...(input.accept ? { acceptedAt: new Date() } : {}) }).where(eq(orderAssignments.id, assignment.id));
-      return { success: true, accepted: input.accept };
+      const result = await processDriverAssignmentResponse(db, session.driverId, input.orderId, input.accept);
+      return { success: true, ...result };
     }),
     login: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema, password: passwordSchema })).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
