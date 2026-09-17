@@ -276,6 +276,17 @@ export const discountCodes = mysqlTable("discount_codes", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
+export const automaticDiscounts = mysqlTable("automatic_discounts", {
+  id: int("id").autoincrement().primaryKey(),
+  scope: mysqlEnum("scope", ["all", "store"]).notNull().default("all"),
+  storeId: int("storeId").references(() => stores.id, { onDelete: "cascade" }),
+  discountPercent: int("discountPercent").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  startsAt: timestamp("startsAt"),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
 export const customerReferrals = mysqlTable("customer_referrals", {
   id: int("id").autoincrement().primaryKey(),
   code: varchar("code", { length: 40 }).notNull().unique(),

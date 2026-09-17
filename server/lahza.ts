@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
+import { automaticDiscounts, catalogItems, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
@@ -165,6 +165,35 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
 
 async function ensureWosselLiOrderTypeSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   await db.execute(sql.raw("ALTER TABLE `orders` MODIFY COLUMN `orderType` ENUM('delivery','taxi','wossel_li') NOT NULL"));
+}
+
+async function ensureAutomaticDiscountSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `automatic_discounts` (`id` INT NOT NULL AUTO_INCREMENT, `scope` ENUM('all','store') NOT NULL DEFAULT 'all', `storeId` INT NULL, `discountPercent` INT NOT NULL DEFAULT 0, `active` BOOLEAN NOT NULL DEFAULT TRUE, `startsAt` TIMESTAMP NULL DEFAULT NULL, `expiresAt` TIMESTAMP NULL DEFAULT NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (`id`), KEY `automatic_discounts_storeId_idx` (`storeId`), CONSTRAINT `automatic_discounts_storeId_stores_id_fk` FOREIGN KEY (`storeId`) REFERENCES `stores`(`id`) ON DELETE CASCADE)"));
+}
+
+async function getAutomaticDiscountForLines(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, lines: Array<{ catalogItemId?: number | null; quantity: number; unit: string }>, products: typeof catalogItems.$inferSelect[]) {
+  await ensureAutomaticDiscountSchema(db);
+  const now = new Date();
+  const rules = await db.select().from(automaticDiscounts).where(and(eq(automaticDiscounts.active, true), or(isNull(automaticDiscounts.startsAt), lte(automaticDiscounts.startsAt, now)), or(isNull(automaticDiscounts.expiresAt), gt(automaticDiscounts.expiresAt, now))));
+  if (!rules.length) return { discountAmount: 0, percent: 0, ruleIds: [] as number[] };
+  const productMap = new Map(products.map(product => [product.id, product]));
+  let discountAmount = 0;
+  let weightedPercent = 0;
+  let weightedTotal = 0;
+  const ruleIds: number[] = [];
+  for (const line of lines) {
+    const product = line.catalogItemId ? productMap.get(line.catalogItemId) : undefined;
+    if (!product || product.deleted || !product.available) continue;
+    const lineTotal = calculateLineTotal(line.quantity, product.unitPrice, line.unit);
+    const applicable = rules.filter(rule => rule.scope === "store" ? rule.storeId === product.storeId : true);
+    const rule = applicable.sort((a, b) => Number(b.scope === "store") - Number(a.scope === "store") || b.discountPercent - a.discountPercent)[0];
+    if (!rule || rule.discountPercent < 1) continue;
+    discountAmount += Math.floor(lineTotal * rule.discountPercent / 100);
+    weightedPercent += lineTotal * rule.discountPercent;
+    weightedTotal += lineTotal;
+    if (!ruleIds.includes(rule.id)) ruleIds.push(rule.id);
+  }
+  return { discountAmount: Math.max(0, discountAmount), percent: weightedTotal ? Math.round(weightedPercent / weightedTotal) : 0, ruleIds };
 }
 
 export function isStoreVisibleInCustomerCity(store: { city: CityKey; jarabulusGatewayEnabled: boolean }, city: CityKey) {
@@ -1895,6 +1924,17 @@ export const lahzaRouter = router({
       const discountAmount = Math.min(itemsTotal, Math.max(0, Math.floor(itemsTotal * percent / 100)));
       return { code: referral.code, kind: "referral" as const, percent, discountAmount, itemsTotal };
     }),
+    automaticDiscount: publicProcedure.input(z.object({ lines: z.array(lineInput).min(1).max(30) })).mutation(async ({ input }) => {
+      const db = await ensureCatalogSeed();
+      const ids = input.lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
+      const products = ids.length ? await db.select().from(catalogItems).where(inArray(catalogItems.id, ids)) : [];
+      const itemsTotal = input.lines.reduce((sum, line) => {
+        const product = line.catalogItemId ? products.find(item => item.id === line.catalogItemId) : undefined;
+        return sum + calculateLineTotal(line.quantity, product?.unitPrice ?? 0, line.unit);
+      }, 0);
+      const automatic = await getAutomaticDiscountForLines(db, input.lines, products);
+      return { code: "AUTO", kind: "automatic" as const, percent: automatic.percent, discountAmount: Math.min(itemsTotal, automatic.discountAmount), itemsTotal };
+    }),
     create: publicProcedure.input(orderInputSchema).mutation(async ({ ctx, input }) => {
       const db = await ensureCatalogSeed();
       if (input.orderType === "wossel_li") await ensureWosselLiOrderTypeSchema(db);
@@ -1930,6 +1970,7 @@ export const lahzaRouter = router({
         return { ...line, unitPrice, lineTotal, priceKnown: Boolean(product && !product.deleted && product.unitPrice > 0) };
       });
       const itemsTotal = totalAmount;
+      const automaticDiscount = await getAutomaticDiscountForLines(db, input.lines, products);
       let discountAmount = 0;
       let appliedDiscountCode: string | null = null;
       let appliedReferralCode: string | null = null;
@@ -1952,6 +1993,7 @@ export const lahzaRouter = router({
         }
         discountAmount = Math.min(itemsTotal, Math.max(0, discountAmount));
       }
+      if (!input.discountCode && !input.referralCode && automaticDiscount.discountAmount > 0) discountAmount = Math.min(itemsTotal, automaticDiscount.discountAmount);
       const discountedItemsTotal = itemsTotal - discountAmount;
       const settings = await getSettings();
       let pointsUsed = 0;
@@ -2226,6 +2268,10 @@ export const lahzaRouter = router({
       list: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); return db.select().from(discountCodes).orderBy(desc(discountCodes.createdAt)); }),
       create: publicProcedure.input(z.object({ code: z.string().trim().min(3).max(40).regex(/^[A-Za-z0-9_-]+$/), discountPercent: z.number().int().min(1).max(100), maxUses: z.number().int().positive().optional(), expiresAt: z.string().datetime().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); const code = input.code.toUpperCase(); const exists = await db.select({ id: discountCodes.id }).from(discountCodes).where(eq(discountCodes.code, code)).limit(1); if (exists[0]) throw new Error("رمز الخصم مستخدم مسبقاً"); await db.insert(discountCodes).values({ code, discountPercent: input.discountPercent, maxUses: input.maxUses ?? null, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null, active: true }); return { success: true }; }),
       toggle: publicProcedure.input(z.object({ id: z.number().int().positive(), active: z.boolean() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await db.update(discountCodes).set({ active: input.active }).where(eq(discountCodes.id, input.id)); return { success: true }; }),
+      automaticList: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); return db.select().from(automaticDiscounts).orderBy(desc(automaticDiscounts.createdAt)); }),
+      automaticCreate: publicProcedure.input(z.object({ scope: z.enum(["all", "store"]), storeId: z.number().int().positive().nullable().optional(), discountPercent: z.number().int().min(1).max(100), startsAt: z.string().datetime().optional(), expiresAt: z.string().datetime().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); if (input.scope === "store" && !input.storeId) throw new Error("اختر المتجر المحدد للخصم"); await db.insert(automaticDiscounts).values({ scope: input.scope, storeId: input.scope === "store" ? input.storeId ?? null : null, discountPercent: input.discountPercent, active: true, startsAt: input.startsAt ? new Date(input.startsAt) : null, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null }); return { success: true }; }),
+      automaticToggle: publicProcedure.input(z.object({ id: z.number().int().positive(), active: z.boolean() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); await db.update(automaticDiscounts).set({ active: input.active }).where(eq(automaticDiscounts.id, input.id)); return { success: true }; }),
+      automaticRemove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); await db.delete(automaticDiscounts).where(eq(automaticDiscounts.id, input.id)); return { success: true }; }),
     }),
     categories: router({
       list: publicProcedure.query(async ({ ctx }) => {
