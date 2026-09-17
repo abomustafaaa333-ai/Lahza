@@ -2905,6 +2905,20 @@ header[class*="header-service-theme-"] .service-intro-offers-cta {
   direction: rtl !important;
 }
 
+/* المحاذاة النهائية: بداية زر الاكتشاف مع بداية عبارة المدينة */
+header[class*="header-service-theme-"] .service-intro-actions {
+  direction: rtl !important;
+}
+header[class*="header-service-theme-"] .service-intro-cta {
+  order: 0 !important;
+  margin-inline-end: 0 !important;
+  transform: none !important;
+}
+header[class*="header-service-theme-"] .service-intro-offers-cta {
+  order: 0 !important;
+  transform: translateX(-3cm) !important;
+}
+
 /* محاذاة محتوى صورة العرض فوق عنوان المتاجر المميزة في الواجهتين */
 .global-offer-bar .hero-image-frame .hero-offer-caption,
 .home-offer-gallery .hero-image-frame .hero-offer-caption,
