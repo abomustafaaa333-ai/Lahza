@@ -2450,9 +2450,9 @@ header[class*="header-service-theme-"] .header-search-wrap {
 }
 
 
-/* تنزيل شريط الأيقونات السفلي 0.30 سنتيمتر من موضعه الحالي */
+/* تنزيل شريط الأيقونات السفلي نصف سنتيمتر إضافي من موضعه الحالي */
 .home-bottom-nav {
-  bottom: calc(.7rem - .3cm) !important;
+  bottom: calc(.7rem - .8cm) !important;
 }
 
 
