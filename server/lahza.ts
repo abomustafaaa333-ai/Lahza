@@ -257,22 +257,11 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   console.info("Automatic dispatch candidate check", { orderId, orderCity, storeId, activeAvailable: candidates.length, withCoordinates: withCoordinates.length, cityCandidates: cityCandidates.length });
   const nearest = eligibleCandidates.sort((a, b) => distanceBetweenE6(store.locationLat!, store.locationLng!, a.locationLat!, a.locationLng!) - distanceBetweenE6(store.locationLat!, store.locationLng!, b.locationLat!, b.locationLng!))[0];
   if (!nearest) {
-    // Notify every configured Lahza contact. Older installations may have the
-    // number in lahza_employees or supervisors instead of support_contacts.
-    const [contacts, employees, activeSupervisors, allDrivers] = await Promise.all([
-      db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10),
-      db.select({ phone: lahzaEmployees.phone }).from(lahzaEmployees).where(eq(lahzaEmployees.active, true)).limit(10),
-      db.select({ phone: supervisors.username }).from(supervisors).where(and(eq(supervisors.active, true), eq(supervisors.city, orderCity))).limit(10),
-      db.select({ phone: drivers.phone }).from(drivers),
-    ]);
     const settings = await getSettings();
-    const driverPhoneKeys = new Set(allDrivers.map(driver => driver.phone.replace(/\D/g, "")));
-    const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts, ...employees, ...activeSupervisors]
-      .map(contact => (typeof contact === "string" ? contact : contact.phone).trim())
-      .filter((phone, index, all) => phone && !driverPhoneKeys.has(phone.replace(/\D/g, "")) && all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
+    const ownerPhone = (settings.ownerPhone || DEFAULT_OWNER_PHONE).trim();
     const alert = { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} من متجر ${store.name} للعميل ${customerName} لا يوجد له مندوب متاح حالياً. يرجى التدخل يدوياً.` };
-    const results = await Promise.allSettled(phones.map(phone => sendWahaText(phone, alert)));
-    console.warn("No-driver alert dispatched", { orderId, recipientCount: phones.length, recipients: phones.map(maskPhone), failures: results.filter(result => result.status === "rejected").length });
+    const result = await sendWahaText(ownerPhone, alert);
+    console.warn("No-driver alert dispatched to owner", { orderId, owner: maskPhone(ownerPhone), sent: result.sent });
     return null;
   }
   await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, driverName: nearest.name, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}` }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, driverName: nearest.name, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}`, assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
@@ -396,15 +385,10 @@ export async function handleWahaWebhook(body: unknown) {
 }
 
 async function notifyAssignmentTimeout(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverName: string, driverPhone: string) {
-  const [employees, activeSupervisors] = await Promise.all([
-    db.select({ phone: lahzaEmployees.phone }).from(lahzaEmployees).where(eq(lahzaEmployees.active, true)).limit(50),
-    db.select({ phone: supervisors.username }).from(supervisors).where(eq(supervisors.active, true)).limit(50),
-  ]);
   const settings = await getSettings();
-  const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...employees.map(row => row.phone), ...activeSupervisors.map(row => row.phone)]
-    .filter((phone, index, all) => phone && all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
+  const ownerPhone = (settings.ownerPhone || DEFAULT_OWNER_PHONE).trim();
   const alert = { title: "انتهت مهلة رد المندوب", body: "المندوب " + driverName + " لم يرد على الطلب #" + orderId + " خلال 3 دقائق. تم الانتقال تلقائياً للبحث عن مندوب آخر." };
-  await Promise.allSettled(phones.map(phone => sendWahaText(phone, alert)));
+  await sendWahaText(ownerPhone, alert);
 }
 
 async function expireUnansweredDriverAssignments(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
