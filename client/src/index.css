@@ -3057,6 +3057,14 @@ header[class*="header-service-theme-"] .service-intro-offers-cta svg {
   width: .9rem;
   height: .9rem;
 }
+/* محاذاة زري القسم الفيروزي على مستوى رأسي واحد */
+header[class*="header-service-theme-"] .service-intro-cta,
+header[class*="header-service-theme-"] .service-intro-offers-cta {
+  position: relative;
+  top: -.5cm !important;
+  margin-top: 0 !important;
+  align-self: center !important;
+}
 header[class*="header-service-theme-"] .service-intro-panel {
   min-height: calc(14.5rem - 1cm) !important;
 }
