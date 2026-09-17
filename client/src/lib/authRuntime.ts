@@ -7,7 +7,22 @@ function createRuntimeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-let runtimeId = createRuntimeId();
+function readStoredRuntimeId() {
+  try {
+    const stored = sessionStorage.getItem(AUTH_RUNTIME_STORAGE_KEY);
+    return stored && /^[a-zA-Z0-9-]{16,160}$/.test(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+let runtimeId = readStoredRuntimeId() ?? createRuntimeId();
+
+try {
+  sessionStorage.setItem(AUTH_RUNTIME_STORAGE_KEY, runtimeId);
+} catch {
+  // The in-memory identifier remains available if storage is unavailable.
+}
 
 export function getAuthRuntimeId() {
   return runtimeId;

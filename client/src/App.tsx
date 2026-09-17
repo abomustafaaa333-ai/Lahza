@@ -33,6 +33,7 @@ export default function App() {
       const wasBackgroundedFor = backgroundedAt.current ? Date.now() - backgroundedAt.current : 0;
       backgroundedAt.current = null;
       if (document.visibilityState !== "visible" || wasBackgroundedFor < 30_000) return;
+      if (window.location.pathname === "/admin") return;
       clearAuthRuntimeLock();
       lockAuthRuntime();
       window.location.replace("/");
