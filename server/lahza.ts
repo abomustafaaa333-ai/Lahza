@@ -578,6 +578,17 @@ async function ensureTickerColumns(db: NonNullable<Awaited<ReturnType<typeof get
   }
 }
 
+async function ensureEventColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `system_settings`"));
+  const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+  const additions: Array<[string, string]> = [["eventImageUrl", "VARCHAR(500) NULL"], ["eventLinkUrl", "VARCHAR(500) NULL"], ["eventEnabled", "TINYINT(1) NOT NULL DEFAULT 0"], ["eventStayVisible", "TINYINT(1) NOT NULL DEFAULT 0"], ["eventShowSeconds", "INT NOT NULL DEFAULT 5"], ["eventRepeatMinutes", "INT NOT NULL DEFAULT 0"]];
+  for (const [name, definition] of additions) if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` ${definition}`));
+}
+
+function readEventSettings(settings: { eventImageUrl?: unknown; eventLinkUrl?: unknown; eventEnabled?: unknown; eventStayVisible?: unknown; eventShowSeconds?: unknown; eventRepeatMinutes?: unknown }) {
+  return { eventImageUrl: typeof settings.eventImageUrl === "string" ? settings.eventImageUrl : "", eventLinkUrl: typeof settings.eventLinkUrl === "string" ? settings.eventLinkUrl : "", eventEnabled: Boolean(settings.eventEnabled), eventStayVisible: Boolean(settings.eventStayVisible), eventShowSeconds: Math.max(1, Math.min(60, Number(settings.eventShowSeconds) || 5)), eventRepeatMinutes: Math.max(0, Math.min(1440, Number(settings.eventRepeatMinutes) || 0)) };
+}
+
 async function ensureDefaultStaffPasswords(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   if (defaultStaffPasswordsReady) return;
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `auth_defaults_migrations` (`id` VARCHAR(80) NOT NULL PRIMARY KEY)"));
@@ -829,6 +840,7 @@ async function getSettings() {
   await ensureJarabulusGatewaySchema(db);
   await ensureDeliveryPercentColumns(db);
   await ensureTickerColumns(db);
+  await ensureEventColumns(db);
   await ensureDefaultStaffPasswords(db);
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   if (current[0]) {
@@ -1241,7 +1253,7 @@ export const lahzaRouter = router({
       ctx.res.setHeader("Cache-Control", "no-store, max-age=0");
       const settings = await getSettings();
       const cityLabel = ctx.city === "jarabulus" ? "جرابلس" : "منبج";
-      return { ...readTickerSettings(settings), tickerPrimary: "لم يفوتك أي جديد", tickerSecondary: `اهلا بكم في مدينة ${cityLabel}` };
+      return { ...readTickerSettings(settings), ...readEventSettings(settings), tickerPrimary: "لم يفوتك أي جديد", tickerSecondary: `اهلا بكم في مدينة ${cityLabel}` };
     }),
   }),
   deliveryFees: router({
@@ -2750,16 +2762,19 @@ export const lahzaRouter = router({
       get: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner"]);
         const settings = await getSettings();
-        return readTickerSettings(settings);
+        return { ...readTickerSettings(settings), ...readEventSettings(settings) };
       }),
-      update: publicProcedure.input(tickerSettingsInputSchema).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ tickerPrimary: z.string().optional(), tickerSecondary: z.string().optional(), wosselLiNotice: z.string().optional(), eventImageUrl: z.string().url().max(500).optional().or(z.literal("")), eventLinkUrl: z.string().url().max(500).optional().or(z.literal("")), eventEnabled: z.boolean().optional(), eventStayVisible: z.boolean().optional(), eventShowSeconds: z.number().int().min(1).max(60).optional(), eventRepeatMinutes: z.number().int().min(0).max(1440).optional() }).transform(input => ({ ...readTickerSettings(input), ...readEventSettings(input) }))).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const nextTickerSettings = readTickerSettings(input);
+        await ensureEventColumns(db);
         await saveTickerSettings(db, nextTickerSettings);
-        return { success: true, ...nextTickerSettings };
+        await db.execute(sql`UPDATE \`system_settings\` SET \`eventImageUrl\` = ${input.eventImageUrl || null}, \`eventLinkUrl\` = ${input.eventLinkUrl || null}, \`eventEnabled\` = ${input.eventEnabled && Boolean(input.eventImageUrl)}, \`eventStayVisible\` = ${input.eventStayVisible}, \`eventShowSeconds\` = ${input.eventShowSeconds}, \`eventRepeatMinutes\` = ${input.eventRepeatMinutes} WHERE \`id\` = 1`);
+        return { success: true, ...nextTickerSettings, ...readEventSettings(input) };
       }),
+      uploadImage: publicProcedure.input(z.object({ dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); return uploadOfferImage(input.dataUrl, 0, `event-${randomBytes(12).toString("hex")}`); }),
     }),
     drivers: router({
       list: publicProcedure.query(async ({ ctx }) => {

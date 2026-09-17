@@ -215,6 +215,12 @@ export const systemSettings = mysqlTable("system_settings", {
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),
   tickerSecondary: varchar("tickerSecondary", { length: 220 }).notNull().default("لحظة — منبج بين يديك"),
   wosselLiNotice: varchar("wosselLiNotice", { length: 500 }).notNull().default("ملاحظة هامة: خدمة وصّل لي مخصصة لتوصيل الأغراض من مكان إلى مكان، وليست خدمة شراء."),
+  eventImageUrl: varchar("eventImageUrl", { length: 500 }),
+  eventLinkUrl: varchar("eventLinkUrl", { length: 500 }),
+  eventEnabled: boolean("eventEnabled").notNull().default(false),
+  eventStayVisible: boolean("eventStayVisible").notNull().default(false),
+  eventShowSeconds: int("eventShowSeconds").notNull().default(5),
+  eventRepeatMinutes: int("eventRepeatMinutes").notNull().default(0),
   categoryOverrides: text("categoryOverrides"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
