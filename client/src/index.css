@@ -1026,6 +1026,12 @@ header[class*="header-service-theme-"] .service-intro-copy small {
   text-overflow: clip !important;
   overflow-wrap: anywhere;
 }
+header[class*="header-service-theme-"] .service-intro-copy > small {
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+  overflow-wrap: normal;
+}
 header[class*="header-service-theme-"] .service-intro-kicker {
   margin-bottom: .2rem;
   font-size: 1.18rem;
