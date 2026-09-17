@@ -2885,7 +2885,7 @@ header[class*="header-service-theme-"] .service-intro-cta {
   transform: translateX(.5cm) !important;
 }
 header[class*="header-service-theme-"] .service-intro-offers-cta {
-  transform: translateX(-2cm) !important;
+  transform: translateX(calc(-2.5cm - .2rem)) !important;
 }
 
 /* شريط الملاحظة بارتفاع ١ سم ومن دون الأيقونة الجانبية */
