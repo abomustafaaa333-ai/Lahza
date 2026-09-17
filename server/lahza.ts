@@ -914,6 +914,18 @@ async function ensureDemoProducts(db: NonNullable<Awaited<ReturnType<typeof getD
   }
 }
 
+async function ensureClothingCatalogSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `catalog_items`"));
+  const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+  const additions: Array<[string, string]> = [
+    ["imageUrls", "TEXT NULL"],
+    ["clothingSizes", "VARCHAR(500) NULL"],
+    ["clothingColors", "VARCHAR(500) NULL"],
+    ["clothingVariantImages", "TEXT NULL"],
+  ];
+  for (const [name, definition] of additions) if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`catalog_items\` ADD COLUMN \`${name}\` ${definition}`));
+}
+
 export async function ensureDemoStoresSeed() {
   const db = await getDb();
   if (!db) return;
@@ -926,6 +938,7 @@ export async function ensureDemoStoresSeed() {
 async function ensureCatalogSeed() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+  await ensureClothingCatalogSchema(db);
   await ensureJarabulusGatewaySchema(db);
   await ensureDispatchLocationSchema(db);
   const existing = await db.select({ id: catalogItems.id }).from(catalogItems).limit(1);
@@ -1049,6 +1062,10 @@ export const partnerProductInput = z.object({
   price: newSypMoneyInput,
   available: z.boolean().default(true),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
+  imageUrls: z.array(z.string().url()).max(10).default([]),
+  clothingSizes: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
+  clothingColors: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
+  clothingVariantImages: z.array(z.object({ size: z.string().trim().max(30), color: z.string().trim().max(30), imageUrls: z.array(z.string().url()).max(10) })).max(100).default([]),
 });
 
 export const partnerOfferInput = z.object({
@@ -1567,6 +1584,7 @@ export const lahzaRouter = router({
     products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureClothingCatalogSchema(db);
       await ensureJarabulusGatewaySchema(db);
       const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true), customerGatewayStoreVisibilityCondition(ctx.city))).limit(1);
       const store = found[0];
@@ -1888,6 +1906,7 @@ export const lahzaRouter = router({
     catalog: router({
       list: publicProcedure.query(async ({ ctx }) => {
         const { db, partner } = await requirePartner(ctx);
+        await ensureClothingCatalogSchema(db);
         const assignedStores = await db.select({ id: stores.id }).from(stores).where(eq(stores.partnerId, partner.id));
         if (!assignedStores.length) return [];
         return db.select().from(catalogItems).where(and(inArray(catalogItems.storeId, assignedStores.map(store => store.id)), eq(catalogItems.deleted, false))).orderBy(desc(catalogItems.createdAt));
@@ -1895,13 +1914,15 @@ export const lahzaRouter = router({
       create: publicProcedure.input(partnerProductInput).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك إضافة منتجات القسم الخاص بمتجرك فقط");
-        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || null });
+        await ensureClothingCatalogSchema(db);
+        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || input.imageUrls[0] || null, imageUrls: JSON.stringify(input.imageUrls), clothingSizes: input.category === "clothing" ? JSON.stringify(input.clothingSizes) : null, clothingColors: input.category === "clothing" ? JSON.stringify(input.clothingColors) : null, clothingVariantImages: input.category === "clothing" ? JSON.stringify(input.clothingVariantImages) : null });
         return { success: true };
       }),
       update: publicProcedure.input(partnerProductInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك تعديل منتجات القسم الخاص بمتجرك فقط");
-        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
+        await ensureClothingCatalogSchema(db);
+        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || input.imageUrls[0] || null, imageUrls: JSON.stringify(input.imageUrls), clothingSizes: input.category === "clothing" ? JSON.stringify(input.clothingSizes) : null, clothingColors: input.category === "clothing" ? JSON.stringify(input.clothingColors) : null, clothingVariantImages: input.category === "clothing" ? JSON.stringify(input.clothingVariantImages) : null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
