@@ -2916,7 +2916,12 @@ header[class*="header-service-theme-"] .service-intro-cta {
 }
 header[class*="header-service-theme-"] .service-intro-offers-cta {
   order: 0 !important;
-  transform: translateX(-3cm) !important;
+  transform: translateX(calc(-3cm - .2rem)) !important;
+}
+
+/* حافة زر العروض اليسرى تساوي حافة زر السلة العلوي */
+header[class*="header-service-theme-"] .service-intro-actions {
+  width: calc(100% + .2rem) !important;
 }
 
 /* محاذاة محتوى صورة العرض فوق عنوان المتاجر المميزة في الواجهتين */
