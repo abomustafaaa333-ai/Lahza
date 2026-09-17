@@ -10,6 +10,7 @@ coverage/
 build/
 .gradle/
 *.jks
+*.keystore
 keystore.properties
 android/app/google-services.json
 firebase-service-account*.json
