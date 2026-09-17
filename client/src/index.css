@@ -1027,9 +1027,9 @@ header[class*="header-service-theme-"] .service-intro-copy small {
   overflow-wrap: anywhere;
 }
 header[class*="header-service-theme-"] .service-intro-copy > small {
-  overflow: hidden !important;
+  overflow: visible !important;
   white-space: nowrap !important;
-  text-overflow: ellipsis !important;
+  text-overflow: clip !important;
   overflow-wrap: normal;
 }
 header[class*="header-service-theme-"] .service-intro-kicker {
