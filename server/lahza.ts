@@ -1305,7 +1305,7 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const driver = (await db.select({ id: drivers.id, name: drivers.name, phone: drivers.phone, available: drivers.available, active: drivers.active }).from(drivers).where(and(eq(drivers.id, session.driverId), eq(drivers.active, true))).limit(1))[0];
       if (!driver) return null;
-      const assignments = await db.select({ orderId: orderAssignments.orderId, assignmentStatus: orderAssignments.status, orderStatus: orders.status, customerName: orders.customerName, locationText: orders.locationText, createdAt: orders.createdAt }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(orderAssignments.updatedAt)).limit(10);
+      const assignments = await db.select({ orderId: orderAssignments.orderId, assignmentStatus: orderAssignments.status, orderStatus: orders.status, customerName: orders.customerName, customerPhone: orders.customerPhone, locationText: orders.locationText, createdAt: orders.createdAt }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(orderAssignments.updatedAt)).limit(10);
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
       const settings = await getSettings();
@@ -1313,6 +1313,24 @@ export const lahzaRouter = router({
       const completedToday = await db.select({ orderId: orderAssignments.orderId, customerName: orders.customerName, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveredAt: orderAssignments.deliveredAt }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "delivered"), eq(orders.status, "completed"), gte(orderAssignments.deliveredAt, startOfDay))).orderBy(desc(orderAssignments.deliveredAt));
       const completedOrders = completedToday.map(order => ({ ...order, driverFee: Math.round(Number(order.deliveryFee ?? 0) * driverPercent / 100) }));
       return { ...driver, assignments, driverPercent, completedOrders, completedOrdersTotal: completedOrders.reduce((sum, order) => sum + order.driverFee, 0) };
+    }),
+    setAvailable: publicProcedure.input(z.object({ available: z.boolean() })).mutation(async ({ ctx, input }) => {
+      const session = await readDriverSession(ctx);
+      if (!session) throw new Error("جلسة المندوب غير موجودة");
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await db.update(drivers).set({ available: input.available }).where(and(eq(drivers.id, session.driverId), eq(drivers.active, true)));
+      return { success: true, available: input.available };
+    }),
+    respondToAssignment: publicProcedure.input(z.object({ orderId: z.number().int().positive(), accept: z.boolean() })).mutation(async ({ ctx, input }) => {
+      const session = await readDriverSession(ctx);
+      if (!session) throw new Error("جلسة المندوب غير موجودة");
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const assignment = (await db.select({ id: orderAssignments.id, status: orderAssignments.status, orderId: orderAssignments.orderId }).from(orderAssignments).where(and(eq(orderAssignments.orderId, input.orderId), eq(orderAssignments.driverId, session.driverId))).limit(1))[0];
+      if (!assignment || assignment.status !== "assigned") throw new Error("هذا الطلب لم يعد متاحاً للتأكيد");
+      await db.update(orderAssignments).set({ status: input.accept ? "accepted" : "cancelled", ...(input.accept ? { acceptedAt: new Date() } : {}) }).where(eq(orderAssignments.id, assignment.id));
+      return { success: true, accepted: input.accept };
     }),
     login: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema, password: passwordSchema })).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
