@@ -2924,6 +2924,27 @@ header[class*="header-service-theme-"] .service-intro-actions {
   width: calc(100% + .2rem) !important;
 }
 
+/* رفع زري القسم الفيروزي نصف سنتيمتر مع قص الجزء السفلي */
+header[class*="header-service-theme-"] .service-intro-cta {
+  transform: translateY(-.5cm) !important;
+}
+header[class*="header-service-theme-"] .service-intro-offers-cta {
+  transform: translate(calc(-2.5cm - .2rem), -.5cm) !important;
+}
+header[class*="header-service-theme-"] .service-intro-panel {
+  min-height: calc(14.5rem - 1cm) !important;
+}
+@media (max-width: 600px) {
+  header[class*="header-service-theme-"] .service-intro-panel {
+    min-height: calc(10.2rem - .5cm) !important;
+  }
+}
+@media (max-width: 420px) {
+  header[class*="header-service-theme-"] .service-intro-panel {
+    min-height: calc(9.6rem - .5cm) !important;
+  }
+}
+
 /* محاذاة محتوى صورة العرض فوق عنوان المتاجر المميزة في الواجهتين */
 .global-offer-bar .hero-image-frame .hero-offer-caption,
 .home-offer-gallery .hero-image-frame .hero-offer-caption,
