@@ -2374,11 +2374,11 @@ header[class*="header-service-theme-"] .header-brand-button:hover { background: 
 }
 .home-offers-heading {
   position: relative;
-  top: -.5cm;
+  top: -1cm;
 }
 .home-offer-gallery {
   position: relative;
-  top: -.5cm;
+  top: -1cm;
 }
 
 
