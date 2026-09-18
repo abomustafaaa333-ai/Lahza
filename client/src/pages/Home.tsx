@@ -957,7 +957,9 @@ export default function Home() {
   const openAccount = () => setScreen("account");
   const logoutCustomer = () => {
     window.localStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
+    window.localStorage.removeItem(CART_CHECKOUT_STORAGE_KEY);
     window.sessionStorage.removeItem("lahza_selected_city");
+    setCart([]);
     setSelectedCity(null);
     setCustomerAuth(null);
     setScreen("home");
