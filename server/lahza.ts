@@ -153,6 +153,13 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
   await ensureColumn("system_settings", "jarabulusPreparationMinutes", `INT NOT NULL DEFAULT ${DEFAULT_JARABULUS_PREPARATION_MINUTES}`);
   await ensureColumn("system_settings", "deliveryPricePerKm", "INT NOT NULL DEFAULT 2");
   await ensureColumn("system_settings", "wosselLiPricePerKm", "INT NOT NULL DEFAULT 2");
+  await ensureColumn("system_settings", "manbijStorePricePerKm", "INT NOT NULL DEFAULT 2");
+  await ensureColumn("system_settings", "manbijStoreMinutesPerKm", "INT NOT NULL DEFAULT 5");
+  await ensureColumn("system_settings", "jarabulusStorePricePerKm", "INT NOT NULL DEFAULT 2");
+  await ensureColumn("system_settings", "jarabulusStoreMinutesPerKm", "INT NOT NULL DEFAULT 5");
+  await ensureColumn("system_settings", "jarabulusGatewayPricePerKm", "INT NOT NULL DEFAULT 2");
+  await ensureColumn("system_settings", "jarabulusGatewayMinutesPerKm", "INT NOT NULL DEFAULT 15");
+  await ensureColumn("system_settings", "wosselLiMinutesPerKm", "INT NOT NULL DEFAULT 5");
   await ensureColumn("orders", "pickupContactPhone", "VARCHAR(24) NULL");
   await ensureColumn("orders", "itemDescription", "VARCHAR(500) NULL");
   await ensureColumn("orders", "itemWeight", "VARCHAR(80) NULL");
@@ -223,7 +230,30 @@ export function jarabulusOrderMinimum(settings: { jarabulusMinimumOrder?: number
 export function jarabulusOrderPreparationMinutes(settings: { jarabulusPreparationMinutes?: number | null }) {
   return Math.max(0, Number(settings.jarabulusPreparationMinutes) || DEFAULT_JARABULUS_PREPARATION_MINUTES);
 }
-
+function deliveryServicePricing(settings: {
+  deliveryPricePerKm?: number | null;
+  manbijStorePricePerKm?: number | null;
+  manbijStoreMinutesPerKm?: number | null;
+  jarabulusStorePricePerKm?: number | null;
+  jarabulusStoreMinutesPerKm?: number | null;
+  jarabulusGatewayPricePerKm?: number | null;
+  jarabulusGatewayMinutesPerKm?: number | null;
+  wosselLiPricePerKm?: number | null;
+  wosselLiMinutesPerKm?: number | null;
+}, service: "manbij_store" | "jarabulus_store" | "jarabulus_gateway" | "wossel_li") {
+  const fallbackPrice = Math.max(0, Number(settings.deliveryPricePerKm) || 2);
+  const values = {
+    manbij_store: [settings.manbijStorePricePerKm, settings.manbijStoreMinutesPerKm, fallbackPrice, 5],
+    jarabulus_store: [settings.jarabulusStorePricePerKm, settings.jarabulusStoreMinutesPerKm, fallbackPrice, 5],
+    jarabulus_gateway: [settings.jarabulusGatewayPricePerKm, settings.jarabulusGatewayMinutesPerKm, fallbackPrice, 15],
+    wossel_li: [settings.wosselLiPricePerKm ?? settings.wosselLiPricePerKm, settings.wosselLiMinutesPerKm, Number(settings.wosselLiPricePerKm) || fallbackPrice, 5],
+  }[service];
+  return { pricePerKm: Math.max(0, Number(values[0]) || Number(values[2]) || 0), minutesPerKm: Math.max(0, Number(values[1]) || Number(values[3]) || 0) };
+}
+function estimatedRouteMinutes(routeDurationSeconds: number, distanceMeters: number, minutesPerKm: number, baseMinutes = 20) {
+  const billableKm = Math.max(1, Math.ceil(Math.max(0, distanceMeters) / 1000));
+  return Math.max(Math.ceil(routeDurationSeconds / 60), billableKm * Math.max(0, minutesPerKm)) + baseMinutes;
+}
 type OrderNotificationStatus = (typeof orderStatuses)[number];
 export function buildOrderStatusNotification(order: { id: number; fulfillmentScope: "local" | "manbij_to_jarabulus"; preparationMinutes: number }, status: OrderNotificationStatus) {
   const gateway = order.fulfillmentScope === "manbij_to_jarabulus";
@@ -674,6 +704,20 @@ async function ensureDeliveryPercentColumns(db: NonNullable<Awaited<ReturnType<t
   if (!availableColumns.has("driverDeliveryPercent")) await addDeliveryPercentColumnIfMissing(db, "driverDeliveryPercent", 0);
 }
 
+async function ensureDeliveryServiceColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const columns = [
+    ["manbijStorePricePerKm", 2], ["manbijStoreMinutesPerKm", 5],
+    ["jarabulusStorePricePerKm", 2], ["jarabulusStoreMinutesPerKm", 5],
+    ["jarabulusGatewayPricePerKm", 2], ["jarabulusGatewayMinutesPerKm", 15],
+    ["wosselLiMinutesPerKm", 5],
+  ] as const;
+  const [rows] = await db.execute(sql.raw("SHOW COLUMNS FROM `system_settings`"));
+  const available = new Set(Array.isArray(rows) ? rows.map(row => String((row as { Field?: unknown }).Field ?? "")) : []);
+  for (const [name, defaultValue] of columns) {
+    if (!available.has(name)) await db.execute(sql.raw(`ALTER TABLE \`system_settings\` ADD COLUMN \`${name}\` INT NOT NULL DEFAULT ${defaultValue}`));
+  }
+}
+
 async function saveTickerSettings(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, tickerSettings: ReturnType<typeof readTickerSettings>) {
   await ensureTickerColumns(db);
   await db.execute(sql`
@@ -859,6 +903,7 @@ async function getSettings() {
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
   await ensureJarabulusGatewaySchema(db);
   await ensureDeliveryPercentColumns(db);
+  await ensureDeliveryServiceColumns(db);
   await ensureTickerColumns(db);
   await ensureEventColumns(db);
   await ensureDefaultStaffPasswords(db);
@@ -883,17 +928,19 @@ async function getDrivingQuote(customerLat: number, customerLng: number, originL
   const routeOriginLat = originLat ?? settings.originLatE6 / 1_000_000;
   const routeOriginLng = originLng ?? settings.originLngE6 / 1_000_000;
   const route = await getRoadRoute({ latitude: routeOriginLat, longitude: routeOriginLng }, { latitude: customerLat, longitude: customerLng });
-  const pricing = calculateDistanceBasedDeliveryFee(Math.round(route.distanceMeters + 2_000), settings.deliveryPricePerKm);
+  const service = deliveryServicePricing(settings, "manbij_store");
+  const totalDistanceMeters = Math.round(route.distanceMeters + 2_000);
+  const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, service.pricePerKm);
   return {
     origin: { lat: routeOriginLat, lng: routeOriginLng },
     distanceMeters: route.distanceMeters,
     distanceText: `${(route.distanceMeters / 1000).toFixed(1)} كم`,
     distanceKm: Math.round((route.distanceMeters / 1000) * 10) / 10,
     billableKm: pricing.billableKm,
-    pricePerKm: settings.deliveryPricePerKm,
+    pricePerKm: service.pricePerKm,
     deliveryFee: pricing.deliveryFee,
     deliveryFeeNewSyp: pricing.deliveryFeeNewSyp,
-    durationMinutes: Math.ceil(route.durationSeconds / 60) + 20,
+    durationMinutes: estimatedRouteMinutes(route.durationSeconds, totalDistanceMeters, service.minutesPerKm),
   };
 }
 
@@ -2194,8 +2241,13 @@ export const lahzaRouter = router({
         const route = await getRoadRoute({ latitude: deliveryStore.locationLat / 1_000_000, longitude: deliveryStore.locationLng / 1_000_000 }, { latitude: input.locationLat, longitude: input.locationLng });
         routeDurationSeconds = route.durationSeconds;
         deliveryDistanceMeters = Math.round(route.distanceMeters + 2_000);
-        deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.deliveryPricePerKm).deliveryFee;
-        preparationMinutes = Math.ceil(routeDurationSeconds / 60) + 20;
+        const service = fulfillmentScope === "manbij_to_jarabulus"
+          ? deliveryServicePricing(settings, "jarabulus_gateway")
+          : orderCity === "jarabulus"
+          ? deliveryServicePricing(settings, "jarabulus_store")
+          : deliveryServicePricing(settings, "manbij_store");
+        deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, service.pricePerKm).deliveryFee;
+        preparationMinutes = estimatedRouteMinutes(routeDurationSeconds, deliveryDistanceMeters, service.minutesPerKm);
         totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "wossel_li") {
         if (input.locationLat === undefined || input.locationLng === undefined) throw new Error("يجب تحديد موقع التسليم بدقة لحساب المسافة الحقيقية");
@@ -2205,8 +2257,9 @@ export const lahzaRouter = router({
         const returnRoute = await getRoadRoute(destination, center);
         routeDurationSeconds = outbound.durationSeconds + returnRoute.durationSeconds;
         deliveryDistanceMeters = Math.round(outbound.distanceMeters + returnRoute.distanceMeters + 2_000);
-        deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm).deliveryFee;
-        preparationMinutes = Math.ceil(routeDurationSeconds / 60) + 20;
+        const service = deliveryServicePricing(settings, "wossel_li");
+        deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, service.pricePerKm).deliveryFee;
+        preparationMinutes = estimatedRouteMinutes(routeDurationSeconds, deliveryDistanceMeters, service.minutesPerKm);
         totalAmount = deliveryFee;
       }
 
@@ -2767,14 +2820,21 @@ export const lahzaRouter = router({
           driverPercent: settings.driverDeliveryPercent ?? 0,
           pricePerKm: settings.deliveryPricePerKm ?? 2,
           wosselLiPricePerKm: settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm ?? 2,
+          manbijStorePricePerKm: settings.manbijStorePricePerKm ?? settings.deliveryPricePerKm ?? 2,
+          manbijStoreMinutesPerKm: settings.manbijStoreMinutesPerKm ?? 5,
+          jarabulusStorePricePerKm: settings.jarabulusStorePricePerKm ?? settings.deliveryPricePerKm ?? 2,
+          jarabulusStoreMinutesPerKm: settings.jarabulusStoreMinutesPerKm ?? 5,
+          jarabulusGatewayPricePerKm: settings.jarabulusGatewayPricePerKm ?? settings.deliveryPricePerKm ?? 2,
+          jarabulusGatewayMinutesPerKm: settings.jarabulusGatewayMinutesPerKm ?? 15,
+          wosselLiMinutesPerKm: settings.wosselLiMinutesPerKm ?? 5,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureJarabulusGatewaySchema(db);
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),
