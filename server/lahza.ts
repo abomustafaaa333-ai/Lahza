@@ -287,6 +287,32 @@ async function notifyOperationsOrderCompleted(db: NonNullable<Awaited<ReturnType
   await Promise.allSettled(phones.map(phone => sendWahaText(phone, { body: `الطلب رقم #${orderId} اكتمل.` })));
 }
 
+async function deductCompletedOrderInventory(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number) {
+  const lines = await db.select({ catalogItemId: orderLines.catalogItemId, itemName: orderLines.itemName, quantity: orderLines.quantity, partnerId: catalogItems.partnerId, stockQuantity: catalogItems.stockQuantity, stockInitialQuantity: catalogItems.stockInitialQuantity, stockAlertPercent: catalogItems.stockAlertPercent, unit: catalogItems.unit }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, orderId));
+  const settings = await getSettings();
+  const ownerPhone = (settings.ownerPhone || DEFAULT_OWNER_PHONE).trim();
+  for (const line of lines) {
+    if (!line.catalogItemId) continue;
+    const alreadyDeducted = await db.select({ id: inventoryMovements.id }).from(inventoryMovements).where(and(eq(inventoryMovements.orderId, orderId), eq(inventoryMovements.catalogItemId, line.catalogItemId), eq(inventoryMovements.reason, "order_completed"))).limit(1);
+    if (alreadyDeducted.length) continue;
+    const quantity = Math.max(1, Math.ceil(Number.parseFloat(String(line.quantity)) || 0));
+    const nextQuantity = Math.max(0, Number(line.stockQuantity ?? 0) - quantity);
+    await db.update(catalogItems).set({ stockQuantity: nextQuantity, available: nextQuantity > 0 }).where(eq(catalogItems.id, line.catalogItemId));
+    await db.insert(inventoryMovements).values({ catalogItemId: line.catalogItemId, quantityDelta: -quantity, reason: "order_completed", orderId, note: `خصم تلقائي بعد اكتمال الطلب #${orderId}` });
+    const initial = Number(line.stockInitialQuantity ?? 0);
+    const alertPercent = Math.min(100, Math.max(1, Number(line.stockAlertPercent ?? 20)));
+    if (initial > 0 && nextQuantity <= Math.floor(initial * alertPercent / 100)) {
+      const recipients = [ownerPhone];
+      if (line.partnerId) {
+        const partner = (await db.select({ phone: partners.username }).from(partners).where(eq(partners.id, line.partnerId)).limit(1))[0];
+        if (partner?.phone) recipients.push(partner.phone);
+      }
+      const uniqueRecipients = recipients.filter((phone, index, all) => all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
+      await Promise.allSettled(uniqueRecipients.map(phone => sendWahaText(phone, { title: "تنبيه مخزون", body: `اقترب نفاد مخزون المنتج: ${line.itemName}. الرصيد الحالي ${nextQuantity} ${line.unit || "وحدة"} (حد التنبيه ${alertPercent}%).` })));
+    }
+  }
+}
+
 function distanceBetweenE6(lat1: number, lng1: number, lat2: number, lng2: number) {
   const toRadians = (value: number) => value * Math.PI / 180;
   const firstLat = toRadians(lat1 / 1_000_000);
@@ -1049,6 +1075,9 @@ const catalogItemInput = z.object({
   category: z.enum(categories),
   unit: z.string().trim().min(1).max(16),
   price: newSypMoneyInput,
+  stockQuantity: z.number().int().min(0).max(10_000_000).default(0),
+  stockInitialQuantity: z.number().int().min(0).max(10_000_000).optional(),
+  stockAlertPercent: z.number().int().min(1).max(100).default(20),
   available: z.boolean().default(true),
   storeId: z.number().int().positive().optional(),
   customCategoryId: z.number().int().positive().nullable().optional(),
@@ -1139,6 +1168,9 @@ export const partnerProductInput = z.object({
   storeId: z.number().int().positive(),
   unit: z.string().trim().min(1).max(16),
   price: newSypMoneyInput,
+  stockQuantity: z.number().int().min(0).max(10_000_000).default(0),
+  stockInitialQuantity: z.number().int().min(0).max(10_000_000).optional(),
+  stockAlertPercent: z.number().int().min(1).max(100).default(20),
   available: z.boolean().default(true),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
   imageUrls: z.array(z.string().url()).max(10).default([]),
@@ -1547,6 +1579,9 @@ export const lahzaRouter = router({
         category: input.category,
         unit: input.unit,
         unitPrice: toLegacySyp(input.price),
+        stockQuantity: input.stockQuantity,
+        stockInitialQuantity: input.stockInitialQuantity ?? input.stockQuantity,
+        stockAlertPercent: input.stockAlertPercent,
         available: input.available,
         deleted: false,
         storeId: store?.id ?? null,
@@ -1561,7 +1596,7 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const store = await findStoreForCatalog(db, input.storeId, input.category);
       const customCategory = input.category === "other" ? await getActiveCustomCategory(db, store?.customCategoryId ?? input.customCategoryId) : null;
-      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, customCategoryId: customCategory?.id ?? null, imageUrl: input.imageUrl || null, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
+      await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), stockQuantity: input.stockQuantity, stockInitialQuantity: input.stockInitialQuantity ?? input.stockQuantity, stockAlertPercent: input.stockAlertPercent, available: input.available, customCategoryId: customCategory?.id ?? null, imageUrl: input.imageUrl || null, ...(input.storeId !== undefined ? { storeId: store?.id ?? null } : {}) }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.deleted, false)));
       return { success: true };
     }),
     uploadImage: publicProcedure.input(z.object({ storeId: z.number().int().positive(), dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
@@ -1994,14 +2029,14 @@ export const lahzaRouter = router({
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك إضافة منتجات القسم الخاص بمتجرك فقط");
         await ensureClothingCatalogSchema(db);
-        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || input.imageUrls[0] || null, imageUrls: JSON.stringify(input.imageUrls), clothingSizes: input.category === "clothing" ? JSON.stringify(input.clothingSizes) : null, clothingColors: input.category === "clothing" ? JSON.stringify(input.clothingColors) : null, clothingVariantImages: input.category === "clothing" ? JSON.stringify(input.clothingVariantImages) : null });
+        await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), stockQuantity: input.stockQuantity, stockInitialQuantity: input.stockInitialQuantity ?? input.stockQuantity, stockAlertPercent: input.stockAlertPercent, available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || input.imageUrls[0] || null, imageUrls: JSON.stringify(input.imageUrls), clothingSizes: input.category === "clothing" ? JSON.stringify(input.clothingSizes) : null, clothingColors: input.category === "clothing" ? JSON.stringify(input.clothingColors) : null, clothingVariantImages: input.category === "clothing" ? JSON.stringify(input.clothingVariantImages) : null });
         return { success: true };
       }),
       update: publicProcedure.input(partnerProductInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك تعديل منتجات القسم الخاص بمتجرك فقط");
         await ensureClothingCatalogSchema(db);
-        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), available: input.available, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || input.imageUrls[0] || null, imageUrls: JSON.stringify(input.imageUrls), clothingSizes: input.category === "clothing" ? JSON.stringify(input.clothingSizes) : null, clothingColors: input.category === "clothing" ? JSON.stringify(input.clothingColors) : null, clothingVariantImages: input.category === "clothing" ? JSON.stringify(input.clothingVariantImages) : null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
+        await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), stockQuantity: input.stockQuantity, stockInitialQuantity: input.stockInitialQuantity ?? input.stockQuantity, stockAlertPercent: input.stockAlertPercent, available: input.available, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || input.imageUrls[0] || null, imageUrls: JSON.stringify(input.imageUrls), clothingSizes: input.category === "clothing" ? JSON.stringify(input.clothingSizes) : null, clothingColors: input.category === "clothing" ? JSON.stringify(input.clothingColors) : null, clothingVariantImages: input.category === "clothing" ? JSON.stringify(input.clothingVariantImages) : null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -2403,6 +2438,7 @@ export const lahzaRouter = router({
       await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date(), manualStatusOverride: true }).where(eq(orders.id, input.id));
       if (existing.status !== input.status) await createOrderStatusNotification(db, existing, input.status);
       if (input.status === "completed") {
+        await deductCompletedOrderInventory(db, input.id);
         const completedAssignment = (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, input.id)).limit(1))[0];
         if (completedAssignment?.driverId) await db.update(drivers).set({ available: true }).where(eq(drivers.id, completedAssignment.driverId));
         const order = (await db.select({ customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.id)).limit(1))[0];
