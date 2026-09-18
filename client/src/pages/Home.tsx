@@ -65,6 +65,7 @@ const CUSTOMER_AUTH_STORAGE_KEY = "lahza_customer_auth_v1";
 const CART_CHECKOUT_STORAGE_KEY = "lahza_cart_checkout_v1";
 
 type PersistedCheckout = {
+  ownerPhone?: string;
   cart: CartLine[];
   screen: Screen;
   checkoutMode: "delivery" | "taxi" | "wossel_li";
@@ -501,11 +502,13 @@ export default function Home() {
     if (customerAuth.name) setCheckoutName(current => current || customerAuth.name || "");
   }, [customerAuth?.mode, customerAuth?.phone, customerAuth?.name]);
   useEffect(() => {
+    if (!customerAuthReady) return;
     try {
       const saved = window.localStorage.getItem(CART_CHECKOUT_STORAGE_KEY);
       if (saved) {
         const checkout = JSON.parse(saved) as PersistedCheckout;
-        if (Array.isArray(checkout.cart) && checkout.cart.length > 0) {
+        const currentOwnerPhone = customerAuth?.mode === "customer" ? customerAuth.phone : undefined;
+        if (currentOwnerPhone && checkout.ownerPhone === currentOwnerPhone && Array.isArray(checkout.cart) && checkout.cart.length > 0) {
           setCart(checkout.cart);
           setScreen(checkout.screen === "checkout" ? "checkout" : "home");
           setCheckoutMode(checkout.checkoutMode);
@@ -523,24 +526,25 @@ export default function Home() {
           setTaxiType(checkout.taxiType || "standard");
           setPickup(checkout.pickup || "");
           setDestination(checkout.destination || "");
-        }
+        } else window.localStorage.removeItem(CART_CHECKOUT_STORAGE_KEY);
       }
     } catch {
       window.localStorage.removeItem(CART_CHECKOUT_STORAGE_KEY);
     } finally {
       setCheckoutRestored(true);
     }
-  }, []);
+  }, [customerAuthReady, customerAuth?.mode, customerAuth?.phone]);
   useEffect(() => {
     if (!checkoutRestored) return;
-    if (!cart.length) {
+    if (customerAuth?.mode !== "customer" || !customerAuth.phone || !cart.length) {
       window.localStorage.removeItem(CART_CHECKOUT_STORAGE_KEY);
       return;
     }
-    const checkout: PersistedCheckout = { cart, screen, checkoutMode, checkoutStep, checkoutName, checkoutPhone, customerLocation, customerLocationUrl, customerLat, customerLng, locationVerified, notes, deliveryAddress, payment, taxiType, pickup, destination };
+    const checkout: PersistedCheckout = { ownerPhone: customerAuth.phone, cart, screen, checkoutMode, checkoutStep, checkoutName, checkoutPhone, customerLocation, customerLocationUrl, customerLat, customerLng, locationVerified, notes, deliveryAddress, payment, taxiType, pickup, destination };
     window.localStorage.setItem(CART_CHECKOUT_STORAGE_KEY, JSON.stringify(checkout));
-  }, [checkoutRestored, cart, screen, checkoutMode, checkoutStep, checkoutName, checkoutPhone, customerLocation, customerLocationUrl, customerLat, customerLng, locationVerified, notes, deliveryAddress, payment, taxiType, pickup, destination]);
+  }, [checkoutRestored, customerAuth?.mode, customerAuth?.phone, cart, screen, checkoutMode, checkoutStep, checkoutName, checkoutPhone, customerLocation, customerLocationUrl, customerLat, customerLng, locationVerified, notes, deliveryAddress, payment, taxiType, pickup, destination]);
   const completeCustomerAuth = (session: CustomerAuthSession) => {
+    setCheckoutRestored(false);
     if (session.mode === "customer" && session.remember) window.localStorage.setItem(CUSTOMER_AUTH_STORAGE_KEY, JSON.stringify(session));
     else window.localStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
     if (session.mode === "customer" && session.city) {
