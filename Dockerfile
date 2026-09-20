@@ -23,4 +23,4 @@ COPY --from=build /app/drizzle ./drizzle
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "./node_modules/.bin/drizzle-kit migrate && exec node dist/index.js"]
+CMD ["sh", "-c", "(./node_modules/.bin/drizzle-kit migrate > /tmp/lahza-migrate.log 2>&1 || cat /tmp/lahza-migrate.log) & exec node dist/index.js"]
