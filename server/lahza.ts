@@ -1833,10 +1833,8 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       console.info("Customer OTP request started", { phone: maskPhone(input.phone) });
-      await Promise.race([
-        ensureCustomerOtpTable(db),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("انتهت مهلة الاتصال بقاعدة البيانات")), 12_000)),
-      ]);
+      // OTP tables are provisioned in the production database. Avoid running DDL
+      // on every public request because MySQL metadata locks can stall the API.
       const code = String(Math.floor(100000 + Math.random() * 900000));
       const codeHash = await hashSecret(code);
       await Promise.race([
@@ -1851,7 +1849,6 @@ export const lahzaRouter = router({
     verifyOtp: publicProcedure.input(z.object({ phone: internationalPhoneSchema, code: z.string().regex(/^\d{6}$/, "أدخل رمزاً من 6 أرقام") })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await ensureCustomerOtpTable(db);
       const [rows] = await db.execute(sql`SELECT \`codeHash\`, \`expiresAt\`, \`attempts\` FROM \`customer_otp_codes\` WHERE \`phone\` = ${input.phone} LIMIT 1`);
       const record = (Array.isArray(rows) ? rows[0] : null) as { codeHash?: string; expiresAt?: Date | string; attempts?: number } | null;
       if (!record?.codeHash) throw new Error("اطلب رمز تحقق جديداً");
@@ -1870,7 +1867,6 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCustomerAccountsTable(db);
-      await ensureCustomerOtpTable(db);
       const [verifiedRows] = await db.execute(sql`SELECT \`expiresAt\` FROM \`customer_otp_verified\` WHERE \`phone\` = ${input.phone} LIMIT 1`);
       const verified = (Array.isArray(verifiedRows) ? verifiedRows[0] : null) as { expiresAt?: Date | string } | null;
       if (!verified || new Date(verified.expiresAt ?? 0).getTime() <= Date.now()) throw new Error("تحقق من رقم هاتفك أولاً");
