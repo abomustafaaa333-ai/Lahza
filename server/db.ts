@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users } from "../drizzle/schema";
 
@@ -15,6 +15,18 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+/** Ensure older manually imported schemas remain compatible with the app. */
+export async function ensureDatabaseCompatibility() {
+  const db = await getDb();
+  if (!db) return;
+
+  try {
+    await db.execute(sql`ALTER TABLE order_assignments ADD COLUMN IF NOT EXISTS driverName VARCHAR(80) NULL`);
+  } catch (error) {
+    console.warn("[Database] Could not ensure order_assignments.driverName:", error);
+  }
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {

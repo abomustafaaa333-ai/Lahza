@@ -5,6 +5,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { autoCompleteDueOrders, ensureDemoStoresSeed, handleWahaWebhook } from "../lahza";
 import { startDailyReadinessReminders } from "../daily-readiness-reminders";
+import { ensureDatabaseCompatibility } from "../db";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -24,9 +25,10 @@ async function startServer() {
   if (process.env.NODE_ENV === "development") await setupVite(app, server);
   else serveStatic(app);
 
-  const port = Number(process.env.PORT ?? 3000);
+  const port = Number(process.env.PORT ?? 24669);
   server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
 
+  await ensureDatabaseCompatibility();
   void ensureDemoStoresSeed().catch(error => console.warn("Unable to seed demo stores", error));
   startDailyReadinessReminders();
   const runOrderCompletion = () => void autoCompleteDueOrders().catch(error => console.warn("Unable to auto-complete due orders", error));
