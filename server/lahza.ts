@@ -32,6 +32,8 @@ const JARABULUS_TEST_CUSTOMER_PHONE = "+963999999999";
 const JARABULUS_TEST_CUSTOMER_NAME = "عميل اختبار جرابلس";
 const internationalPhoneSchema = z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل رقم هاتف دولياً صحيحاً مع رمز الدولة");
 const syrianCustomerPhoneSchema = z.string().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سوري صحيحاً يبدأ بـ 9 بعد النداء +963");
+const memoryOtpCodes = new Map<string, { codeHash: string; expiresAt: number; attempts: number }>();
+const memoryOtpVerified = new Map<string, number>();
 const DEFAULT_MASTER_PIN = "0000";
 const LEGACY_DEFAULT_MASTER_PIN = "555369";
 const PREVIOUS_DEFAULT_MASTER_PIN = "1212";
@@ -1837,18 +1839,34 @@ export const lahzaRouter = router({
       // on every public request because MySQL metadata locks can stall the API.
       const code = String(Math.floor(100000 + Math.random() * 900000));
       const codeHash = await hashSecret(code);
-      await Promise.race([
-        db.execute(sql`INSERT INTO \`customer_otp_codes\` (\`phone\`, \`codeHash\`, \`expiresAt\`, \`attempts\`) VALUES (${input.phone}, ${codeHash}, DATE_ADD(NOW(), INTERVAL 5 MINUTE), 0) ON DUPLICATE KEY UPDATE \`codeHash\` = VALUES(\`codeHash\`), \`expiresAt\` = VALUES(\`expiresAt\`), \`attempts\` = 0`),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("انتهت مهلة حفظ رمز التحقق")), 12_000)),
-      ]);
+      memoryOtpCodes.set(input.phone, { codeHash, expiresAt: Date.now() + 5 * 60_000, attempts: 0 });
       const delivery = await sendWahaText(input.phone, { body: `رمز التحقق الخاص بتطبيق لحظة هو: ${code}\nصالح لمدة 5 دقائق. لا تشارك هذا الرمز مع أي شخص.` });
       console.info("Customer OTP delivery result", { phone: maskPhone(input.phone), configured: delivery.configured, sent: delivery.sent });
-      if (!delivery.sent) throw new Error("تعذر إرسال رمز التحقق عبر واتساب حالياً");
+      if (!delivery.sent) {
+        memoryOtpCodes.delete(input.phone);
+        throw new Error("تعذر إرسال رمز التحقق عبر واتساب حالياً");
+      }
       return { success: true, expiresInSeconds: 300 };
     }),
     verifyOtp: publicProcedure.input(z.object({ phone: internationalPhoneSchema, code: z.string().regex(/^\d{6}$/, "أدخل رمزاً من 6 أرقام") })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const memoryRecord = memoryOtpCodes.get(input.phone);
+      if (memoryRecord) {
+        if (memoryRecord.expiresAt <= Date.now()) {
+          memoryOtpCodes.delete(input.phone);
+          throw new Error("انتهت صلاحية الرمز، اطلب رمزاً جديداً");
+        }
+        if (memoryRecord.attempts >= 5) throw new Error("تجاوزت عدد المحاولات، اطلب رمزاً جديداً");
+        const valid = await verifySecret(input.code, memoryRecord.codeHash);
+        if (!valid) {
+          memoryRecord.attempts += 1;
+          throw new Error("رمز التحقق غير صحيح");
+        }
+        memoryOtpCodes.delete(input.phone);
+        memoryOtpVerified.set(input.phone, Date.now() + 10 * 60_000);
+        return { success: true };
+      }
       const [rows] = await db.execute(sql`SELECT \`codeHash\`, \`expiresAt\`, \`attempts\` FROM \`customer_otp_codes\` WHERE \`phone\` = ${input.phone} LIMIT 1`);
       const record = (Array.isArray(rows) ? rows[0] : null) as { codeHash?: string; expiresAt?: Date | string; attempts?: number } | null;
       if (!record?.codeHash) throw new Error("اطلب رمز تحقق جديداً");
@@ -1867,6 +1885,15 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCustomerAccountsTable(db);
+      const memoryVerifiedUntil = memoryOtpVerified.get(input.phone) ?? 0;
+      if (memoryVerifiedUntil > Date.now()) {
+        memoryOtpVerified.delete(input.phone);
+        const existing = (await db.select().from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
+        if (!existing) {
+          await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, city: input.city, status: "pending" });
+          return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
+        }
+      }
       const [verifiedRows] = await db.execute(sql`SELECT \`expiresAt\` FROM \`customer_otp_verified\` WHERE \`phone\` = ${input.phone} LIMIT 1`);
       const verified = (Array.isArray(verifiedRows) ? verifiedRows[0] : null) as { expiresAt?: Date | string } | null;
       if (!verified || new Date(verified.expiresAt ?? 0).getTime() <= Date.now()) throw new Error("تحقق من رقم هاتفك أولاً");
