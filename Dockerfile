@@ -4,7 +4,7 @@ WORKDIR /app
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 COPY package.json pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN npm install --global pnpm@10.4.1 && pnpm install --frozen-lockfile
 
 COPY . .
 RUN pnpm run build
