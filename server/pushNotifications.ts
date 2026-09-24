@@ -4,7 +4,10 @@ import { getMessaging } from "firebase-admin/messaging";
 let firebaseReady = false;
 
 function getFirebaseMessaging() {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+  const encoded = process.env.FIREBASE_SERVICE_ACCOUNT_JSON_BASE64?.trim();
+  const raw = encoded
+    ? Buffer.from(encoded, "base64").toString("utf8")
+    : process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!raw) return null;
   try {
     const serviceAccount = JSON.parse(raw) as { project_id: string; client_email: string; private_key: string };
