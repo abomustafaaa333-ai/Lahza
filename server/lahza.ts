@@ -146,6 +146,7 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
     const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
     if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` ${definition}`));
   };
+  await ensureColumn("stores", "city", "VARCHAR(20) NOT NULL DEFAULT 'منبج'");
   await ensureColumn("stores", "jarabulusGatewayEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
   await ensureColumn("orders", "orderCity", "ENUM('manbij', 'jarabulus') NOT NULL DEFAULT 'manbij'");
   await ensureColumn("orders", "fulfillmentScope", "ENUM('local', 'manbij_to_jarabulus') NOT NULL DEFAULT 'local'");
