@@ -347,7 +347,8 @@ function CustomerAuthScreen({ onAuthenticated, onStaffLogin }: { onAuthenticated
       setOtpSent(true);
       setStep("otp");
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "تعذر إرسال رمز التحقق حالياً.");
+      const message = requestError instanceof Error ? requestError.message : "";
+      setError(message.includes("Unexpected end of JSON") ? "لم يستجب الخادم. تحقق من اتصال قاعدة البيانات وWAHA ثم أعد المحاولة." : message || "تعذر إرسال رمز التحقق حالياً.");
     }
   };
   const loginDirectly = async () => {

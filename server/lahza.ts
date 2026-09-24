@@ -1832,11 +1832,19 @@ export const lahzaRouter = router({
     requestOtp: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await ensureCustomerOtpTable(db);
+      console.info("Customer OTP request started", { phone: maskPhone(input.phone) });
+      await Promise.race([
+        ensureCustomerOtpTable(db),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("انتهت مهلة الاتصال بقاعدة البيانات")), 12_000)),
+      ]);
       const code = String(Math.floor(100000 + Math.random() * 900000));
       const codeHash = await hashSecret(code);
-      await db.execute(sql`INSERT INTO \`customer_otp_codes\` (\`phone\`, \`codeHash\`, \`expiresAt\`, \`attempts\`) VALUES (${input.phone}, ${codeHash}, DATE_ADD(NOW(), INTERVAL 5 MINUTE), 0) ON DUPLICATE KEY UPDATE \`codeHash\` = VALUES(\`codeHash\`), \`expiresAt\` = VALUES(\`expiresAt\`), \`attempts\` = 0`);
+      await Promise.race([
+        db.execute(sql`INSERT INTO \`customer_otp_codes\` (\`phone\`, \`codeHash\`, \`expiresAt\`, \`attempts\`) VALUES (${input.phone}, ${codeHash}, DATE_ADD(NOW(), INTERVAL 5 MINUTE), 0) ON DUPLICATE KEY UPDATE \`codeHash\` = VALUES(\`codeHash\`), \`expiresAt\` = VALUES(\`expiresAt\`), \`attempts\` = 0`),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("انتهت مهلة حفظ رمز التحقق")), 12_000)),
+      ]);
       const delivery = await sendWahaText(input.phone, { body: `رمز التحقق الخاص بتطبيق لحظة هو: ${code}\nصالح لمدة 5 دقائق. لا تشارك هذا الرمز مع أي شخص.` });
+      console.info("Customer OTP delivery result", { phone: maskPhone(input.phone), configured: delivery.configured, sent: delivery.sent });
       if (!delivery.sent) throw new Error("تعذر إرسال رمز التحقق عبر واتساب حالياً");
       return { success: true, expiresInSeconds: 300 };
     }),
