@@ -1,2 +1,2 @@
-export const LAHZA_APK_URL = "https://lahza-production-e0af.up.railway.app/download/Lahza-v2.2.2-firebase-release.apk";
-export const LAHZA_APK_FILE_NAME = "Lahza-v2.2.2-firebase-release.apk";
+export const LAHZA_APK_URL = "/download/Lahza-v2.2.3-release-signed.apk";
+export const LAHZA_APK_FILE_NAME = "Lahza-v2.2.3-release-signed.apk";
