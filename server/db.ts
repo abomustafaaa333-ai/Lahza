@@ -23,9 +23,12 @@ export async function ensureDatabaseCompatibility() {
   if (!db) return;
 
   try {
-    await db.execute(sql`ALTER TABLE order_assignments ADD COLUMN IF NOT EXISTS driverName VARCHAR(80) NULL`);
+    await db.execute(sql`ALTER TABLE order_assignments ADD COLUMN driverName VARCHAR(80) NULL`);
   } catch (error) {
-    console.warn("[Database] Could not ensure order_assignments.driverName:", error);
+    const code = (error as { cause?: { code?: string }; code?: string }).cause?.code ?? (error as { code?: string }).code;
+    if (code !== "ER_DUP_FIELDNAME" && code !== "ER_DUP_COLUMN") {
+      console.warn("[Database] Could not ensure order_assignments.driverName:", error);
+    }
   }
 }
 
