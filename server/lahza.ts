@@ -1884,7 +1884,6 @@ export const lahzaRouter = router({
     register: publicProcedure.input(z.object({ phone: internationalPhoneSchema, name: z.string().trim().min(2).max(80), city: z.enum(["منبج", "جرابلس"]) })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await ensureCustomerAccountsTable(db);
       const memoryVerifiedUntil = memoryOtpVerified.get(input.phone) ?? 0;
       if (memoryVerifiedUntil > Date.now()) {
         memoryOtpVerified.delete(input.phone);
@@ -1893,6 +1892,10 @@ export const lahzaRouter = router({
           await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, city: input.city, status: "pending" });
           return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
         }
+        if (existing.status !== "approved" && (existing.name !== input.name || existing.city !== input.city)) await db.update(customerAccounts).set({ name: input.name, city: input.city }).where(eq(customerAccounts.id, existing.id));
+        if (existing.status === "approved") return { status: "approved" as const, message: "الحساب موثق ويمكنك متابعة الطلب" };
+        if (existing.status === "rejected") return { status: "rejected" as const, message: "تم رفض الحساب، تواصل مع فريق لحظة عبر واتساب" };
+        return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
       }
       const [verifiedRows] = await db.execute(sql`SELECT \`expiresAt\` FROM \`customer_otp_verified\` WHERE \`phone\` = ${input.phone} LIMIT 1`);
       const verified = (Array.isArray(verifiedRows) ? verifiedRows[0] : null) as { expiresAt?: Date | string } | null;
