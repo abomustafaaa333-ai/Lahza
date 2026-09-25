@@ -133,7 +133,10 @@ export function readTickerSettings(settings: { tickerPrimary?: unknown; tickerSe
 }
 
 function isDuplicateColumnError(error: unknown) {
-  return error instanceof Error && /duplicate column name/i.test(error.message);
+  const candidate = error as { code?: string; cause?: { code?: string; message?: string }; message?: string };
+  const code = candidate.cause?.code ?? candidate.code ?? "";
+  const message = `${candidate.message ?? ""} ${candidate.cause?.message ?? ""}`;
+  return code === "ER_DUP_FIELDNAME" || code === "ER_DUP_COLUMN" || /duplicate column name/i.test(message);
 }
 
 export const DEFAULT_JARABULUS_MINIMUM_ORDER_SYP = 500;
@@ -145,11 +148,19 @@ async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<t
     try {
       const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
       const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
-      if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` ${definition}`));
+      if (!present.has(name)) {
+        try {
+          await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` ${definition}`));
+        } catch (error) {
+          // Another startup request may have added the same column between SHOW COLUMNS and ALTER TABLE.
+          if (!isDuplicateColumnError(error)) throw error;
+        }
+      }
     } catch (error) {
-      console.warn(`[Database] Could not ensure ${table}.${name}:`, error);
+      if (!isDuplicateColumnError(error)) console.warn(`[Database] Could not ensure ${table}.${name}:`, error);
     }
   };
+  await ensureColumn("stores", "imageUrl", "VARCHAR(500) NULL");
   await ensureColumn("stores", "city", "VARCHAR(20) NOT NULL DEFAULT 'منبج'");
   await ensureColumn("stores", "jarabulusGatewayEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
   await ensureColumn("orders", "orderCity", "ENUM('manbij', 'jarabulus') NOT NULL DEFAULT 'manbij'");
