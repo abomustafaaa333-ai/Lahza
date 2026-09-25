@@ -139,6 +139,22 @@ function isDuplicateColumnError(error: unknown) {
   return code === "ER_DUP_FIELDNAME" || code === "ER_DUP_COLUMN" || /duplicate column name/i.test(message);
 }
 
+type CompatibilityTable = "stores" | "partners" | "catalog_items";
+
+async function ensureColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, table: CompatibilityTable, additions: Array<[string, string]>) {
+  const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
+  const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+  for (const [name, definition] of additions) {
+    if (present.has(name)) continue;
+    try {
+      await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` ${definition}`));
+    } catch (error) {
+      // Multiple app instances can inspect the schema at once; tolerate the winner adding it first.
+      if (!isDuplicateColumnError(error)) throw error;
+    }
+  }
+}
+
 export const DEFAULT_JARABULUS_MINIMUM_ORDER_SYP = 500;
 export const DEFAULT_JARABULUS_PREPARATION_MINUTES = 120;
 export const JARABULUS_DISTANCE_DELIVERY_NOTE = "رسوم التوصيل إلى جرابلس أعلى من المعتاد بسبب المسافة من منبج.";
@@ -719,14 +735,8 @@ async function ensureCustomerAccountsTable(db: NonNullable<Awaited<ReturnType<ty
 }
 
 async function ensureProfileImageColumns(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
-  for (const [table, name] of [["stores", "imageUrl"], ["partners", "imageUrl"]] as const) {
-    const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
-    const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
-    if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` VARCHAR(500) NULL`));
-  }
-  const [partnerColumns] = await db.execute(sql.raw("SHOW COLUMNS FROM `partners`"));
-  const present = new Set(Array.isArray(partnerColumns) ? partnerColumns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
-  if (!present.has("workHours")) await db.execute(sql.raw("ALTER TABLE `partners` ADD COLUMN `workHours` TEXT NULL"));
+  await ensureColumns(db, "stores", [["imageUrl", "VARCHAR(500) NULL"]]);
+  await ensureColumns(db, "partners", [["imageUrl", "VARCHAR(500) NULL"], ["workHours", "TEXT NULL"]]);
 }
 
 async function addDeliveryPercentColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "manbijDeliveryPercent" | "jarabulusDeliveryPercent" | "driverDeliveryPercent", defaultValue: number) {
@@ -790,6 +800,11 @@ export async function ensureLahzaRuntimeSchema() {
     ["customer accounts", () => ensureCustomerAccountsTable(db).then(() => undefined)],
     ["customer OTP", () => ensureCustomerOtpTable(db)],
     ["delivery and order compatibility", () => ensureJarabulusGatewaySchema(db)],
+    ["store and catalog compatibility", async () => {
+      await ensureProfileImageColumns(db);
+      await ensureCatalogItemSchema(db);
+      await ensureDispatchLocationSchema(db);
+    }],
   ];
   for (const [name, step] of steps) {
     try {
@@ -1056,16 +1071,17 @@ async function ensureDemoProducts(db: NonNullable<Awaited<ReturnType<typeof getD
   }
 }
 
-async function ensureClothingCatalogSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
-  const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `catalog_items`"));
-  const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
-  const additions: Array<[string, string]> = [
+async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await ensureColumns(db, "catalog_items", [
+    ["imageUrl", "VARCHAR(500) NULL"],
+    ["stockQuantity", "INT NOT NULL DEFAULT 0"],
+    ["stockInitialQuantity", "INT NOT NULL DEFAULT 0"],
+    ["stockAlertPercent", "INT NOT NULL DEFAULT 20"],
     ["imageUrls", "TEXT NULL"],
     ["clothingSizes", "VARCHAR(500) NULL"],
     ["clothingColors", "VARCHAR(500) NULL"],
     ["clothingVariantImages", "TEXT NULL"],
-  ];
-  for (const [name, definition] of additions) if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`catalog_items\` ADD COLUMN \`${name}\` ${definition}`));
+  ]);
 }
 
 export async function ensureDemoStoresSeed() {
@@ -1073,6 +1089,8 @@ export async function ensureDemoStoresSeed() {
   if (!db) return;
   await ensureJarabulusGatewaySchema(db);
   await ensureDispatchLocationSchema(db);
+  await ensureProfileImageColumns(db);
+  await ensureCatalogItemSchema(db);
   await ensureDemoStores(db);
   await ensureDemoProducts(db);
 }
@@ -1080,7 +1098,7 @@ export async function ensureDemoStoresSeed() {
 async function ensureCatalogSeed() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-  await ensureClothingCatalogSchema(db);
+  await ensureCatalogItemSchema(db);
   await ensureJarabulusGatewaySchema(db);
   await ensureDispatchLocationSchema(db);
   const existing = await db.select({ id: catalogItems.id }).from(catalogItems).limit(1);
@@ -1735,7 +1753,7 @@ export const lahzaRouter = router({
     products: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await ensureClothingCatalogSchema(db);
+      await ensureCatalogItemSchema(db);
       await ensureJarabulusGatewaySchema(db);
       const found = await db.select().from(stores).where(and(eq(stores.id, input.storeId), eq(stores.active, true), customerGatewayStoreVisibilityCondition(ctx.city))).limit(1);
       const store = found[0];
@@ -2089,7 +2107,7 @@ export const lahzaRouter = router({
     catalog: router({
       list: publicProcedure.query(async ({ ctx }) => {
         const { db, partner } = await requirePartner(ctx);
-        await ensureClothingCatalogSchema(db);
+        await ensureCatalogItemSchema(db);
         const assignedStores = await db.select({ id: stores.id }).from(stores).where(eq(stores.partnerId, partner.id));
         if (!assignedStores.length) return [];
         return db.select().from(catalogItems).where(and(inArray(catalogItems.storeId, assignedStores.map(store => store.id)), eq(catalogItems.deleted, false))).orderBy(desc(catalogItems.createdAt));
@@ -2097,14 +2115,14 @@ export const lahzaRouter = router({
       create: publicProcedure.input(partnerProductInput).mutation(async ({ ctx, input }) => {
         const { db, partner, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك إضافة منتجات القسم الخاص بمتجرك فقط");
-        await ensureClothingCatalogSchema(db);
+        await ensureCatalogItemSchema(db);
         await db.insert(catalogItems).values({ code: `partner-${partner.id}-${randomBytes(8).toString("hex")}`, name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), stockQuantity: input.stockQuantity, stockInitialQuantity: input.stockInitialQuantity ?? input.stockQuantity, stockAlertPercent: input.stockAlertPercent, available: input.available, deleted: false, partnerId: partner.id, storeId: store.id, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || input.imageUrls[0] || null, imageUrls: JSON.stringify(input.imageUrls), clothingSizes: input.category === "clothing" ? JSON.stringify(input.clothingSizes) : null, clothingColors: input.category === "clothing" ? JSON.stringify(input.clothingColors) : null, clothingVariantImages: input.category === "clothing" ? JSON.stringify(input.clothingVariantImages) : null });
         return { success: true };
       }),
       update: publicProcedure.input(partnerProductInput.extend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
         const { db, store } = await requirePartnerStore(ctx, input.storeId);
         if (store.category !== input.category) throw new Error("يمكنك تعديل منتجات القسم الخاص بمتجرك فقط");
-        await ensureClothingCatalogSchema(db);
+        await ensureCatalogItemSchema(db);
         await db.update(catalogItems).set({ name: input.name, category: input.category, unit: input.unit, unitPrice: toLegacySyp(input.price), stockQuantity: input.stockQuantity, stockInitialQuantity: input.stockInitialQuantity ?? input.stockQuantity, stockAlertPercent: input.stockAlertPercent, available: input.available, customCategoryId: store.customCategoryId, imageUrl: input.imageUrl || input.imageUrls[0] || null, imageUrls: JSON.stringify(input.imageUrls), clothingSizes: input.category === "clothing" ? JSON.stringify(input.clothingSizes) : null, clothingColors: input.category === "clothing" ? JSON.stringify(input.clothingColors) : null, clothingVariantImages: input.category === "clothing" ? JSON.stringify(input.clothingVariantImages) : null }).where(and(eq(catalogItems.id, input.id), eq(catalogItems.storeId, store.id), eq(catalogItems.deleted, false)));
         return { success: true };
       }),

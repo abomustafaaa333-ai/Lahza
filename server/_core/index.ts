@@ -27,10 +27,10 @@ async function startServer() {
 
   const port = Number(process.env.PORT ?? 24669);
   await migrateDatabase();
-  server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
-  void ensureLahzaRuntimeSchema();
-
+  await ensureLahzaRuntimeSchema();
   await ensureDatabaseCompatibility();
+  server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
+
   void ensureDemoStoresSeed().catch(error => console.warn("Unable to seed demo stores", error));
   startDailyReadinessReminders();
   const runOrderCompletion = () => void autoCompleteDueOrders().catch(error => console.warn("Unable to auto-complete due orders", error));
