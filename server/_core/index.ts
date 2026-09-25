@@ -5,7 +5,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { autoCompleteDueOrders, ensureDemoStoresSeed, handleWahaWebhook } from "../lahza";
 import { startDailyReadinessReminders } from "../daily-readiness-reminders";
-import { ensureDatabaseCompatibility } from "../db";
+import { ensureDatabaseCompatibility, migrateDatabase } from "../db";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -26,6 +26,7 @@ async function startServer() {
   else serveStatic(app);
 
   const port = Number(process.env.PORT ?? 24669);
+  await migrateDatabase();
   server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
 
   await ensureDatabaseCompatibility();

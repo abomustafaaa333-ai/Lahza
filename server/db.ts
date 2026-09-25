@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { drizzle, type AnyMySql2Connection } from "drizzle-orm/mysql2";
+import { migrate } from "drizzle-orm/mysql2/migrator";
 import { createPool, type Pool } from "mysql2/promise";
 import { InsertUser, users } from "../drizzle/schema";
 
@@ -27,6 +28,14 @@ export async function getDb() {
     }
   }
   return _db;
+}
+
+export async function migrateDatabase() {
+  const db = await getDb();
+  if (!db) return;
+  console.log("[Database] Running migrations with TLS...");
+  await migrate(db, { migrationsFolder: "./drizzle" });
+  console.log("[Database] Migrations completed");
 }
 
 /** Ensure older manually imported schemas remain compatible with the app. */
