@@ -42,6 +42,11 @@ const DEFAULT_OWNER_PHONE = "+963997311078";
 const DEFAULT_STAFF_PASSWORD = "0000";
 let defaultStaffPasswordsReady = false;
 let customerAccountsReady = false;
+let jarabulusSchemaReady = false;
+let jarabulusSchemaPromise: Promise<void> | null = null;
+let settingsSchemaReady = false;
+let settingsSchemaPromise: Promise<void> | null = null;
+let masterPinMigrationChecked = false;
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
 
@@ -161,6 +166,20 @@ export const DEFAULT_JARABULUS_PREPARATION_MINUTES = 120;
 export const JARABULUS_DISTANCE_DELIVERY_NOTE = "رسوم التوصيل إلى جرابلس أعلى من المعتاد بسبب المسافة من منبج.";
 
 async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (jarabulusSchemaReady) return;
+  if (!jarabulusSchemaPromise) {
+    const pending = ensureJarabulusGatewaySchemaWork(db).then(() => { jarabulusSchemaReady = true; });
+    jarabulusSchemaPromise = pending;
+  }
+  try {
+    await jarabulusSchemaPromise;
+  } finally {
+    if (jarabulusSchemaReady) jarabulusSchemaPromise = null;
+    else jarabulusSchemaPromise = null;
+  }
+}
+
+async function ensureJarabulusGatewaySchemaWork(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   const ensureColumn = async (table: "stores" | "orders" | "system_settings", name: string, definition: string) => {
     try {
       const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
@@ -801,6 +820,11 @@ export async function ensureLahzaRuntimeSchema() {
     ["customer accounts", () => ensureCustomerAccountsTable(db).then(() => undefined)],
     ["customer OTP", () => ensureCustomerOtpTable(db)],
     ["delivery and order compatibility", () => ensureJarabulusGatewaySchema(db)],
+    ["owner login compatibility", async () => {
+      await ensureSettingsCompatibility(db);
+      await ensureDefaultStaffPasswords(db);
+      await getSettings();
+    }],
     ["store and catalog compatibility", async () => {
       await ensureProfileImageColumns(db);
       await ensureCatalogItemSchema(db);
@@ -977,22 +1001,41 @@ function setDriverCookie(ctx: TrpcContext, token: string) {
   ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
 }
 
+async function ensureSettingsCompatibility(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  if (settingsSchemaReady) return;
+  if (!settingsSchemaPromise) {
+    const pending = (async () => {
+      await ensureJarabulusGatewaySchema(db);
+      await ensureDeliveryPercentColumns(db);
+      await ensureDeliveryServiceColumns(db);
+      await ensureTickerColumns(db);
+      await ensureEventColumns(db);
+      settingsSchemaReady = true;
+    })();
+    settingsSchemaPromise = pending;
+  }
+  try {
+    await settingsSchemaPromise;
+  } finally {
+    settingsSchemaPromise = null;
+  }
+}
+
 async function getSettings() {
   const db = await getDb();
   if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-  await ensureJarabulusGatewaySchema(db);
-  await ensureDeliveryPercentColumns(db);
-  await ensureDeliveryServiceColumns(db);
-  await ensureTickerColumns(db);
-  await ensureEventColumns(db);
+  await ensureSettingsCompatibility(db);
   await ensureDefaultStaffPasswords(db);
   const current = await db.select().from(systemSettings).where(eq(systemSettings.id, 1)).limit(1);
   if (current[0]) {
     // Migrate only the original seed PIN; never overwrite a PIN changed by the owner.
-    if (await verifySecret(LEGACY_DEFAULT_MASTER_PIN, current[0].masterPinHash) || await verifySecret(PREVIOUS_DEFAULT_MASTER_PIN, current[0].masterPinHash)) {
-      const migratedHash = await hashSecret(DEFAULT_MASTER_PIN);
-      await db.update(systemSettings).set({ masterPinHash: migratedHash }).where(eq(systemSettings.id, 1));
-      return { ...current[0], masterPinHash: migratedHash };
+    if (!masterPinMigrationChecked) {
+      masterPinMigrationChecked = true;
+      if (await verifySecret(LEGACY_DEFAULT_MASTER_PIN, current[0].masterPinHash) || await verifySecret(PREVIOUS_DEFAULT_MASTER_PIN, current[0].masterPinHash)) {
+        const migratedHash = await hashSecret(DEFAULT_MASTER_PIN);
+        await db.update(systemSettings).set({ masterPinHash: migratedHash }).where(eq(systemSettings.id, 1));
+        return { ...current[0], masterPinHash: migratedHash };
+      }
     }
     return current[0];
   }
@@ -2584,19 +2627,21 @@ export const lahzaRouter = router({
   }),
   admin: router({
     staffLookup: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).query(async ({ input }) => {
-      const settings = await getSettings();
-      if (input.phone === (settings.ownerPhone || DEFAULT_OWNER_PHONE)) return { role: "owner" as const };
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const [supervisor, partner, driver] = await Promise.all([
+      await ensureCustomerAccountsTable(db);
+      const [settings, supervisor, partner, driver, customer] = await Promise.all([
+        getSettings(),
         db.select({ id: supervisors.id }).from(supervisors).where(and(eq(supervisors.username, input.phone), eq(supervisors.active, true))).limit(1),
         db.select({ id: partners.id }).from(partners).where(and(eq(partners.username, input.phone), eq(partners.active, true))).limit(1),
         db.select({ id: drivers.id }).from(drivers).where(and(eq(drivers.phone, input.phone), eq(drivers.active, true))).limit(1),
+        db.select({ status: customerAccounts.status, name: customerAccounts.name, city: customerAccounts.city }).from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1),
       ]);
-      if (supervisor[0]) return { role: "supervisor" as const };
-      if (partner[0]) return { role: "partner" as const };
-      if (driver[0]) return { role: "driver" as const };
-      return null;
+      if (input.phone === (settings.ownerPhone || DEFAULT_OWNER_PHONE)) return { kind: "staff" as const, role: "owner" as const };
+      if (supervisor[0]) return { kind: "staff" as const, role: "supervisor" as const };
+      if (partner[0]) return { kind: "staff" as const, role: "partner" as const };
+      if (driver[0]) return { kind: "staff" as const, role: "driver" as const };
+      return { kind: "customer" as const, account: customer[0] ?? { status: "new" as const, name: "", city: "منبج" } };
     }),
     discountCodes: router({
       list: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); return db.select().from(discountCodes).orderBy(desc(discountCodes.createdAt)); }),
