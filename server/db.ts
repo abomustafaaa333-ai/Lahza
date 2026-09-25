@@ -18,6 +18,7 @@ export async function getDb() {
         password: decodeURIComponent(new URL(process.env.DATABASE_URL).password),
         database: new URL(process.env.DATABASE_URL).pathname.replace(/^\//, ""),
         ssl: { rejectUnauthorized: true },
+        multipleStatements: true,
         waitForConnections: true,
         connectionLimit: 5,
       });
