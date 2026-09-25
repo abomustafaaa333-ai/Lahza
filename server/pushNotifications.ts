@@ -32,9 +32,9 @@ export function isFirebasePushReady() {
 }
 
 export async function sendPushNotification(tokens: string[], message: { title: string; body: string; targetPath?: string }) {
+  if (tokens.length === 0) return { sent: 0, failed: 0, failedTokens: [], reason: "no_registered_devices" as const };
   const messaging = getFirebaseMessaging();
   if (!messaging) return { sent: 0, failed: tokens.length, failedTokens: tokens, reason: "firebase_not_configured" as const };
-  if (tokens.length === 0) return { sent: 0, failed: 0, failedTokens: [], reason: "no_registered_devices" as const };
   try {
     const response = await messaging.sendEachForMulticast({
       tokens,
