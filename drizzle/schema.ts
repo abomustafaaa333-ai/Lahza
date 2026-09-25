@@ -424,6 +424,12 @@ export const notificationCampaigns = mysqlTable("notification_campaigns", {
   scheduledAt: timestamp("scheduledAt"),
   expiresAt: timestamp("expiresAt"),
   active: boolean("active").notNull().default(true),
+  pushStatus: mysqlEnum("pushStatus", ["legacy", "disabled", "pending", "sending", "retry", "sent", "failed"]).notNull().default("legacy"),
+  pushAttempts: int("pushAttempts").notNull().default(0),
+  pushLastAttemptAt: timestamp("pushLastAttemptAt"),
+  pushLastError: varchar("pushLastError", { length: 500 }),
+  pushSentCount: int("pushSentCount").notNull().default(0),
+  pushFailedCount: int("pushFailedCount").notNull().default(0),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

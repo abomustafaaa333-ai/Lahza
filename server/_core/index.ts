@@ -5,6 +5,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
 import { autoCompleteDueOrders, ensureDemoStoresSeed, ensureLahzaRuntimeSchema, handleWahaWebhook } from "../lahza";
 import { startDailyReadinessReminders } from "../daily-readiness-reminders";
+import { ensureScheduledPushSchema, runScheduledPushNotifications } from "../notificationDelivery";
 import { ensureDatabaseCompatibility, migrateDatabase } from "../db";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -28,11 +29,16 @@ async function startServer() {
   const port = Number(process.env.PORT ?? 24669);
   await migrateDatabase();
   await ensureLahzaRuntimeSchema();
+  await ensureScheduledPushSchema();
+  console.log("[Database] Ensured scheduled phone notification schema");
   await ensureDatabaseCompatibility();
   server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
 
   void ensureDemoStoresSeed().catch(error => console.warn("Unable to seed demo stores", error));
   startDailyReadinessReminders();
+  const runScheduledPush = () => void runScheduledPushNotifications().catch(error => console.warn("Unable to deliver scheduled phone notifications", error));
+  runScheduledPush();
+  setInterval(runScheduledPush, 30_000);
   const runOrderCompletion = () => void autoCompleteDueOrders().catch(error => console.warn("Unable to auto-complete due orders", error));
   runOrderCompletion();
   setInterval(runOrderCompletion, 60_000);
