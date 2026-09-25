@@ -1,7 +1,0 @@
-[build]
-buildCommand = "rm -rf dist && pnpm run build"
-
-[deploy]
-startCommand = "pnpm exec drizzle-kit migrate || echo 'Database migration skipped; starting server' && pnpm start"
-healthcheckPath = "/health"
-healthcheckTimeout = 180

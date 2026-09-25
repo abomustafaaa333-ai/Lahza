@@ -45,7 +45,7 @@ export async function getRoadRoute(origin: { latitude: number; longitude: number
 
   const orsKey = process.env.OPENROUTESERVICE_API_KEY?.trim();
   if (!orsKey) {
-    throw new Error("خدمة حساب المسافة غير مهيأة: أضف OPENROUTESERVICE_API_KEY إلى Railway");
+    throw new Error("خدمة حساب المسافة غير مهيأة: أضف OPENROUTESERVICE_API_KEY إلى إعدادات الاستضافة");
   }
 
   try {
@@ -70,7 +70,7 @@ export async function getRoadRoute(origin: { latitude: number; longitude: number
       } catch {
         providerMessage = details.replace(/\s+/g, " ").trim().slice(0, 180);
       }
-      throw new Error(`تعذر حساب مسافة الطريق الحقيقية عبر OpenRouteService (HTTP ${response.status})${providerMessage ? `: ${providerMessage}` : ". تحقق من المفتاح والإحداثيات وإعدادات Railway"}`);
+      throw new Error(`تعذر حساب مسافة الطريق الحقيقية عبر OpenRouteService (HTTP ${response.status})${providerMessage ? `: ${providerMessage}` : ". تحقق من المفتاح والإحداثيات وإعدادات الاستضافة"}`);
     }
 
     const data = await response.json() as { features?: Array<{ properties?: { segments?: Array<{ distance?: number; duration?: number }> } }> };
