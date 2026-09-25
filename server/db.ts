@@ -1,14 +1,22 @@
 import { eq, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle, type AnyMySql2Connection } from "drizzle-orm/mysql2";
+import { createPool, type Pool } from "mysql2/promise";
 import { InsertUser, users } from "../drizzle/schema";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _pool: Pool | null = null;
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      _pool = createPool({
+        uri: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: true },
+        waitForConnections: true,
+        connectionLimit: 5,
+      });
+      _db = drizzle(_pool as unknown as AnyMySql2Connection);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
