@@ -142,9 +142,13 @@ export const JARABULUS_DISTANCE_DELIVERY_NOTE = "رسوم التوصيل إلى 
 
 async function ensureJarabulusGatewaySchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   const ensureColumn = async (table: "stores" | "orders" | "system_settings", name: string, definition: string) => {
-    const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
-    const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
-    if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` ${definition}`));
+    try {
+      const [columns] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\``));
+      const present = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []);
+      if (!present.has(name)) await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${name}\` ${definition}`));
+    } catch (error) {
+      console.warn(`[Database] Could not ensure ${table}.${name}:`, error);
+    }
   };
   await ensureColumn("stores", "city", "VARCHAR(20) NOT NULL DEFAULT 'منبج'");
   await ensureColumn("stores", "jarabulusGatewayEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
@@ -766,6 +770,24 @@ export const tickerSettingsInputSchema = z.object({
 async function ensureCustomerOtpTable(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `customer_otp_codes` (`phone` VARCHAR(24) NOT NULL PRIMARY KEY, `codeHash` VARCHAR(255) NOT NULL, `expiresAt` TIMESTAMP NOT NULL, `attempts` INT NOT NULL DEFAULT 0, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)"));
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `customer_otp_verified` (`phone` VARCHAR(24) NOT NULL PRIMARY KEY, `expiresAt` TIMESTAMP NOT NULL)"));
+}
+
+export async function ensureLahzaRuntimeSchema() {
+  const db = await getDb();
+  if (!db) return;
+  const steps: Array<[string, () => Promise<void>]> = [
+    ["customer accounts", () => ensureCustomerAccountsTable(db).then(() => undefined)],
+    ["customer OTP", () => ensureCustomerOtpTable(db)],
+    ["delivery and order compatibility", () => ensureJarabulusGatewaySchema(db)],
+  ];
+  for (const [name, step] of steps) {
+    try {
+      await step();
+      console.log(`[Database] Ensured ${name} schema`);
+    } catch (error) {
+      console.warn(`[Database] Could not ensure ${name} schema:`, error);
+    }
+  }
 }
 
 async function ensureDispatchLocationSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {

@@ -3,7 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
-import { autoCompleteDueOrders, ensureDemoStoresSeed, handleWahaWebhook } from "../lahza";
+import { autoCompleteDueOrders, ensureDemoStoresSeed, ensureLahzaRuntimeSchema, handleWahaWebhook } from "../lahza";
 import { startDailyReadinessReminders } from "../daily-readiness-reminders";
 import { ensureDatabaseCompatibility, migrateDatabase } from "../db";
 import { createContext } from "./context";
@@ -28,6 +28,7 @@ async function startServer() {
   const port = Number(process.env.PORT ?? 24669);
   await migrateDatabase();
   server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
+  void ensureLahzaRuntimeSchema();
 
   await ensureDatabaseCompatibility();
   void ensureDemoStoresSeed().catch(error => console.warn("Unable to seed demo stores", error));

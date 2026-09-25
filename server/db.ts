@@ -35,8 +35,12 @@ export async function migrateDatabase() {
   const db = await getDb();
   if (!db) return;
   console.log("[Database] Running migrations with TLS...");
-  await migrate(db, { migrationsFolder: "./drizzle" });
-  console.log("[Database] Migrations completed");
+  try {
+    await migrate(db, { migrationsFolder: "./drizzle" });
+    console.log("[Database] Migrations completed");
+  } catch (error) {
+    console.warn("[Database] Migration repair will continue at runtime:", error);
+  }
 }
 
 /** Ensure older manually imported schemas remain compatible with the app. */
