@@ -11,7 +11,11 @@ export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       _pool = createPool({
-        uri: process.env.DATABASE_URL,
+        host: new URL(process.env.DATABASE_URL).hostname,
+        port: Number(new URL(process.env.DATABASE_URL).port || 3306),
+        user: decodeURIComponent(new URL(process.env.DATABASE_URL).username),
+        password: decodeURIComponent(new URL(process.env.DATABASE_URL).password),
+        database: new URL(process.env.DATABASE_URL).pathname.replace(/^\//, ""),
         ssl: { rejectUnauthorized: true },
         waitForConnections: true,
         connectionLimit: 5,
