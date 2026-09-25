@@ -5,9 +5,9 @@ const config: CapacitorConfig = {
   appName: 'لحظة | Lahza',
   webDir: 'dist/public',
   server: {
-    url: 'https://lahza.vibenest.net/',
+    url: 'https://app-6ab5ab21.deploy.meerasolution.com/',
     cleartext: false,
-    allowNavigation: ['lahza.vibenest.net']
+    allowNavigation: ['app-6ab5ab21.deploy.meerasolution.com']
   }
 };
 
