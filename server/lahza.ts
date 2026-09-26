@@ -9,7 +9,6 @@ import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, custom
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
-import { demoProductImages, demoProductTemplates, type DemoStoreCategory } from "./demoCatalog";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getRoadRoute } from "./maps";
 import { cleanExpiredOffers } from "./expiredOffers";
@@ -1082,39 +1081,17 @@ const demoStoreNames: Record<(typeof customerDeliveryCategories)[number], string
   clothing: ["أناقة الورد", "خزانة مودا", "لمسة قماش", "ستايل البيت", "موضة اليوم"],
   gas: ["غاز الحارة", "بيت الدفء", "أسطوانة بلس", "غاز الأمان", "خدمة الغاز"],
 };
-
-async function ensureDemoStores(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
-  // Seed demo stores only on an empty database. Do not recreate a store
-  // after the owner deliberately deletes it.
-  const anyExistingStore = await db.select({ id: stores.id }).from(stores).limit(1);
-  if (anyExistingStore.length) return;
-  for (const category of customerDeliveryCategories) {
-    const existing = await db.select({ id: stores.id }).from(stores).where(eq(stores.category, category)).orderBy(stores.sortOrder, stores.id).limit(5);
-    if (existing.length >= 5) continue;
-    const missingNames = demoStoreNames[category].slice(existing.length, 5);
-    for (let index = 0; index < missingNames.length; index += 1) {
-      const name = missingNames[index];
-      await db.insert(stores).values({ name, category, restaurantType: "all", active: true, sortOrder: 900 + existing.length + index });
-    }
-  }
+const demoStoreNameList = Object.values(demoStoreNames).flat();
+export async function removeDemoStores() {
+  const db = await getDb();
+  if (!db) return;
+  await ensureJarabulusGatewaySchema(db);
+  await ensureProfileImageColumns(db);
+  await ensureCatalogItemSchema(db);
+  // Remove only the historical seed rows; real stores are never matched by code/name.
+  await db.delete(catalogItems).where(like(catalogItems.code, "demo-%"));
+  await db.delete(stores).where(and(isNull(stores.partnerId), inArray(stores.name, demoStoreNameList), gte(stores.sortOrder, 900)));
 }
-
-async function ensureDemoProducts(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
-  for (const category of customerDeliveryCategories) {
-    const demoStores = await db.select({ id: stores.id }).from(stores).where(and(eq(stores.category, category), gte(stores.sortOrder, 900))).orderBy(stores.sortOrder, stores.id).limit(5);
-    for (const store of demoStores) {
-      const templates = demoProductTemplates[category as DemoStoreCategory];
-      for (let index = 0; index < templates.length; index += 1) {
-        const product = templates[index];
-        const code = `demo-${category}-${store.id}-${index + 1}`;
-        const imageUrl = demoProductImages[category as DemoStoreCategory];
-        const estimatedUnitPrice = toLegacySyp(product.estimatedPrice);
-        await db.insert(catalogItems).values({ code, name: product.name, category, unit: product.unit, unitPrice: estimatedUnitPrice, available: true, deleted: false, storeId: store.id, imageUrl }).onDuplicateKeyUpdate({ set: { name: product.name, category, unit: product.unit, unitPrice: sql`IF(${catalogItems.unitPrice} = 0, ${estimatedUnitPrice}, ${catalogItems.unitPrice})`, available: true, deleted: false, imageUrl } });
-      }
-    }
-  }
-}
-
 async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   await ensureColumns(db, "catalog_items", [
     ["imageUrl", "VARCHAR(500) NULL"],
@@ -1126,17 +1103,6 @@ async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof
     ["clothingColors", "VARCHAR(500) NULL"],
     ["clothingVariantImages", "TEXT NULL"],
   ]);
-}
-
-export async function ensureDemoStoresSeed() {
-  const db = await getDb();
-  if (!db) return;
-  await ensureJarabulusGatewaySchema(db);
-  await ensureDispatchLocationSchema(db);
-  await ensureProfileImageColumns(db);
-  await ensureCatalogItemSchema(db);
-  await ensureDemoStores(db);
-  await ensureDemoProducts(db);
 }
 
 async function ensureCatalogSeed() {
@@ -2654,7 +2620,7 @@ export const lahzaRouter = router({
     }),
     categories: router({
       list: publicProcedure.query(async ({ ctx }) => {
-        await requireAdmin(ctx, ["owner"]);
+        await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         return db.select().from(customCategories).orderBy(customCategories.sortOrder, customCategories.title);

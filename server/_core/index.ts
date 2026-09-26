@@ -3,7 +3,7 @@ import express from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
-import { autoCompleteDueOrders, ensureDemoStoresSeed, ensureLahzaRuntimeSchema, handleWahaWebhook } from "../lahza";
+import { autoCompleteDueOrders, removeDemoStores, ensureLahzaRuntimeSchema, handleWahaWebhook } from "../lahza";
 import { startDailyReadinessReminders } from "../daily-readiness-reminders";
 import { ensureScheduledPushSchema, runScheduledPushNotifications } from "../notificationDelivery";
 import { ensureDatabaseCompatibility, migrateDatabase } from "../db";
@@ -34,7 +34,7 @@ async function startServer() {
   await ensureDatabaseCompatibility();
   server.listen(port, () => console.log(`Lahza server listening on port ${port}`));
 
-  void ensureDemoStoresSeed().catch(error => console.warn("Unable to seed demo stores", error));
+  void removeDemoStores().catch(error => console.warn("Unable to remove legacy demo stores", error));
   startDailyReadinessReminders();
   const runScheduledPush = () => void runScheduledPushNotifications().catch(error => console.warn("Unable to deliver scheduled phone notifications", error));
   runScheduledPush();

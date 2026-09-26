@@ -6,7 +6,7 @@ import { buildEmployeeOrderWhatsAppUrl, buildWhatsAppLocationUrl, mapUrlFromNote
 import { countryCallingCodes } from "@/lib/countryCallingCodes";
 import { categoryMeta, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, orderStatusLabels, restaurantTypeMeta, storeCategories, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { CITY_LABELS, CITY_KEYS, DEFAULT_CITY, type CityKey } from "@shared/cities";
-import { Archive, ArrowRight, BadgeDollarSign, BadgePercent, BellRing, TicketPercent, CarFront, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, ImagePlus, KeyRound, Loader2, LogOut, MapPinned, Menu, MessageCircle, PackagePlus, PackageSearch, Pencil, Phone, RefreshCw, Route, Settings2, Share2, ShieldCheck, Store, Trash2, Trophy, UserPlus, UsersRound, X, XCircle, Package } from "lucide-react";
+import { Archive, ArrowRight, BadgeDollarSign, BadgePercent, BellRing, TicketPercent, CarFront, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, ImagePlus, KeyRound, Loader2, LogOut, MapPinned, Menu, MessageCircle, PackagePlus, PackageSearch, Pencil, Phone, RefreshCw, Route, Search, Settings2, Share2, ShieldCheck, Store, Trash2, Trophy, UserPlus, UsersRound, X, XCircle, Package } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -474,6 +474,7 @@ function PartnerStoreManagement() {
   const [name, setName] = useState("");
   const [category, setCategory] = useState<LahzaCategory>("groceries");
   const [storeFilterCategory, setStoreFilterCategory] = useState<LahzaCategory | "all">("all");
+  const [storeSearch, setStoreSearch] = useState("");
   const [restaurantType, setRestaurantType] = useState<RestaurantType>("all");
   const [customCategoryId, setCustomCategoryId] = useState("");
   const [partnerId, setPartnerId] = useState("");
@@ -499,14 +500,14 @@ function PartnerStoreManagement() {
   const stores = storesQuery.data ?? [];
   const partners = (partnersQuery.data ?? []).filter(partner => partner.active);
   const customCategories = (customCategoriesQuery.data ?? []).filter(category => category.active);
-  const storesInCategory = stores.filter(store => storeFilterCategory === "all" || store.category === storeFilterCategory);
+  const storesInCategory = stores.filter(store => (storeFilterCategory === "all" || store.category === storeFilterCategory) && (!storeSearch.trim() || store.name.toLocaleLowerCase().includes(storeSearch.trim().toLocaleLowerCase())));
   const selectedStore = stores.find(store => store.id === selectedStoreId) ?? null;
   const productList = selectedStore ? (catalogQuery.data ?? []).filter(product => product.storeId === selectedStore.id) : [];
   const saving = create.isPending || update.isPending || remove.isPending || createProduct.isPending || updateProduct.isPending || removeProduct.isPending;
   return <div className="space-y-5">
     <section className="admin-section">
-      <div className="admin-section-heading"><div><p>صلاحية المالك فقط</p><h2>إنشاء متجر وتعيين شريك</h2></div><Store className="h-5 w-5 text-red-600" /></div>
-      <p className="settings-copy">اختر الشريك الذي سيدخل إلى هذا المتجر فقط. يمكن ترك المتجر بلا شريك إلى أن تعيّن حساباً مناسباً.</p>
+      <div className="admin-section-heading"><div><p>صلاحية المالك والمشرف</p><h2>إنشاء متجر وتعيين شريك</h2></div><Store className="h-5 w-5 text-red-600" /></div>
+      <p className="settings-copy">يمكن للمالك أو المشرف إضافة متجر جديد وتعيين شريك له لاحقاً.</p>
       <div className="grid gap-3 md:grid-cols-4">
         <div><Label>اسم المتجر</Label><Input value={name} onChange={event => setName(event.target.value)} placeholder="مثال: حلويات الشام" /></div>
         <div><Label>القسم</Label><select value={category} onChange={event => setCategory(event.target.value as LahzaCategory)} className="form-select">{(Object.keys(categoryMeta) as LahzaCategory[]).map(key => <option key={key} value={key}>{categoryMeta[key].title}</option>)}<option value="other">قسم مخصص</option></select></div>
@@ -522,7 +523,7 @@ function PartnerStoreManagement() {
     </section>
     <section className="admin-section">
       <div className="admin-section-heading"><div><p>الخطوة الأولى</p><h2>المتاجر والشركاء المعيّنون</h2></div><span className="admin-note">اختر القسم ثم المتجر لإدارة منتجاته</span></div>
-      <div className="mb-4 max-w-xl"><Label>1. اختر القسم</Label><select value={storeFilterCategory} onChange={event => { setStoreFilterCategory(event.target.value as LahzaCategory | "all"); setSelectedStoreId(null); }} className="form-select"><option value="all">كل الأقسام</option>{(Object.keys(categoryMeta) as LahzaCategory[]).map(key => <option key={key} value={key}>{categoryMeta[key].title}</option>)}</select></div>
+      <div className="mb-4 grid gap-3 md:grid-cols-2"><div><Label>ابحث داخل قائمة المتاجر</Label><div className="relative"><Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><Input value={storeSearch} onChange={event => setStoreSearch(event.target.value)} placeholder="اكتب اسم المتجر..." className="pr-9" /></div></div><div><Label>1. اختر القسم</Label><select value={storeFilterCategory} onChange={event => { setStoreFilterCategory(event.target.value as LahzaCategory | "all"); setSelectedStoreId(null); }} className="form-select"><option value="all">كل الأقسام</option>{(Object.keys(categoryMeta) as LahzaCategory[]).map(key => <option key={key} value={key}>{categoryMeta[key].title}</option>)}</select></div></div>
       {storesInCategory.length ? <div className="grid gap-3 lg:grid-cols-2">{storesInCategory.map(store => <AssignedStoreRow key={store.id} store={store} partners={partners} customCategories={customCategories} selected={selectedStore?.id === store.id} saving={saving} onSelect={() => setSelectedStoreId(store.id)} onGatewayToggle={enabled => setJarabulusGateway.mutate({ id: store.id, enabled })} onSave={async values => { const uploaded = values.imageUrl?.startsWith("data:") ? await uploadStoreImage.mutateAsync({ storeId: values.id, dataUrl: values.imageUrl }) : null; update.mutate({ ...values, imageUrl: uploaded?.imageUrl ?? values.imageUrl ?? "" }); }} onRemove={() => { if (confirm(`حذف متجر ${store.name}؟`)) remove.mutate({ id: store.id }); }} />)}</div> : <Empty icon={Store} title="لا توجد متاجر بعد" text="أنشئ متجراً ثم عيّن شريكاً له ليتمكن من الدخول وإدارة منتجاته." />}
     </section>
     {selectedStore ? <section className="admin-section">
