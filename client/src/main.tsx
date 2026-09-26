@@ -3,10 +3,14 @@ import { getAuthRuntimeId } from "@/lib/authRuntime";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { createRoot } from "react-dom/client";
+import { Capacitor } from "@capacitor/core";
 import superjson from "superjson";
 import App from "./App";
 import "./index.css";
 import "./admin-layout-fix.css";
+
+const nativeApiOrigin = "https://app-6ab5ab21.deploy.meerasolution.com";
+const apiUrl = Capacitor.isNativePlatform() ? `${nativeApiOrigin}/api/trpc` : "/api/trpc";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -26,7 +30,7 @@ const queryClient = new QueryClient({
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: "/api/trpc",
+      url: apiUrl,
       transformer: superjson,
       fetch(input, init) {
         const headers = new Headers(init?.headers);
