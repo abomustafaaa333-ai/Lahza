@@ -559,6 +559,9 @@ export default function Home() {
     } else if (session.mode === "guest") {
       window.sessionStorage.removeItem("lahza_selected_city");
       setSelectedCity(null);
+      setCheckoutPhone("");
+      setCheckoutName("");
+      setSubmittedOrder(null);
     }
     setCustomerAuth(session);
   };
@@ -610,9 +613,11 @@ export default function Home() {
   const productSearchInput = useMemo(() => ({ query: normalizedSearchText }), [normalizedSearchText]);
   const productSearchQuery = trpc.lahza.storefront.searchProducts.useQuery(productSearchInput, { enabled: !isStaticDemo && searchOpen && normalizedSearchText.length >= 2, retry: false });
   const orderNotificationPhone = customerAuth?.phone || (checkoutPhone.length === 9 ? `+963${checkoutPhone}` : "");
-  const orderNotificationsQuery = trpc.lahza.notifications.orderFeed.useQuery({ customerPhone: orderNotificationPhone, unreadOnly: true }, { enabled: !isStaticDemo && /^\+[1-9]\d{6,14}$/.test(orderNotificationPhone), retry: false, refetchInterval: 15_000 });
+  const orderNotificationsQuery = trpc.lahza.notifications.orderFeed.useQuery({ customerPhone: orderNotificationPhone, unreadOnly: true }, { enabled: !isStaticDemo && customerAuth?.mode === "customer" && Boolean(customerAuth.phone) && /^\+[1-9]\d{6,14}$/.test(orderNotificationPhone), retry: false, refetchInterval: 15_000 });
   const markOrderNotificationRead = trpc.lahza.notifications.markOrderRead.useMutation({ onSuccess: () => { void orderNotificationsQuery.refetch(); } });
-  const staffSessionEnabled = !isStaticDemo && (!customerAuth || secretOpen);
+  // Staff session checks are only needed after the hidden management dialog is opened.
+  // Avoid three extra API calls during the normal customer/guest startup path.
+  const staffSessionEnabled = !isStaticDemo && secretOpen;
   const adminSessionQuery = trpc.lahza.admin.session.useQuery(undefined, { enabled: staffSessionEnabled, retry: false, staleTime: 60_000 });
   const partnerSessionQuery = trpc.lahza.partner.session.useQuery(undefined, { enabled: staffSessionEnabled, retry: false, staleTime: 60_000 });
   const driverSessionQuery = trpc.lahza.driverAuth.session.useQuery(undefined, { enabled: !isStaticDemo, retry: false, staleTime: 30_000 });
@@ -973,6 +978,9 @@ export default function Home() {
     window.localStorage.removeItem(CART_CHECKOUT_STORAGE_KEY);
     window.sessionStorage.removeItem("lahza_selected_city");
     setCart([]);
+    setCheckoutPhone("");
+    setCheckoutName("");
+    setSubmittedOrder(null);
     setSelectedCity(null);
     setCustomerAuth(null);
     setScreen("home");

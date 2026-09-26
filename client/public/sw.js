@@ -1,4 +1,4 @@
-const VERSION = "lahza-network-v1";
+const VERSION = "lahza-network-v2";
 const APP_CACHE = `${VERSION}-app`;
 const IMAGE_CACHE = `${VERSION}-images`;
 const APP_SHELL = ["/", "/manifest.json"];
@@ -33,9 +33,13 @@ self.addEventListener("fetch", event => {
   }
 
   if (request.mode === "navigate" || request.destination === "script" || request.destination === "style" || request.destination === "font") {
-    event.respondWith(fetch(request).then(response => {
-      if (response.ok) caches.open(APP_CACHE).then(cache => cache.put(request, response.clone()));
-      return response;
-    }).catch(() => caches.match(request).then(cached => cached || caches.match("/"))));
+    event.respondWith(caches.open(APP_CACHE).then(async cache => {
+      const cached = await cache.match(request);
+      const network = fetch(request).then(response => {
+        if (response.ok) cache.put(request, response.clone());
+        return response;
+      }).catch(() => cached || caches.match("/"));
+      return cached || network;
+    }));
   }
 });

@@ -39,10 +39,15 @@ export function getSessionCookieOptions(
   //       ? hostname
   //       : undefined;
 
+  const origin = req.headers.origin ?? "";
+  const nativeAppOrigin = origin.startsWith("capacitor://") || origin.startsWith("http://localhost") || origin.startsWith("https://localhost");
+
   return {
     httpOnly: true,
     path: "/",
-    sameSite: "lax",
-    secure: isSecureRequest(req),
+    // The APK serves its UI from capacitor://localhost and calls the HTTPS
+    // API cross-origin. Lax cookies are silently dropped in that case.
+    sameSite: nativeAppOrigin ? "none" : "lax",
+    secure: nativeAppOrigin || isSecureRequest(req),
   };
 }

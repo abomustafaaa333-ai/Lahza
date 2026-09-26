@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "258300508830",
+    "project_id": "lahza-nonfiction",
+    "storage_bucket": "lahza-nonfiction.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:258300508830:android:f1af34857cbb3e07fad98f",
+        "android_client_info": {
+          "package_name": "com.lahza.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCcMGCSII_s-P0TrxaGWuzNZ3j9t_l3fcU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
