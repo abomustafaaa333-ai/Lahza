@@ -9,8 +9,16 @@ import App from "./App";
 import "./index.css";
 import "./admin-layout-fix.css";
 
-const nativeApiOrigin = "https://app-6ab5ab21.deploy.meerasolution.com";
-const apiUrl = Capacitor.isNativePlatform() ? `${nativeApiOrigin}/api/trpc` : "/api/trpc";
+// Configure VITE_LAHZA_API_ORIGIN for mobile builds so the APK calls the
+// current MSHOST server. Keep the old origin as a compatibility fallback for
+// already configured builds.
+const configuredApiOrigin =
+  import.meta.env.VITE_LAHZA_API_ORIGIN?.trim().replace(/\/$/, "");
+const nativeApiOrigin =
+  configuredApiOrigin || "https://app-6ab5ab21.deploy.meerasolution.com";
+const apiUrl = Capacitor.isNativePlatform()
+  ? `${nativeApiOrigin}/api/trpc`
+  : "/api/trpc";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,9 +43,16 @@ const trpcClient = trpc.createClient({
       fetch(input, init) {
         const headers = new Headers(init?.headers);
         headers.set("x-lahza-auth-runtime", getAuthRuntimeId());
-        const selectedCity = window.sessionStorage.getItem("lahza_selected_city");
-        if (selectedCity === "manbij" || selectedCity === "jarabulus") headers.set("x-lahza-city", selectedCity);
-        return globalThis.fetch(input, { ...(init ?? {}), credentials: "include", headers });
+        const selectedCity = window.sessionStorage.getItem(
+          "lahza_selected_city"
+        );
+        if (selectedCity === "manbij" || selectedCity === "jarabulus")
+          headers.set("x-lahza-city", selectedCity);
+        return globalThis.fetch(input, {
+          ...(init ?? {}),
+          credentials: "include",
+          headers,
+        });
       },
     }),
   ],
@@ -48,7 +63,7 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <App />
     </QueryClientProvider>
-  </trpc.Provider>,
+  </trpc.Provider>
 );
 
 if ("serviceWorker" in navigator && window.location.protocol === "https:") {
