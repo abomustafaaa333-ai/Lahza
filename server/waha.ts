@@ -20,7 +20,10 @@ export function normalizeWahaReply(value: string) {
 }
 
 export function normalizeWahaChatId(phone: string) {
-  const digits = phone.replace(/\D/g, "");
+  let digits = phone.replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/\D/g, "");
+  if (digits.startsWith("00")) digits = digits.slice(2);
+  // Existing driver records may contain a Syrian local number even though new records use +963.
+  if (digits.length === 10 && digits.startsWith("09")) digits = `963${digits.slice(1)}`;
   return digits ? `${digits}@c.us` : null;
 }
 

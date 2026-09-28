@@ -10,6 +10,10 @@ describe("WAHA integration", () => {
     expect(normalizeWahaChatId("---")).toBeNull();
     expect(normalizeWahaChatId("")).toBeNull();
   });
+  it("normalizes legacy Syrian local and 00-prefixed phone numbers", () => {
+    expect(normalizeWahaChatId("0997123456")).toBe("963997123456@c.us");
+    expect(normalizeWahaChatId("00963997123456")).toBe("963997123456@c.us");
+  });
 
   it("only reports configured when URL and API key are present", () => {
     expect(isWahaConfigured({ WAHA_URL: "http://waha", WAHA_API_KEY: "secret" })).toBe(true);
