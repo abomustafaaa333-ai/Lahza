@@ -386,6 +386,19 @@ function normalizeWahaPhoneForMatch(value: string) {
   const digits = value.replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/\D/g, "");
   return digits.startsWith("00") ? digits.slice(2) : digits;
 }
+function collectWahaTextValues(value: unknown, depth = 0): string[] {
+  if (depth > 7 || value === null || value === undefined) return [];
+  if (typeof value === "string") return value.trim() ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap(item => collectWahaTextValues(item, depth + 1));
+  if (typeof value !== "object") return [];
+  const record = value as Record<string, unknown>;
+  const values: string[] = [];
+  for (const [key, item] of Object.entries(record)) {
+    if (["body", "text", "conversation", "caption", "content"].includes(key) && typeof item === "string" && item.trim()) values.push(item);
+    if (typeof item === "object" && item !== null) values.push(...collectWahaTextValues(item, depth + 1));
+  }
+  return values;
+}
 async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverPhone: string, storeName: string, customerName: string, locationText: string | null, locationUrl: string | null) {
   const details = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   const lines = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
@@ -496,9 +509,10 @@ async function processPharmacyPricingReminders(db: NonNullable<Awaited<ReturnTyp
 }
 
 export async function handleWahaWebhook(body: unknown) {
-  const event = body as { event?: string; payload?: Record<string, unknown> };
+  const event = body as { event?: string; payload?: Record<string, unknown>; data?: Record<string, unknown> };
   if (event.event && event.event !== "message.any" && event.event !== "message") return;
-  const payload = event.payload;
+  const eventData = event.data && typeof event.data === "object" ? event.data : undefined;
+  const payload = event.payload ?? (eventData?.payload as Record<string, unknown> | undefined) ?? (eventData?.from ? eventData : undefined) ?? (body as Record<string, unknown>);
   if (!payload || payload.fromMe === true) return;
   const data = (payload._data && typeof payload._data === "object" ? payload._data : {}) as Record<string, unknown>;
   const dataInfo = data.info && typeof data.info === "object" ? data.info as Record<string, unknown> : {};
@@ -516,11 +530,12 @@ export async function handleWahaWebhook(body: unknown) {
   const nestedExtended = nestedMessage.extendedTextMessage && typeof nestedMessage.extendedTextMessage === "object" ? nestedMessage.extendedTextMessage as Record<string, unknown> : {};
   // Deliberately read text fields only. Button and interactive replies are no
   // longer part of the driver workflow.
-  const textReplyCandidates = [data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, payload.body, payload.text];
+  const textReplyCandidates = [...collectWahaTextValues(payload), data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, payload.body, payload.text];
   const rawReply = textReplyCandidates.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map(value => normalizeWahaReply(value)).find(value => ["نعم", "لا", "جاهز", "غير جاهز", "10"].includes(value)) ?? "";
   const completeCommand = rawReply === "10";
   const availabilityReply = rawReply === "جاهز" || rawReply === "غير جاهز" ? rawReply : "";
   const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";
+  console.info("WAHA driver text received", { event: event.event ?? "direct", rawReply, senderIds, textCandidates: textReplyCandidates.filter(value => typeof value === "string").slice(0, 5) });
   if (!availabilityReply && !orderReply && !completeCommand) return;
   const db = await getDb();
   if (!db) return;
@@ -532,7 +547,10 @@ export async function handleWahaWebhook(body: unknown) {
     return senderDigits === driverDigits || (senderDigits.length >= 9 && driverDigits.length >= 9 && senderDigits.slice(-9) === driverDigits.slice(-9));
   }));
   console.info("WAHA driver reply identity", { rawReply, senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
-  if (!driver) return;
+  if (!driver) {
+    if (senderPhones[0]) void sendWahaText(senderPhones[0], { body: "لم أتعرف على رقمك كمندوب مسجل في لحظة. يرجى التأكد من رقم واتساب المسجل لدى الإدارة." });
+    return;
+  }
   if (availabilityReply) {
     await db.update(drivers).set({ available: availabilityReply === "جاهز", readyForOrders: availabilityReply === "جاهز" }).where(eq(drivers.id, driver.id));
     void sendWahaText(driver.phone, { body: availabilityReply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك." });
@@ -554,14 +572,28 @@ export async function handleWahaWebhook(body: unknown) {
     void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل، وأصبحت متاحاً لاستقبال طلب جديد.` });
     return;
   }
-  if (orderReply) { const handledByBroadcast = await claimBroadcastOrder(db, driver, orderReply === "نعم"); if (handledByBroadcast) return; }
+  if (orderReply) {
+    try {
+      const handledByBroadcast = await claimBroadcastOrder(db, driver, orderReply === "نعم");
+      if (handledByBroadcast) return;
+    } catch (error) {
+      console.error("Unable to process driver broadcast reply", { driverId: driver.id, rawReply, error });
+      void sendWahaText(driver.phone, { body: "تم استلام ردك، لكن حدث خطأ مؤقت أثناء إسناد الطلب. أرسل نعم مرة أخرى بعد لحظات." });
+      return;
+    }
+  }
   const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"), inArray(orders.status, ["pending", "confirmed"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
   if (!assignment) {
-    // نعم/لا خارج مهلة الإسناد أو دون طلب حالي: ignore completely.
+    void sendWahaText(driver.phone, { body: "تم استلام ردك، لكن لا يوجد طلب مفتوح بانتظار ردك حالياً." });
     return;
   }
   if (orderReply) {
-    await processDriverAssignmentResponse(db, driver.id, assignment.order.id, orderReply === "نعم");
+    try {
+      await processDriverAssignmentResponse(db, driver.id, assignment.order.id, orderReply === "نعم");
+    } catch (error) {
+      console.error("Unable to process driver assignment reply", { driverId: driver.id, orderId: assignment.order.id, rawReply, error });
+      void sendWahaText(driver.phone, { body: "تم استلام ردك، لكن حدث خطأ مؤقت أثناء تحديث الطلب. أرسل نعم مرة أخرى بعد لحظات." });
+    }
     return;
   }
   await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, assignment.assignment.id));
