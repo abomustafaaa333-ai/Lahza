@@ -362,7 +362,7 @@ function CustomerAuthScreen({ onAuthenticated, onStaffLogin }: { onAuthenticated
       if (result.error) throw result.error;
       const lookup = result.data;
       if (!lookup) throw new Error("تعذر التحقق من الحساب حالياً. تحقق من اتصال الإنترنت وحاول مرة أخرى.");
-      if (lookup.kind === "staff") { setStaffPhone(fullPhone); setStaffRole(lookup.role); setStaffPassword(""); setStep("staff-password"); return; }
+      if (lookup.kind === "staff") { setStaffPhone(fullPhone); setStaffRole(lookup.role); setStaffPassword("0000"); setStep("staff-password"); return; }
       const account = lookup.account;
       if (String(account.status) === "new") { setError("هذا الرقم غير مسجل بعد. اختر «التسجيل» لإنشاء حساب جديد."); return; }
       if (account.status === "rejected" || account.status === "suspended") { setError("لا يمكن الدخول بهذا الحساب حالياً. تواصل مع فريق لحظة."); return; }

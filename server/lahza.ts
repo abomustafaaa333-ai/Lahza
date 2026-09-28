@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { automaticDiscounts, catalogItems, contestCampaigns, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
-import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
@@ -18,7 +18,7 @@ import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
 import { sendPushNotification } from "./pushNotifications";
 import { sendCampaignPushNow } from "./notificationDelivery";
-import { resolveWahaLid, sendWahaReplyButtons, sendWahaText } from "./waha";
+import { normalizeWahaReply, resolveWahaLid, sendWahaReplyButtons, sendWahaText } from "./waha";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
@@ -413,8 +413,8 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   console.info("Automatic dispatch recipient", { orderId, driverId: nearest.id, phone: maskPhone(nearest.phone), chatId: `${nearest.phone.replace(/\D/g, "")}@c.us`.replace(/^(\d{6})\d+(\d{4}@c\.us)$/, "$1***$2"), distanceMeters: distance });
   const orderDetails = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   const orderItems = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
-  const itemsText = orderItems.length ? orderItems.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatNewSyp(item.unitPrice)} — المجموع: ${formatNewSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
-  const driverMessage = { title: `طلب جديد #${orderId}`, body: `المتجر: ${store.name}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatNewSyp(orderDetails?.deliveryFee ?? 0)}\nالإجمالي: ${formatNewSyp(orderDetails?.totalAmount ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${orderDetails?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(orderDetails?.deliveryDistanceMeters ?? 0))}م\nهل أنت جاهز لتنفيذ الطلب؟` };
+  const itemsText = orderItems.length ? orderItems.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatSyp(item.unitPrice)} — المجموع: ${formatSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
+  const driverMessage = { title: `طلب جديد #${orderId}`, body: `المتجر: ${store.name}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatSyp(orderDetails?.deliveryFee ?? 0)}\nالإجمالي: ${formatSyp(orderDetails?.totalAmount ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${orderDetails?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(orderDetails?.deliveryDistanceMeters ?? 0))}م\nهل أنت جاهز لتنفيذ الطلب؟` };
   void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: نعم أو لا.` });
   void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]).then(result => {
     if (!result.sent) console.warn("Interactive driver buttons unavailable; text message was already sent", { orderId, driverId: nearest.id });
@@ -435,7 +435,7 @@ async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnTyp
   await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, driverName: nearest.name, status: "assigned", note: "طلب وصّل لي: استلام من عنوان مكتوب وتسليم إلى موقع GPS" }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, driverName: nearest.name, status: "assigned", note: "طلب وصّل لي: استلام من عنوان مكتوب وتسليم إلى موقع GPS", assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
   await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
   const orderDetails = (await db.select({ customerPhone: orders.customerPhone, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
-  const message = { title: `طلب وصّل لي #${orderId}`, body: `طلب وصّل لي\nصاحب الطلب: ${customerName}\nرقم صاحب الطلب: ${orderDetails?.customerPhone || "غير متوفر"}\n\nاستلام الغرض من:\n${pickupLocation}\nرقم جهة الاستلام: ${pickupContactPhone}\n\nتسليم الغرض إلى:\n${destinationText}\n${destinationUrl}\n\nنوع الغرض: ${itemDescription}\nالمسافة ذهاباً وإياباً: ${Math.ceil(Number(orderDetails?.deliveryDistanceMeters ?? 0) / 1000)} كم\nسعر التوصيل: ${formatNewSyp(orderDetails?.deliveryFee ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nأجب بكلمة: نعم أو لا.` };
+  const message = { title: `طلب وصّل لي #${orderId}`, body: `طلب وصّل لي\nصاحب الطلب: ${customerName}\nرقم صاحب الطلب: ${orderDetails?.customerPhone || "غير متوفر"}\n\nاستلام الغرض من:\n${pickupLocation}\nرقم جهة الاستلام: ${pickupContactPhone}\n\nتسليم الغرض إلى:\n${destinationText}\n${destinationUrl}\n\nنوع الغرض: ${itemDescription}\nالمسافة ذهاباً وإياباً: ${Math.ceil(Number(orderDetails?.deliveryDistanceMeters ?? 0) / 1000)} كم\nسعر التوصيل: ${formatSyp(orderDetails?.deliveryFee ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nأجب بكلمة: نعم أو لا.` };
   void sendWahaText(nearest.phone, message);
   void sendWahaReplyButtons(nearest.phone, message, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]);
   return nearest.id;
@@ -460,8 +460,8 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
     for (const item of partnerItems) grouped.set(item.partnerId, [...(grouped.get(item.partnerId) ?? []), item]);
     Array.from(grouped.values()).forEach(items => {
       const first = items[0];
-      const itemsText = items.map((item: (typeof partnerItems)[number], index: number) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatNewSyp(item.unitPrice)} — المجموع: ${formatNewSyp(item.lineTotal)}`).join("\n");
-      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${orderId}`, body: `يرجى تجهيز الطلب #${orderId}\n\n${itemsText}\n\nالإجمالي: ${formatNewSyp(row.order.totalAmount)}` });
+      const itemsText = items.map((item: (typeof partnerItems)[number], index: number) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatSyp(item.unitPrice)} — المجموع: ${formatSyp(item.lineTotal)}`).join("\n");
+      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${orderId}`, body: `يرجى تجهيز الطلب #${orderId}\n\n${itemsText}\n\nالإجمالي: ${formatSyp(row.order.totalAmount)}` });
     });
   }
   const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${orderId} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${row.driver.phone}\nللتواصل عبر واتساب: https://wa.me/${row.driver.phone.replace(/\D/g, "")}` };
@@ -494,10 +494,10 @@ async function processPharmacyPriceReply(db: NonNullable<Awaited<ReturnType<type
   if (!pending?.order) return false;
   const priceLegacy = toLegacySyp(priceNewSyp);
   await db.update(orders).set({ pharmacyPrice: priceLegacy, totalAmount: priceLegacy + pending.order.deliveryFee, pharmacyPricingStatus: "priced" }).where(eq(orders.id, pending.order.id));
-  const priceMessage = { title: "تم تحديد سعر الوصفة", body: `تم تحديد سعر وصفة طلبك #${pending.order.id}: ${formatNewSyp(priceLegacy)}. سيستمر تجهيز الطلب.` };
+  const priceMessage = { title: "تم تحديد سعر الوصفة", body: `تم تحديد سعر وصفة طلبك #${pending.order.id}: ${formatSyp(priceLegacy)}. سيستمر تجهيز الطلب.` };
   void sendWahaText(pending.order.customerPhone, priceMessage);
   const assignment = (await db.select({ phone: drivers.phone }).from(orderAssignments).innerJoin(drivers, eq(orderAssignments.driverId, drivers.id)).where(and(eq(orderAssignments.orderId, pending.order.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]))).limit(1))[0];
-  if (assignment) void sendWahaText(assignment.phone, { body: `تم استلام سعر الصيدلي للطلب #${pending.order.id}: ${formatNewSyp(priceLegacy)}. تابع تنفيذ الطلب.` });
+  if (assignment) void sendWahaText(assignment.phone, { body: `تم استلام سعر الصيدلي للطلب #${pending.order.id}: ${formatSyp(priceLegacy)}. تابع تنفيذ الطلب.` });
   return true;
 }
 
@@ -513,19 +513,27 @@ async function processPharmacyPricingReminders(db: NonNullable<Awaited<ReturnTyp
 }
 
 export async function handleWahaWebhook(body: unknown) {
-  const event = body as { event?: string; payload?: { from?: string; participant?: string; body?: string; fromMe?: boolean; _data?: { from?: string; author?: string; participant?: string; dynamicReplyButtons?: Array<{ buttonId?: string; buttonText?: { displayText?: string } }> } } };
+  const event = body as { event?: string; payload?: Record<string, unknown> };
   if (event.event && event.event !== "message.any" && event.event !== "message") return;
   const payload = event.payload;
-  if (!payload || payload.fromMe || !payload.from) return;
-  const senderIds = [payload.from, payload.participant, payload._data?.from, payload._data?.author, payload._data?.participant].filter((value): value is string => Boolean(value));
+  if (!payload || payload.fromMe === true) return;
+  const data = (payload._data && typeof payload._data === "object" ? payload._data : {}) as Record<string, unknown>;
+  const senderIds = [payload.from, payload.participant, payload.author, payload.sender, data.from, data.author, data.participant, data.sender]
+    .filter((value): value is string => typeof value === "string" && Boolean(value));
+  if (!senderIds.length) return;
   const senderPhones = senderIds.filter(value => !value.includes("@lid") && !value.includes("@g.us")).map(value => `+${value.replace(/\D/g, "")}`).filter(value => /^\+\d{7,15}$/.test(value));
   for (const senderId of senderIds.filter(value => value.includes("@lid"))) {
     const resolvedPhone = await resolveWahaLid(senderId);
     if (resolvedPhone) senderPhones.push(resolvedPhone);
   }
-  const buttonReply = payload._data?.dynamicReplyButtons?.at(-1)?.buttonText?.displayText;
-  const buttonId = payload._data?.dynamicReplyButtons?.at(-1)?.buttonId;
-  const rawReply = (buttonReply || payload.body || (buttonId === "ready" ? "نعم" : buttonId === "not_ready" ? "لا" : "")).trim().replace(/[.!؟?]+$/g, "");
+  const dynamicButtons = Array.isArray(data.dynamicReplyButtons) ? data.dynamicReplyButtons as Array<Record<string, unknown>> : [];
+  const lastButton = dynamicButtons.at(-1);
+  const buttonText = lastButton?.buttonText && typeof lastButton.buttonText === "object" ? (lastButton.buttonText as Record<string, unknown>).displayText : lastButton?.buttonText;
+  const nestedMessage = data.message && typeof data.message === "object" ? data.message as Record<string, unknown> : {};
+  const nestedExtended = nestedMessage.extendedTextMessage && typeof nestedMessage.extendedTextMessage === "object" ? nestedMessage.extendedTextMessage as Record<string, unknown> : {};
+  const rawValue = [buttonText, data.selectedDisplayText, data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, payload.body, payload.text]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0) ?? (lastButton?.buttonId === "ready" ? "نعم" : lastButton?.buttonId === "not_ready" ? "لا" : "");
+  const rawReply = normalizeWahaReply(rawValue);
   const completeCommand = rawReply === "10";
   const availabilityReply = rawReply === "جاهز" || rawReply === "غير جاهز" ? rawReply : "";
   const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";
@@ -563,34 +571,8 @@ export async function handleWahaWebhook(body: unknown) {
     // نعم/لا خارج مهلة الإسناد أو دون طلب حالي: ignore completely.
     return;
   }
-  if (orderReply === "نعم") {
-    await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, assignment.assignment.id));
-    await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب عبر واتساب" }).where(eq(orders.id, assignment.order.id));
-    const partnerItems = await db.select({ partnerId: partners.id, partnerPhone: partners.username, partnerName: partners.name, itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal })
-      .from(orderLines)
-      .innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id))
-      .innerJoin(stores, eq(catalogItems.storeId, stores.id))
-      .innerJoin(partners, eq(stores.partnerId, partners.id))
-      .where(eq(orderLines.orderId, assignment.order.id));
-    const partnerGroups = new Map<number, typeof partnerItems>();
-    for (const item of partnerItems) {
-      const group = partnerGroups.get(item.partnerId) ?? [];
-      group.push(item);
-      partnerGroups.set(item.partnerId, group);
-    }
-    partnerGroups.forEach(items => {
-      const first = items[0];
-      const itemsText = items.map((item: (typeof partnerItems)[number], index: number) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatNewSyp(item.unitPrice)} — المجموع: ${formatNewSyp(item.lineTotal)}`).join("\n");
-      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${assignment.order.id}`, body: `يرجى تجهيز الطلب #${assignment.order.id}\n\n${itemsText}\n\nالإجمالي: ${formatNewSyp(assignment.order.totalAmount)}` });
-    });
-    const driverWhatsappNumber = driver.phone.replace(/\D/g, "");
-    const driverWhatsappUrl = `https://wa.me/${driverWhatsappNumber}`;
-    const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${assignment.order.id} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${driver.phone}\nللتواصل عبر واتساب: ${driverWhatsappUrl}` };
-    await db.insert(orderNotifications).values({ orderId: assignment.order.id, customerPhone: assignment.order.customerPhone, status: "preparing", title: customerMessage.title, body: customerMessage.body });
-    const customerTokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, assignment.order.customerPhone), eq(pushTokens.active, true)));
-    await sendPushNotification(customerTokens.map(row => row.token), customerMessage);
-    void sendWahaText(assignment.order.customerPhone, customerMessage);
-    void sendWahaText(driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${assignment.order.id}.` });
+  if (orderReply) {
+    await processDriverAssignmentResponse(db, driver.id, assignment.order.id, orderReply === "نعم");
     return;
   }
   await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, assignment.assignment.id));
@@ -1173,7 +1155,7 @@ const customCategoryInput = z.object({
 const partnerAccountInput = z.object({
   name: z.string().trim().min(2, "أدخل اسم الشريك أو المتجر").max(120),
   phone: internationalPhoneSchema,
-  password: passwordSchema,
+  password: passwordSchema.default(DEFAULT_STAFF_PASSWORD),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
   city: z.enum(CITY_KEYS).optional(),
 });
@@ -3006,13 +2988,13 @@ export const lahzaRouter = router({
         if (exists?.active) throw new Error("رقم المندوب مستخدم بالفعل");
         if (exists) {
           const { locationLat, locationLng, password, ...driverData } = input;
-          await db.update(drivers).set({ ...driverData, active: true, available: true, passwordHash: exists.passwordHash || await hashSecret(password || "0000"), locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, exists.id));
-          void sendWahaText(input.phone, { body: `لقد تم تعيينك مندوباً في شركة لحظة. كلمة المرور الأولية: ${password || "0000"}` });
+          await db.update(drivers).set({ ...driverData, active: true, available: true, passwordHash: password ? await hashSecret(password) : (exists.passwordHash || await hashSecret(DEFAULT_STAFF_PASSWORD)), locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, exists.id));
+          void sendWahaText(input.phone, { body: `لقد تم تعيينك مندوباً في شركة لحظة. كلمة المرور الأولية: ${password || DEFAULT_STAFF_PASSWORD}` });
           return { success: true, reactivated: true };
         }
         const { locationLat, locationLng, password, ...driverData } = input;
-        await db.insert(drivers).values({ ...driverData, passwordHash: await hashSecret(password || "0000"), locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) });
-        void sendWahaText(input.phone, { body: `لقد تم تعيينك مندوباً في شركة لحظة. كلمة المرور الأولية: ${password || "0000"}` });
+        await db.insert(drivers).values({ ...driverData, passwordHash: await hashSecret(password || DEFAULT_STAFF_PASSWORD), locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) });
+        void sendWahaText(input.phone, { body: `لقد تم تعيينك مندوباً في شركة لحظة. كلمة المرور الأولية: ${password || DEFAULT_STAFF_PASSWORD}` });
         return { success: true };
       }),
       update: publicProcedure.input(driverInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {

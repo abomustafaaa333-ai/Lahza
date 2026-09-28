@@ -7,6 +7,18 @@ export type WahaMessage = {
 
 export type WahaReplyButton = { id: string; text: string };
 
+
+/** Converts common WAHA/WhatsApp button and text replies to canonical commands. */
+export function normalizeWahaReply(value: string) {
+  const normalized = value.normalize("NFKC").replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[.!؟?،,؛;:：\-]+$/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+  if (/^(10|١٠)$/.test(normalized)) return "10";
+  if (normalized.includes("غير جاهز") || normalized.includes("غير متاح") || /^(not ready)$/.test(normalized)) return "غير جاهز";
+  if (/^(نعم|yes|ok|موافق)$/.test(normalized)) return "نعم";
+  if (/^(لا|no|رفض)$/.test(normalized)) return "لا";
+  if (normalized.includes("جاهز") || normalized.includes("متاح") || normalized === "ready") return "جاهز";
+  return normalized;
+}
+
 export function normalizeWahaChatId(phone: string) {
   const digits = phone.replace(/\D/g, "");
   return digits ? `${digits}@c.us` : null;
