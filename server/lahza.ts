@@ -510,7 +510,8 @@ async function processPharmacyPricingReminders(db: NonNullable<Awaited<ReturnTyp
 
 export async function handleWahaWebhook(body: unknown) {
   const event = body as { event?: string; payload?: Record<string, unknown>; data?: Record<string, unknown> };
-  if (event.event && event.event !== "message.any" && event.event !== "message") return;
+  console.info("WAHA webhook received", { event: event.event ?? "none", bodyKeys: body && typeof body === "object" ? Object.keys(body as Record<string, unknown>) : [] });
+  if (event.event && !["message.any", "message"].includes(event.event) && !event.event.startsWith("message.")) return;
   const eventData = event.data && typeof event.data === "object" ? event.data : undefined;
   const payload = event.payload ?? (eventData?.payload as Record<string, unknown> | undefined) ?? (eventData?.from ? eventData : undefined) ?? (body as Record<string, unknown>);
   if (!payload || payload.fromMe === true) return;
@@ -537,6 +538,7 @@ export async function handleWahaWebhook(body: unknown) {
   const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";
   console.info("WAHA driver text received", { event: event.event ?? "direct", rawReply, senderIds, textCandidates: textReplyCandidates.filter(value => typeof value === "string").slice(0, 5) });
   if (!availabilityReply && !orderReply && !completeCommand) return;
+  if (orderReply && senderPhones[0]) void sendWahaText(senderPhones[0], { body: "تم استلام ردك، جارٍ التحقق من الطلب وإسناده." });
   const db = await getDb();
   if (!db) return;
   if (await processPharmacyPriceReply(db, senderPhones, rawReply)) return;
