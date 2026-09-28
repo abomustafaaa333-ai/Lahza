@@ -330,7 +330,7 @@ function CustomerAuthScreen({ onAuthenticated, onStaffLogin }: { onAuthenticated
   const normalizedPhone = phone.replace(/\D/g, "").replace(new RegExp(`^${callingCode}`), "").replace(/^0/, "");
   const fullPhone = `+${callingCode}${normalizedPhone}`;
   const validPhone = normalizedPhone.length > 0 && isValidPhoneNumber(fullPhone, countryCode);
-  const staffLookupQuery = trpc.lahza.admin.staffLookup.useQuery({ phone: fullPhone }, { enabled: false, retry: false, staleTime: 10_000 });
+  const staffLookupQuery = trpc.lahza.admin.staffLookup.useQuery({ phone: fullPhone }, { enabled: false, retry: 4, retryDelay: attempt => Math.min(1_000 * 2 ** attempt, 8_000), staleTime: 10_000 });
   const startFlow = (nextMode: "login" | "register") => {
     setMode(nextMode);
     setStep("phone");
