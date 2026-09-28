@@ -386,6 +386,13 @@ function normalizeWahaPhoneForMatch(value: string) {
   const digits = value.replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/\D/g, "");
   return digits.startsWith("00") ? digits.slice(2) : digits;
 }
+function collectWahaStringValues(value: unknown, depth = 0): string[] {
+  if (depth > 6 || value === null || value === undefined) return [];
+  if (typeof value === "string") return value.trim() ? [value] : [];
+  if (Array.isArray(value)) return value.flatMap(item => collectWahaStringValues(item, depth + 1));
+  if (typeof value !== "object") return [];
+  return Object.values(value as Record<string, unknown>).flatMap(item => collectWahaStringValues(item, depth + 1));
+}
 
 async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverPhone: string, storeName: string, customerName: string, locationText: string | null, locationUrl: string | null) {
   const details = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
@@ -527,9 +534,13 @@ export async function handleWahaWebhook(body: unknown) {
   const nestedListReply = nestedList.singleSelectReply && typeof nestedList.singleSelectReply === "object" ? nestedList.singleSelectReply as Record<string, unknown> : {};
   const selectedButtonId = [data.selectedButtonId, data.selectedButtonID, directButton.selectedButtonId, templateButton.selectedId, interactiveReply.id, nestedButton.selectedButtonId, nestedListReply.selectedRowId].find((value): value is string => typeof value === "string");
   const selectedButtonReply = selectedButtonId === "ready" ? "نعم" : selectedButtonId === "not_ready" ? "لا" : "";
-  const rawValue = [selectedButtonReply, buttonText, data.selectedDisplayText, data.selectedButtonText, data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, nestedButton.selectedDisplayText, nestedButton.selectedButtonId, nestedListReply.title, payload.body, payload.text]
-    .find((value): value is string => typeof value === "string" && value.trim().length > 0) ?? (lastButton?.buttonId === "ready" ? "نعم" : lastButton?.buttonId === "not_ready" ? "لا" : "");
-  const rawReply = normalizeWahaReply(rawValue);
+  const directReplyValues = [selectedButtonReply, buttonText, data.selectedDisplayText, data.selectedButtonText, data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, nestedButton.selectedDisplayText, nestedButton.selectedButtonId, nestedListReply.title, payload.body, payload.text];
+  // WAHA engines place button replies in different nested fields. Prefer a
+  // value that normalizes to a supported command instead of assuming one
+  // fixed webhook shape. This also handles a plain typed "نعم" reply.
+  const replyCandidates = [...directReplyValues, ...collectWahaStringValues(payload)];
+  const rawReply = replyCandidates.filter((value): value is string => typeof value === "string").map(value => normalizeWahaReply(value)).find(value => ["نعم", "لا", "جاهز", "غير جاهز", "10"].includes(value))
+    ?? (lastButton?.buttonId === "ready" ? "نعم" : lastButton?.buttonId === "not_ready" ? "لا" : "");
   const completeCommand = rawReply === "10";
   const availabilityReply = rawReply === "جاهز" || rawReply === "غير جاهز" ? rawReply : "";
   const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";
@@ -543,7 +554,7 @@ export async function handleWahaWebhook(body: unknown) {
     const driverDigits = normalizeWahaPhoneForMatch(candidate.phone);
     return senderDigits === driverDigits || (senderDigits.length >= 9 && driverDigits.length >= 9 && senderDigits.slice(-9) === driverDigits.slice(-9));
   }));
-  console.info("WAHA driver reply identity", { senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
+  console.info("WAHA driver reply identity", { rawReply, senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
   if (!driver) return;
   if (availabilityReply) {
     await db.update(drivers).set({ available: availabilityReply === "جاهز", readyForOrders: availabilityReply === "جاهز" }).where(eq(drivers.id, driver.id));
