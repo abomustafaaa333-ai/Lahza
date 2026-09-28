@@ -34,6 +34,10 @@ const internationalPhoneSchema = z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل
 const syrianCustomerPhoneSchema = z.string().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سوري صحيحاً يبدأ بـ 9 بعد النداء +963");
 const memoryOtpCodes = new Map<string, { codeHash: string; expiresAt: number; attempts: number }>();
 const memoryOtpVerified = new Map<string, number>();
+const recentWahaEvents = new Map<string, number>();
+const recentWahaCommands = new Map<string, number>();
+const WAHA_EVENT_DEDUPE_MS = 5 * 60_000;
+const WAHA_COMMAND_DEDUPE_MS = 20_000;
 const DEFAULT_MASTER_PIN = "0000";
 const LEGACY_DEFAULT_MASTER_PIN = "555369";
 const PREVIOUS_DEFAULT_MASTER_PIN = "1212";
@@ -48,6 +52,15 @@ let settingsSchemaPromise: Promise<void> | null = null;
 let masterPinMigrationChecked = false;
 const categories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery", "chicken", "breakfast", "lamb", "fuel", "other", "offers", "beauty_boutique"] as const;
 const restaurantTypes = ["all", "breakfast", "chicken", "grills", "sandwiches"] as const;
+
+function claimRecentWahaKey(store: Map<string, number>, key: string, ttlMs: number) {
+  const now = Date.now();
+  for (const [storedKey, expiresAt] of Array.from(store.entries())) if (expiresAt <= now) store.delete(storedKey);
+  const expiresAt = store.get(key);
+  if (expiresAt && expiresAt > now) return false;
+  store.set(key, now + ttlMs);
+  return true;
+}
 
 async function getStoreRatingMap(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   const rows = await db.select({
@@ -509,12 +522,18 @@ async function processPharmacyPricingReminders(db: NonNullable<Awaited<ReturnTyp
 }
 
 export async function handleWahaWebhook(body: unknown) {
-  const event = body as { event?: string; payload?: Record<string, unknown>; data?: Record<string, unknown> };
+  const event = body as { id?: unknown; event?: string; payload?: Record<string, unknown>; data?: Record<string, unknown> };
   console.info("WAHA webhook received", { event: event.event ?? "none", bodyKeys: body && typeof body === "object" ? Object.keys(body as Record<string, unknown>) : [] });
   if (event.event && !["message.any", "message"].includes(event.event) && !event.event.startsWith("message.")) return;
   const eventData = event.data && typeof event.data === "object" ? event.data : undefined;
   const payload = event.payload ?? (eventData?.payload as Record<string, unknown> | undefined) ?? (eventData?.from ? eventData : undefined) ?? (body as Record<string, unknown>);
   if (!payload || payload.fromMe === true) return;
+  const eventId = [event.id, payload.id, payload.messageId, payload._data && typeof payload._data === "object" ? (payload._data as Record<string, unknown>).id : undefined]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  if (eventId && !claimRecentWahaKey(recentWahaEvents, eventId, WAHA_EVENT_DEDUPE_MS)) {
+    console.info("Ignoring duplicate WAHA event", { eventId });
+    return;
+  }
   const data = (payload._data && typeof payload._data === "object" ? payload._data : {}) as Record<string, unknown>;
   const dataInfo = data.info && typeof data.info === "object" ? data.info as Record<string, unknown> : {};
   const dataInfoMessageSource = dataInfo.MessageSource && typeof dataInfo.MessageSource === "object" ? dataInfo.MessageSource as Record<string, unknown> : {};
@@ -538,9 +557,15 @@ export async function handleWahaWebhook(body: unknown) {
   const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";
   console.info("WAHA driver text received", { event: event.event ?? "direct", rawReply, senderIds, textCandidates: textReplyCandidates.filter(value => typeof value === "string").slice(0, 5) });
   if (!availabilityReply && !orderReply && !completeCommand) return;
-  if (orderReply && senderPhones[0]) void sendWahaText(senderPhones[0], { body: "تم استلام ردك، جارٍ التحقق من الطلب وإسناده." });
   const db = await getDb();
   if (!db) return;
+  if (/(?:السعر|سعر)\s*[:：-]?\s*[0-9٠-٩]/i.test(rawReply)) {
+    const partnerCommandKey = `partner:${senderPhones.map(normalizeWahaPhoneForMatch).sort().join(",")}:${rawReply}`;
+    if (!claimRecentWahaKey(recentWahaCommands, partnerCommandKey, WAHA_COMMAND_DEDUPE_MS)) {
+      console.info("Ignoring duplicate WAHA partner command", { rawReply, senderPhones: senderPhones.map(maskPhone) });
+      return;
+    }
+  }
   if (await processPharmacyPriceReply(db, senderPhones, rawReply)) return;
   const availableDrivers = await db.select().from(drivers);
   const driver = availableDrivers.find(candidate => senderPhones.some(phone => {
@@ -553,6 +578,11 @@ export async function handleWahaWebhook(body: unknown) {
     if (senderPhones[0]) void sendWahaText(senderPhones[0], { body: "لم أتعرف على رقمك كمندوب مسجل في لحظة. يرجى التأكد من رقم واتساب المسجل لدى الإدارة." });
     return;
   }
+  const commandKey = `${driver.id}:${rawReply}`;
+  if (!claimRecentWahaKey(recentWahaCommands, commandKey, WAHA_COMMAND_DEDUPE_MS)) {
+    console.info("Ignoring duplicate WAHA driver command", { driverId: driver.id, rawReply });
+    return;
+  }
   if (availabilityReply) {
     await db.update(drivers).set({ available: availabilityReply === "جاهز", readyForOrders: availabilityReply === "جاهز" }).where(eq(drivers.id, driver.id));
     void sendWahaText(driver.phone, { body: availabilityReply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك." });
@@ -561,7 +591,6 @@ export async function handleWahaWebhook(body: unknown) {
   if (completeCommand) {
     const activeAssignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
     if (!activeAssignment) {
-      void sendWahaText(driver.phone, { body: "لا يوجد لديك طلب نشط لإنهائه حالياً." });
       return;
     }
     const now = new Date();
@@ -571,7 +600,7 @@ export async function handleWahaWebhook(body: unknown) {
     await createOrderStatusNotification(db, activeAssignment.order, "completed");
     await awardCustomerPoint(db, activeAssignment.order.customerPhone, "order_completed", activeAssignment.order.id);
     await notifyOperationsOrderCompleted(db, activeAssignment.order.id);
-    void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل، وأصبحت متاحاً لاستقبال طلب جديد.` });
+    void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل.` });
     return;
   }
   if (orderReply) {
@@ -586,7 +615,6 @@ export async function handleWahaWebhook(body: unknown) {
   }
   const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"), inArray(orders.status, ["pending", "confirmed"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
   if (!assignment) {
-    void sendWahaText(driver.phone, { body: "تم استلام ردك، لكن لا يوجد طلب مفتوح بانتظار ردك حالياً." });
     return;
   }
   if (orderReply) {
