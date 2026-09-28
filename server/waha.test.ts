@@ -23,5 +23,7 @@ describe("WAHA integration", () => {
     expect(normalizeWahaReply("أنا جاهز")).toBe("جاهز");
     expect(normalizeWahaReply("غير جاهز")).toBe("غير جاهز");
     expect(normalizeWahaReply("١٠")).toBe("10");
+    expect(normalizeWahaReply("رقم 10")).toBe("10");
+    expect(normalizeWahaReply("الرقم ١٠")).toBe("10");
   });
 });

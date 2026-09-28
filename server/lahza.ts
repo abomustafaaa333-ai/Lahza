@@ -382,6 +382,11 @@ function maskPhone(phone: string) {
   return `+${digits.slice(0, 6)}***${digits.slice(-4)}`;
 }
 
+function normalizeWahaPhoneForMatch(value: string) {
+  const digits = value.replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/\D/g, "");
+  return digits.startsWith("00") ? digits.slice(2) : digits;
+}
+
 async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
   if (!storeId) {
     console.warn("Automatic dispatch skipped: order has no primary store", { orderId });
@@ -519,11 +524,12 @@ export async function handleWahaWebhook(body: unknown) {
   if (!payload || payload.fromMe === true) return;
   const data = (payload._data && typeof payload._data === "object" ? payload._data : {}) as Record<string, unknown>;
   const dataInfo = data.info && typeof data.info === "object" ? data.info as Record<string, unknown> : {};
+  const dataInfoMessageSource = dataInfo.MessageSource && typeof dataInfo.MessageSource === "object" ? dataInfo.MessageSource as Record<string, unknown> : {};
   const dataKey = data.key && typeof data.key === "object" ? data.key as Record<string, unknown> : {};
-  const senderIds = [payload.from, payload.participant, payload.author, payload.sender, payload.remoteJid, data.from, data.author, data.participant, data.sender, data.remoteJid, dataInfo.remoteJid, dataKey.remoteJid]
+  const senderIds = [payload.from, payload.participant, payload.author, payload.sender, payload.remoteJid, payload.chatId, data.from, data.author, data.participant, data.sender, data.remoteJid, data.chatId, dataInfo.remoteJid, dataInfo.sender, dataInfo.Sender, dataInfoMessageSource.Sender, dataInfoMessageSource.Chat, dataKey.remoteJid, dataKey.participant]
     .filter((value): value is string => typeof value === "string" && Boolean(value));
   if (!senderIds.length) return;
-  const senderPhones = senderIds.filter(value => !value.includes("@lid") && !value.includes("@g.us")).map(value => `+${value.replace(/\D/g, "")}`).filter(value => /^\+\d{7,15}$/.test(value));
+  const senderPhones = senderIds.filter(value => !value.includes("@lid") && !value.includes("@g.us")).map(value => `+${normalizeWahaPhoneForMatch(value)}`).filter(value => /^\+\d{7,15}$/.test(value));
   for (const senderId of senderIds.filter(value => value.includes("@lid"))) {
     const resolvedPhone = await resolveWahaLid(senderId);
     if (resolvedPhone) senderPhones.push(resolvedPhone);
@@ -549,7 +555,11 @@ export async function handleWahaWebhook(body: unknown) {
   if (!db) return;
   if (await processPharmacyPriceReply(db, senderPhones, rawReply)) return;
   const availableDrivers = await db.select().from(drivers);
-  const driver = availableDrivers.find(candidate => senderPhones.some(phone => phone === candidate.phone || phone.replace(/^\+/, "") === candidate.phone.replace(/^\+/, "")));
+  const driver = availableDrivers.find(candidate => senderPhones.some(phone => {
+    const senderDigits = normalizeWahaPhoneForMatch(phone);
+    const driverDigits = normalizeWahaPhoneForMatch(candidate.phone);
+    return senderDigits === driverDigits || (senderDigits.length >= 9 && driverDigits.length >= 9 && senderDigits.slice(-9) === driverDigits.slice(-9));
+  }));
   console.info("WAHA driver reply identity", { senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
   if (!driver) return;
   if (availabilityReply) {
@@ -573,7 +583,7 @@ export async function handleWahaWebhook(body: unknown) {
     void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل، وأصبحت متاحاً لاستقبال طلب جديد.` });
     return;
   }
-  const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"), gte(orderAssignments.assignedAt, new Date(Date.now() - 3 * 60_000)), inArray(orders.status, ["pending", "confirmed"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
+  const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"), inArray(orders.status, ["pending", "confirmed"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
   if (!assignment) {
     // نعم/لا خارج مهلة الإسناد أو دون طلب حالي: ignore completely.
     return;
