@@ -518,7 +518,9 @@ export async function handleWahaWebhook(body: unknown) {
   const payload = event.payload;
   if (!payload || payload.fromMe === true) return;
   const data = (payload._data && typeof payload._data === "object" ? payload._data : {}) as Record<string, unknown>;
-  const senderIds = [payload.from, payload.participant, payload.author, payload.sender, data.from, data.author, data.participant, data.sender]
+  const dataInfo = data.info && typeof data.info === "object" ? data.info as Record<string, unknown> : {};
+  const dataKey = data.key && typeof data.key === "object" ? data.key as Record<string, unknown> : {};
+  const senderIds = [payload.from, payload.participant, payload.author, payload.sender, payload.remoteJid, data.from, data.author, data.participant, data.sender, data.remoteJid, dataInfo.remoteJid, dataKey.remoteJid]
     .filter((value): value is string => typeof value === "string" && Boolean(value));
   if (!senderIds.length) return;
   const senderPhones = senderIds.filter(value => !value.includes("@lid") && !value.includes("@g.us")).map(value => `+${value.replace(/\D/g, "")}`).filter(value => /^\+\d{7,15}$/.test(value));
@@ -531,7 +533,12 @@ export async function handleWahaWebhook(body: unknown) {
   const buttonText = lastButton?.buttonText && typeof lastButton.buttonText === "object" ? (lastButton.buttonText as Record<string, unknown>).displayText : lastButton?.buttonText;
   const nestedMessage = data.message && typeof data.message === "object" ? data.message as Record<string, unknown> : {};
   const nestedExtended = nestedMessage.extendedTextMessage && typeof nestedMessage.extendedTextMessage === "object" ? nestedMessage.extendedTextMessage as Record<string, unknown> : {};
-  const rawValue = [buttonText, data.selectedDisplayText, data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, payload.body, payload.text]
+  const nestedButton = nestedMessage.buttonsResponseMessage && typeof nestedMessage.buttonsResponseMessage === "object" ? nestedMessage.buttonsResponseMessage as Record<string, unknown> : {};
+  const nestedList = nestedMessage.listResponseMessage && typeof nestedMessage.listResponseMessage === "object" ? nestedMessage.listResponseMessage as Record<string, unknown> : {};
+  const nestedListReply = nestedList.singleSelectReply && typeof nestedList.singleSelectReply === "object" ? nestedList.singleSelectReply as Record<string, unknown> : {};
+  const selectedButtonId = [data.selectedButtonId, data.selectedButtonID, nestedButton.selectedButtonId, nestedListReply.selectedRowId].find((value): value is string => typeof value === "string");
+  const selectedButtonReply = selectedButtonId === "ready" ? "نعم" : selectedButtonId === "not_ready" ? "لا" : "";
+  const rawValue = [selectedButtonReply, buttonText, data.selectedDisplayText, data.selectedButtonText, data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, nestedButton.selectedDisplayText, nestedButton.selectedButtonId, nestedListReply.title, payload.body, payload.text]
     .find((value): value is string => typeof value === "string" && value.trim().length > 0) ?? (lastButton?.buttonId === "ready" ? "نعم" : lastButton?.buttonId === "not_ready" ? "لا" : "");
   const rawReply = normalizeWahaReply(rawValue);
   const completeCommand = rawReply === "10";
@@ -1586,7 +1593,7 @@ export const lahzaRouter = router({
       const result = await processDriverAssignmentResponse(db, session.driverId, input.orderId, input.accept);
       return { success: true, ...result };
     }),
-    login: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema, password: passwordSchema })).mutation(async ({ ctx, input }) => {
+    login: publicProcedure.input(z.object({ phone: internationalPhoneSchema, password: passwordSchema })).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
       if (!runtimeId) throw new Error("تعذر تأمين جلسة المندوب، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
@@ -2032,7 +2039,7 @@ export const lahzaRouter = router({
       const assignedStores = await db.select().from(stores).where(eq(stores.partnerId, found[0].id)).orderBy(stores.category, stores.sortOrder, stores.name);
       return { ...found[0], workHours: parseStoreHours(found[0].workHours), stores: assignedStores };
     }),
-    login: publicProcedure.input(z.object({ phone: syrianCustomerPhoneSchema, password: passwordSchema })).mutation(async ({ ctx, input }) => {
+    login: publicProcedure.input(z.object({ phone: internationalPhoneSchema, password: passwordSchema })).mutation(async ({ ctx, input }) => {
       const runtimeId = getAuthRuntimeId(ctx);
       if (!runtimeId) throw new Error("تعذر تأمين جلسة الشريك، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
