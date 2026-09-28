@@ -18,7 +18,7 @@ import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
 import { sendPushNotification } from "./pushNotifications";
 import { sendCampaignPushNow } from "./notificationDelivery";
-import { normalizeWahaReply, resolveWahaLid, sendWahaReplyButtons, sendWahaText } from "./waha";
+import { normalizeWahaReply, resolveWahaLid, sendWahaText } from "./waha";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
@@ -386,14 +386,6 @@ function normalizeWahaPhoneForMatch(value: string) {
   const digits = value.replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/\D/g, "");
   return digits.startsWith("00") ? digits.slice(2) : digits;
 }
-function collectWahaStringValues(value: unknown, depth = 0): string[] {
-  if (depth > 6 || value === null || value === undefined) return [];
-  if (typeof value === "string") return value.trim() ? [value] : [];
-  if (Array.isArray(value)) return value.flatMap(item => collectWahaStringValues(item, depth + 1));
-  if (typeof value !== "object") return [];
-  return Object.values(value as Record<string, unknown>).flatMap(item => collectWahaStringValues(item, depth + 1));
-}
-
 async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverPhone: string, storeName: string, customerName: string, locationText: string | null, locationUrl: string | null) {
   const details = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   const lines = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
@@ -406,7 +398,7 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   console.info("Driver broadcast candidate check", { orderId, orderCity, availableCount: candidates.length, targetDriverIds: target.map(d => d.id), excludedDriverIds });
   if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب متاح حالياً.` }); return null; }
   const old = (await db.select().from(driverDispatchRounds).where(eq(driverDispatchRounds.orderId, orderId)).limit(1))[0]; const expiresAt = new Date(Date.now() + timeoutMinutes * 60000); let roundId: number; if (old?.status === "open" && old.expiresAt > new Date()) return null; if (old) { await db.update(driverDispatchRounds).set({ status: "open", expiresAt, winnerDriverId: null, assignedAt: null }).where(eq(driverDispatchRounds.id, old.id)); roundId = old.id; } else { const inserted = await db.insert(driverDispatchRounds).values({ orderId, status: "open", expiresAt }); roundId = Number(inserted[0].insertId); }
-  const message = { title: "طلب توصيل جديد", body: `يوجد طلب توصيل جديد #${orderId}.\n\nهل أنت متاح لاستلامه؟\nأرسل نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` }; await Promise.allSettled(target.map(async d => { const textResult = await sendWahaText(d.phone, { ...message, body: `${message.body}\nلا توجد تفاصيل في هذه المرحلة.` }); const buttonsResult = await sendWahaReplyButtons(d.phone, message, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]); console.info("Driver broadcast offer delivery", { orderId, driverId: d.id, phone: maskPhone(d.phone), textSent: textResult.sent, buttonsSent: buttonsResult.sent }); return { textResult, buttonsResult }; })); return roundId;
+  const message = { title: "طلب توصيل جديد", body: `يوجد طلب توصيل جديد #${orderId}.\n\nهل أنت متاح لاستلامه؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` }; await Promise.allSettled(target.map(async d => { const textResult = await sendWahaText(d.phone, { ...message, body: `${message.body}\nلا توجد تفاصيل في هذه المرحلة.` }); console.info("Driver text broadcast delivery", { orderId, driverId: d.id, phone: maskPhone(d.phone), textSent: textResult.sent }); return textResult; })); return roundId;
 }
 async function claimBroadcastOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, driver: typeof drivers.$inferSelect, accepted: boolean) {
   const rounds = await db.select({ round: driverDispatchRounds, order: orders }).from(driverDispatchRounds).innerJoin(orders, eq(orders.id, driverDispatchRounds.orderId)).where(and(inArray(driverDispatchRounds.status, ["open", "assigned"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(driverDispatchRounds.createdAt)).limit(20); const row = (await Promise.all(rounds.map(async r => (await db.select({ id: driverDispatchResponses.id }).from(driverDispatchResponses).where(and(eq(driverDispatchResponses.roundId, r.round.id), eq(driverDispatchResponses.driverId, driver.id))).limit(1))[0] ? null : r))).find(r => r && r.round.status === "open" && r.round.expiresAt > new Date()) as (typeof rounds)[number] | undefined; if (!row) { const assigned = rounds.find(r => r.round.status === "assigned"); if (assigned) { await sendWahaText(driver.phone, { body: "الطلب لم يعد متاحاً، تم إسناده إلى مندوب آخر." }); return true; } return false; }
@@ -429,7 +421,6 @@ async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnTyp
   const orderDetails = (await db.select({ customerPhone: orders.customerPhone, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   const message = { title: `طلب وصّل لي #${orderId}`, body: `طلب وصّل لي\nصاحب الطلب: ${customerName}\nرقم صاحب الطلب: ${orderDetails?.customerPhone || "غير متوفر"}\n\nاستلام الغرض من:\n${pickupLocation}\nرقم جهة الاستلام: ${pickupContactPhone}\n\nتسليم الغرض إلى:\n${destinationText}\n${destinationUrl}\n\nنوع الغرض: ${itemDescription}\nالمسافة ذهاباً وإياباً: ${Math.ceil(Number(orderDetails?.deliveryDistanceMeters ?? 0) / 1000)} كم\nسعر التوصيل: ${formatSyp(orderDetails?.deliveryFee ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nأجب بكلمة: نعم أو لا.` };
   void sendWahaText(nearest.phone, message);
-  void sendWahaReplyButtons(nearest.phone, message, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]);
   return nearest.id;
 }
 
@@ -521,26 +512,12 @@ export async function handleWahaWebhook(body: unknown) {
     const resolvedPhone = await resolveWahaLid(senderId);
     if (resolvedPhone) senderPhones.push(resolvedPhone);
   }
-  const dynamicButtons = Array.isArray(data.dynamicReplyButtons) ? data.dynamicReplyButtons as Array<Record<string, unknown>> : [];
-  const lastButton = dynamicButtons.at(-1);
-  const buttonText = lastButton?.buttonText && typeof lastButton.buttonText === "object" ? (lastButton.buttonText as Record<string, unknown>).displayText : lastButton?.buttonText;
   const nestedMessage = data.message && typeof data.message === "object" ? data.message as Record<string, unknown> : {};
   const nestedExtended = nestedMessage.extendedTextMessage && typeof nestedMessage.extendedTextMessage === "object" ? nestedMessage.extendedTextMessage as Record<string, unknown> : {};
-  const nestedButton = nestedMessage.buttonsResponseMessage && typeof nestedMessage.buttonsResponseMessage === "object" ? nestedMessage.buttonsResponseMessage as Record<string, unknown> : {};
-  const directButton = data.buttonsResponseMessage && typeof data.buttonsResponseMessage === "object" ? data.buttonsResponseMessage as Record<string, unknown> : {};
-  const templateButton = data.templateButtonReplyMessage && typeof data.templateButtonReplyMessage === "object" ? data.templateButtonReplyMessage as Record<string, unknown> : {};
-  const interactiveReply = data.interactiveResponseMessage && typeof data.interactiveResponseMessage === "object" ? data.interactiveResponseMessage as Record<string, unknown> : {};
-  const nestedList = nestedMessage.listResponseMessage && typeof nestedMessage.listResponseMessage === "object" ? nestedMessage.listResponseMessage as Record<string, unknown> : {};
-  const nestedListReply = nestedList.singleSelectReply && typeof nestedList.singleSelectReply === "object" ? nestedList.singleSelectReply as Record<string, unknown> : {};
-  const selectedButtonId = [data.selectedButtonId, data.selectedButtonID, directButton.selectedButtonId, templateButton.selectedId, interactiveReply.id, nestedButton.selectedButtonId, nestedListReply.selectedRowId].find((value): value is string => typeof value === "string");
-  const selectedButtonReply = selectedButtonId === "ready" ? "نعم" : selectedButtonId === "not_ready" ? "لا" : "";
-  const directReplyValues = [selectedButtonReply, buttonText, data.selectedDisplayText, data.selectedButtonText, data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, nestedButton.selectedDisplayText, nestedButton.selectedButtonId, nestedListReply.title, payload.body, payload.text];
-  // WAHA engines place button replies in different nested fields. Prefer a
-  // value that normalizes to a supported command instead of assuming one
-  // fixed webhook shape. This also handles a plain typed "نعم" reply.
-  const replyCandidates = [...directReplyValues, ...collectWahaStringValues(payload)];
-  const rawReply = replyCandidates.filter((value): value is string => typeof value === "string").map(value => normalizeWahaReply(value)).find(value => ["نعم", "لا", "جاهز", "غير جاهز", "10"].includes(value))
-    ?? (lastButton?.buttonId === "ready" ? "نعم" : lastButton?.buttonId === "not_ready" ? "لا" : "");
+  // Deliberately read text fields only. Button and interactive replies are no
+  // longer part of the driver workflow.
+  const textReplyCandidates = [data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, payload.body, payload.text];
+  const rawReply = textReplyCandidates.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map(value => normalizeWahaReply(value)).find(value => ["نعم", "لا", "جاهز", "غير جاهز", "10"].includes(value)) ?? "";
   const completeCommand = rawReply === "10";
   const availabilityReply = rawReply === "جاهز" || rawReply === "غير جاهز" ? rawReply : "";
   const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";

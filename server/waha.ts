@@ -5,25 +5,41 @@ export type WahaMessage = {
   body: string;
 };
 
-export type WahaReplyButton = { id: string; text: string };
-
-
-/** Converts common WAHA/WhatsApp button and text replies to canonical commands. */
+/** Converts the driver's text replies to canonical commands. */
 export function normalizeWahaReply(value: string) {
-  const normalized = value.normalize("NFKC").replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[.!؟?،,؛;:：\-]+$/g, "").trim().replace(/\s+/g, " ").toLowerCase();
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[.!؟?،,؛;:：\-]+$/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
   if (/^(10|١٠|رقم 10|رقم ١٠|الرقم 10|الرقم ١٠)$/.test(normalized)) return "10";
-  if (normalized.includes("غير جاهز") || normalized.includes("غير متاح") || /^(not ready)$/.test(normalized)) return "غير جاهز";
+  if (
+    normalized.includes("غير جاهز") ||
+    normalized.includes("غير متاح") ||
+    /^(not ready)$/.test(normalized)
+  )
+    return "غير جاهز";
   if (/^(نعم|yes|ok|موافق)$/.test(normalized)) return "نعم";
   if (/^(لا|no|رفض)$/.test(normalized)) return "لا";
-  if (normalized.includes("جاهز") || normalized.includes("متاح") || normalized === "ready") return "جاهز";
+  if (
+    normalized.includes("جاهز") ||
+    normalized.includes("متاح") ||
+    normalized === "ready"
+  )
+    return "جاهز";
   return normalized;
 }
 
 export function normalizeWahaChatId(phone: string) {
-  let digits = phone.replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/\D/g, "");
+  let digits = phone
+    .replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/\D/g, "");
   if (digits.startsWith("00")) digits = digits.slice(2);
   // Existing driver records may contain a Syrian local number even though new records use +963.
-  if (digits.length === 10 && digits.startsWith("09")) digits = `963${digits.slice(1)}`;
+  if (digits.length === 10 && digits.startsWith("09"))
+    digits = `963${digits.slice(1)}`;
   return digits ? `${digits}@c.us` : null;
 }
 
@@ -58,14 +74,18 @@ export async function sendWahaText(phone: string, message: WahaMessage) {
       body: JSON.stringify({
         session: config.session,
         chatId,
-        text: message.title ? `*${message.title}*\n${message.body}` : message.body,
+        text: message.title
+          ? `*${message.title}*\n${message.body}`
+          : message.body,
       }),
       signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
       const details = await response.text().catch(() => "");
-      throw new Error(`WAHA returned ${response.status}${details ? `: ${details.slice(0, 200)}` : ""}`);
+      throw new Error(
+        `WAHA returned ${response.status}${details ? `: ${details.slice(0, 200)}` : ""}`
+      );
     }
 
     return { configured: true, sent: true };
@@ -75,36 +95,23 @@ export async function sendWahaText(phone: string, message: WahaMessage) {
   }
 }
 
-export async function sendWahaReplyButtons(phone: string, message: WahaMessage, buttons: WahaReplyButton[]) {
-  const config = getWahaConfig();
-  const chatId = normalizeWahaChatId(phone);
-  if (!config || !chatId) return { configured: Boolean(config), sent: false };
-  try {
-    const response = await fetch(`${config.baseUrl}/api/sendButtons`, {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json", "X-Api-Key": config.apiKey },
-      body: JSON.stringify({ session: config.session, chatId, body: message.body, footer: "اختر أحد الخيارين للمتابعة", buttons: buttons.map(button => ({ id: button.id, type: "reply", text: button.text })) }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) throw new Error(`WAHA buttons returned ${response.status}`);
-    return { configured: true, sent: true };
-  } catch (error) {
-    console.error("WAHA interactive button delivery failed", error);
-    return { configured: true, sent: false };
-  }
-}
-
 export async function resolveWahaLid(lid: string) {
   const config = getWahaConfig();
   const normalizedLid = lid.replace(/@lid$/, "").replace(/\D/g, "");
   if (!config || !normalizedLid) return null;
   try {
-    const response = await fetch(`${config.baseUrl}/api/${encodeURIComponent(config.session)}/lids/${encodeURIComponent(normalizedLid)}`, {
-      headers: { Accept: "application/json", "X-Api-Key": config.apiKey },
-      signal: AbortSignal.timeout(10_000),
-    });
+    const response = await fetch(
+      `${config.baseUrl}/api/${encodeURIComponent(config.session)}/lids/${encodeURIComponent(normalizedLid)}`,
+      {
+        headers: { Accept: "application/json", "X-Api-Key": config.apiKey },
+        signal: AbortSignal.timeout(10_000),
+      }
+    );
     if (!response.ok) return null;
-    const result = await response.json() as { pn?: string; phoneNumber?: string };
+    const result = (await response.json()) as {
+      pn?: string;
+      phoneNumber?: string;
+    };
     const phone = result.pn || result.phoneNumber;
     return phone ? `+${phone.replace(/\D/g, "")}` : null;
   } catch (error) {
