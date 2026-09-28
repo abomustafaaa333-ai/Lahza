@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
-import { automaticDiscounts, catalogItems, contestCampaigns, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
+import { automaticDiscounts, catalogItems, contestCampaigns, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, driverDispatchResponses, driverDispatchRounds, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
@@ -387,48 +387,28 @@ function normalizeWahaPhoneForMatch(value: string) {
   return digits.startsWith("00") ? digits.slice(2) : digits;
 }
 
-async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
-  if (!storeId) {
-    console.warn("Automatic dispatch skipped: order has no primary store", { orderId });
-    return null;
-  }
-  const store = (await db.select({ id: stores.id, name: stores.name, locationLat: stores.locationLat, locationLng: stores.locationLng }).from(stores).where(eq(stores.id, storeId)).limit(1))[0];
-  if (!store?.locationLat || !store.locationLng) {
-    console.warn("Automatic dispatch skipped: store has no coordinates", { orderId, storeId });
-    return null;
-  }
-  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true)));
-  const cityLabel = orderCity === "manbij" ? "منبج" : "جرابلس";
-  const withCoordinates = candidates.filter(driver => !excludedDriverIds.includes(driver.id) && driver.locationLat !== null && driver.locationLng !== null);
-  const cityCandidates = withCoordinates.filter(driver => driver.region.includes(cityLabel) || driver.region.includes("الكل"));
-  const eligibleCandidates = cityCandidates.length ? cityCandidates : withCoordinates;
-  console.info("Automatic dispatch candidate check", { orderId, orderCity, storeId, activeAvailable: candidates.length, withCoordinates: withCoordinates.length, cityCandidates: cityCandidates.length });
-  const nearest = eligibleCandidates.sort((a, b) => distanceBetweenE6(store.locationLat!, store.locationLng!, a.locationLat!, a.locationLng!) - distanceBetweenE6(store.locationLat!, store.locationLng!, b.locationLat!, b.locationLng!))[0];
-  if (!nearest) {
-    const settings = await getSettings();
-    const ownerPhone = (settings.ownerPhone || DEFAULT_OWNER_PHONE).trim();
-    const alert = { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} من متجر ${store.name} للعميل ${customerName} لا يوجد له مندوب متاح حالياً. يرجى التدخل يدوياً.` };
-    const result = await sendWahaText(ownerPhone, alert);
-    console.warn("No-driver alert dispatched to owner", { orderId, owner: maskPhone(ownerPhone), sent: result.sent });
-    return null;
-  }
-  await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, driverName: nearest.name, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}` }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, driverName: nearest.name, status: "assigned", note: `أقرب مندوب لمتجر ${store.name}`, assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
-  await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
-  const distance = Math.round(distanceBetweenE6(store.locationLat, store.locationLng, nearest.locationLat!, nearest.locationLng!));
-  console.info("Automatic dispatch recipient", { orderId, driverId: nearest.id, phone: maskPhone(nearest.phone), chatId: `${nearest.phone.replace(/\D/g, "")}@c.us`.replace(/^(\d{6})\d+(\d{4}@c\.us)$/, "$1***$2"), distanceMeters: distance });
-  const orderDetails = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
-  const orderItems = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
-  const itemsText = orderItems.length ? orderItems.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatSyp(item.unitPrice)} — المجموع: ${formatSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
-  const driverMessage = { title: `طلب جديد #${orderId}`, body: `المتجر: ${store.name}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatSyp(orderDetails?.deliveryFee ?? 0)}\nالإجمالي: ${formatSyp(orderDetails?.totalAmount ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${orderDetails?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(orderDetails?.deliveryDistanceMeters ?? 0))}م\nهل أنت جاهز لتنفيذ الطلب؟` };
-  void sendWahaText(nearest.phone, { ...driverMessage, body: `${driverMessage.body}\nأجب بكلمة: نعم أو لا.` });
-  void sendWahaReplyButtons(nearest.phone, driverMessage, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }]).then(result => {
-    if (!result.sent) console.warn("Interactive driver buttons unavailable; text message was already sent", { orderId, driverId: nearest.id });
-  });
-  return nearest.id;
+async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverPhone: string, storeName: string, customerName: string, locationText: string | null, locationUrl: string | null) {
+  const details = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  const lines = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
+  const itemsText = lines.length ? lines.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatSyp(item.unitPrice)} — المجموع: ${formatSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
+  await sendWahaText(driverPhone, { title: `تم إسناد الطلب #${orderId}`, body: `تم إسناد الطلب إليك.\nالمتجر: ${storeName}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatSyp(details?.deliveryFee ?? 0)}\nالإجمالي: ${formatSyp(details?.totalAmount ?? 0)}\nطريقة الدفع: ${details?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${details?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(details?.deliveryDistanceMeters ?? 0))}م\nعند إكمال الطلب أرسل الرقم: 10` });
 }
-
+async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
+  if (!storeId) return null; const store = (await db.select({ id: stores.id }).from(stores).where(eq(stores.id, storeId)).limit(1))[0]; if (!store) return null; const settings = await getSettings(); const timeoutMinutes = Math.max(1, Math.min(60, Number(settings.driverDispatchTimeoutMinutes ?? 3)));
+  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true))); const cityLabel = orderCity === "manbij" ? "منبج" : "جرابلس"; const recipients = candidates.filter(d => !excludedDriverIds.includes(d.id) && (d.region.includes(cityLabel) || d.region.includes("الكل"))); const target = recipients.length ? recipients : candidates.filter(d => !excludedDriverIds.includes(d.id));
+  if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب متاح حالياً.` }); return null; }
+  const old = (await db.select().from(driverDispatchRounds).where(eq(driverDispatchRounds.orderId, orderId)).limit(1))[0]; const expiresAt = new Date(Date.now() + timeoutMinutes * 60000); let roundId: number; if (old?.status === "open" && old.expiresAt > new Date()) return null; if (old) { await db.update(driverDispatchRounds).set({ status: "open", expiresAt, winnerDriverId: null, assignedAt: null }).where(eq(driverDispatchRounds.id, old.id)); roundId = old.id; } else { const inserted = await db.insert(driverDispatchRounds).values({ orderId, status: "open", expiresAt }); roundId = Number(inserted[0].insertId); }
+  const message = { title: "طلب توصيل جديد", body: `يوجد طلب توصيل جديد #${orderId}.\n\nهل أنت متاح لاستلامه؟\nأرسل نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` }; await Promise.allSettled(target.map(d => Promise.all([sendWahaText(d.phone, { ...message, body: `${message.body}\nلا توجد تفاصيل في هذه المرحلة.` }), sendWahaReplyButtons(d.phone, message, [{ id: "ready", text: "نعم" }, { id: "not_ready", text: "لا" }])] ))); return roundId;
+}
+async function claimBroadcastOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, driver: typeof drivers.$inferSelect, accepted: boolean) {
+  if (!driver.available || !driver.readyForOrders) { await sendWahaText(driver.phone, { body: "أنت غير متاح حالياً لاستقبال طلبات جديدة." }); return true; }
+  const rounds = await db.select({ round: driverDispatchRounds, order: orders }).from(driverDispatchRounds).innerJoin(orders, eq(orders.id, driverDispatchRounds.orderId)).where(and(eq(driverDispatchRounds.status, "open"), inArray(orders.status, ["pending", "confirmed"]))).orderBy(desc(driverDispatchRounds.createdAt)).limit(20); const row = (await Promise.all(rounds.map(async r => (await db.select({ id: driverDispatchResponses.id }).from(driverDispatchResponses).where(and(eq(driverDispatchResponses.roundId, r.round.id), eq(driverDispatchResponses.driverId, driver.id))).limit(1))[0] ? null : r))).find(r => r && r.round.expiresAt > new Date()) as (typeof rounds)[number] | undefined; if (!row) { const assigned = rounds.find(r => r.round.status === "assigned"); if (assigned) { await sendWahaText(driver.phone, { body: "الطلب لم يعد متاحاً، تم إسناده إلى مندوب آخر." }); return true; } return false; }
+  if (!accepted) { await db.insert(driverDispatchResponses).values({ roundId: row.round.id, orderId: row.order.id, driverId: driver.id, response: "no" }); await sendWahaText(driver.phone, { body: "تم تسجيل عدم توفرك لهذا الطلب." }); return true; }
+  const result = await db.update(driverDispatchRounds).set({ status: "assigned", winnerDriverId: driver.id, assignedAt: new Date() }).where(and(eq(driverDispatchRounds.id, row.round.id), eq(driverDispatchRounds.status, "open"), gt(driverDispatchRounds.expiresAt, new Date()))); if (!result[0]?.affectedRows) { await sendWahaText(driver.phone, { body: "الطلب لم يعد متاحاً، تم إسناده إلى مندوب آخر." }); return true; }
+  await db.insert(driverDispatchResponses).values({ roundId: row.round.id, orderId: row.order.id, driverId: driver.id, response: "yes" }); await db.insert(orderAssignments).values({ orderId: row.order.id, driverId: driver.id, driverName: driver.name, status: "assigned", note: "أول مندوب أجاب بنعم" }).onDuplicateKeyUpdate({ set: { driverId: driver.id, driverName: driver.name, status: "assigned", assignedAt: new Date(), acceptedAt: null, deliveredAt: null } }); await db.update(drivers).set({ available: false }).where(eq(drivers.id, driver.id)); const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, row.order.id)).limit(1))[0]; const store = line?.storeId ? (await db.select({ name: stores.name }).from(stores).where(eq(stores.id, line.storeId)).limit(1))[0] : null; await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "تم إسناد الطلب لأول مندوب أجاب بنعم" }).where(and(eq(orders.id, row.order.id), inArray(orders.status, ["pending", "confirmed"]))); await sendAssignedOrderDetails(db, row.order.id, driver.phone, store?.name ?? "متجر لحظة", row.order.customerName, row.order.locationText, row.order.locationUrl); await sendWahaText(driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${row.order.id}.` }); return true;
+}
 async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, pickupLocation: string, pickupContactPhone: string, destinationText: string, destinationUrl: string, itemDescription: string) {
-  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true)));
+  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true)));
   const nearest = candidates.filter(driver => driver.locationLat !== null && driver.locationLng !== null).sort((a, b) => distanceBetweenE6(36528100, 37954900, a.locationLat!, a.locationLng!) - distanceBetweenE6(36528100, 37954900, b.locationLat!, b.locationLng!))[0];
   const settings = await getSettings();
   const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
@@ -563,7 +543,7 @@ export async function handleWahaWebhook(body: unknown) {
   console.info("WAHA driver reply identity", { senderIds, senderPhones: senderPhones.map(maskPhone), matchedDriverId: driver?.id ?? null });
   if (!driver) return;
   if (availabilityReply) {
-    await db.update(drivers).set({ available: availabilityReply === "جاهز" }).where(eq(drivers.id, driver.id));
+    await db.update(drivers).set({ available: availabilityReply === "جاهز", readyForOrders: availabilityReply === "جاهز" }).where(eq(drivers.id, driver.id));
     void sendWahaText(driver.phone, { body: availabilityReply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك." });
     return;
   }
@@ -576,13 +556,14 @@ export async function handleWahaWebhook(body: unknown) {
     const now = new Date();
     await db.update(orderAssignments).set({ status: "delivered", deliveredAt: now }).where(and(eq(orderAssignments.id, activeAssignment.assignment.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"])));
     await db.update(orders).set({ status: "completed", statusChangedAt: now, statusReason: "اكتمل الطلب بأمر المندوب 10" }).where(and(eq(orders.id, activeAssignment.order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
-    await db.update(drivers).set({ available: true }).where(eq(drivers.id, driver.id));
+    await db.update(drivers).set({ available: driver.readyForOrders }).where(eq(drivers.id, driver.id));
     await createOrderStatusNotification(db, activeAssignment.order, "completed");
     await awardCustomerPoint(db, activeAssignment.order.customerPhone, "order_completed", activeAssignment.order.id);
     await notifyOperationsOrderCompleted(db, activeAssignment.order.id);
     void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل، وأصبحت متاحاً لاستقبال طلب جديد.` });
     return;
   }
+  if (orderReply) { const handledByBroadcast = await claimBroadcastOrder(db, driver, orderReply === "نعم"); if (handledByBroadcast) return; }
   const assignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "assigned"), inArray(orders.status, ["pending", "confirmed"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
   if (!assignment) {
     // نعم/لا خارج مهلة الإسناد أو دون طلب حالي: ignore completely.
@@ -601,12 +582,21 @@ export async function handleWahaWebhook(body: unknown) {
 async function notifyAssignmentTimeout(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverName: string, driverPhone: string) {
   const settings = await getSettings();
   const ownerPhone = (settings.ownerPhone || DEFAULT_OWNER_PHONE).trim();
-  const alert = { title: "انتهت مهلة رد المندوب", body: "المندوب " + driverName + " لم يرد على الطلب #" + orderId + " خلال 3 دقائق. تم الانتقال تلقائياً للبحث عن مندوب آخر." };
+  const alert = { title: "انتهت مهلة رد المندوب", body: "المندوب " + driverName + " لم يرد على الطلب #" + orderId + " خلال المهلة المحددة. تم الانتقال تلقائياً للبحث عن مندوب آخر." };
   await sendWahaText(ownerPhone, alert);
 }
 
 async function expireUnansweredDriverAssignments(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
-  const cutoff = new Date(Date.now() - 3 * 60_000);
+  const settings = await getSettings();
+  const cutoff = new Date(Date.now() - Math.max(1, Number(settings.driverDispatchTimeoutMinutes ?? 3)) * 60_000);
+  const expiredRounds = await db.select({ round: driverDispatchRounds, order: orders }).from(driverDispatchRounds).innerJoin(orders, eq(orders.id, driverDispatchRounds.orderId)).where(and(eq(driverDispatchRounds.status, "open"), lte(driverDispatchRounds.expiresAt, new Date()), inArray(orders.status, ["pending", "confirmed"]))).limit(100);
+  for (const row of expiredRounds) {
+    const closed = await db.update(driverDispatchRounds).set({ status: "expired" }).where(and(eq(driverDispatchRounds.id, row.round.id), eq(driverDispatchRounds.status, "open")));
+    if (!closed[0]?.affectedRows) continue;
+    await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), { title: "انتهت مهلة البحث عن مندوب", body: `انتهت مهلة رد المناديب على الطلب #${row.order.id}. ستبدأ جولة بحث جديدة تلقائياً.` });
+    const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, row.order.id)).limit(1))[0];
+    await dispatchOrderToNearestDriver(db, row.order.id, row.order.orderCity, line?.storeId ?? null, row.order.customerName, row.order.locationText, row.order.locationUrl);
+  }
   const pending = await db.select({ assignment: orderAssignments, order: orders, driver: drivers })
     .from(orderAssignments)
     .innerJoin(orders, eq(orders.id, orderAssignments.orderId))
@@ -817,7 +807,7 @@ export async function ensureLahzaRuntimeSchema() {
   const steps: Array<[string, () => Promise<void>]> = [
     ["customer accounts", () => ensureCustomerAccountsTable(db).then(() => undefined)],
     ["customer OTP", () => ensureCustomerOtpTable(db)],
-    ["delivery and order compatibility", () => ensureJarabulusGatewaySchema(db)],
+    ["delivery and order compatibility", async () => { await ensureJarabulusGatewaySchema(db); await ensureDriverDispatchSchema(db); }],
     ["owner login compatibility", async () => {
       await ensureSettingsCompatibility(db);
       await ensureDefaultStaffPasswords(db);
@@ -999,13 +989,18 @@ function setDriverCookie(ctx: TrpcContext, token: string) {
   ctx.res.clearCookie(PARTNER_COOKIE, getSessionCookieOptions(ctx.req));
 }
 
+async function ensureDriverDispatchSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `driver_dispatch_rounds` (`id` INT NOT NULL AUTO_INCREMENT, `orderId` INT NOT NULL UNIQUE, `status` ENUM('open','assigned','expired','cancelled') NOT NULL DEFAULT 'open', `expiresAt` TIMESTAMP NOT NULL, `winnerDriverId` INT NULL, `assignedAt` TIMESTAMP NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (`id`), CONSTRAINT `driver_dispatch_rounds_order_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE CASCADE, CONSTRAINT `driver_dispatch_rounds_driver_fk` FOREIGN KEY (`winnerDriverId`) REFERENCES `drivers`(`id`) ON DELETE SET NULL)"));
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `driver_dispatch_responses` (`id` INT NOT NULL AUTO_INCREMENT, `roundId` INT NOT NULL, `orderId` INT NOT NULL, `driverId` INT NOT NULL, `response` ENUM('yes','no','too_late') NOT NULL, `respondedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (`id`), UNIQUE KEY `driver_dispatch_response_unique` (`roundId`,`driverId`), CONSTRAINT `driver_dispatch_responses_round_fk` FOREIGN KEY (`roundId`) REFERENCES `driver_dispatch_rounds`(`id`) ON DELETE CASCADE, CONSTRAINT `driver_dispatch_responses_order_fk` FOREIGN KEY (`orderId`) REFERENCES `orders`(`id`) ON DELETE CASCADE, CONSTRAINT `driver_dispatch_responses_driver_fk` FOREIGN KEY (`driverId`) REFERENCES `drivers`(`id`) ON DELETE CASCADE)"));
+  const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `system_settings`")); const names = new Set(Array.isArray(columns) ? columns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []); if (!names.has("driverDispatchTimeoutMinutes")) await db.execute(sql.raw("ALTER TABLE `system_settings` ADD COLUMN `driverDispatchTimeoutMinutes` INT NOT NULL DEFAULT 3")); const [driverColumns] = await db.execute(sql.raw("SHOW COLUMNS FROM `drivers`")); const driverNames = new Set(Array.isArray(driverColumns) ? driverColumns.map(column => String((column as { Field?: unknown }).Field ?? "")) : []); if (!driverNames.has("readyForOrders")) await db.execute(sql.raw("ALTER TABLE `drivers` ADD COLUMN `readyForOrders` BOOLEAN NOT NULL DEFAULT TRUE AFTER `available`"));
+}
 async function ensureSettingsCompatibility(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   if (settingsSchemaReady) return;
   if (!settingsSchemaPromise) {
     const pending = (async () => {
       await ensureJarabulusGatewaySchema(db);
       await ensureDeliveryPercentColumns(db);
-      await ensureDeliveryServiceColumns(db);
+      await ensureDeliveryServiceColumns(db); await ensureDriverDispatchSchema(db);
       await ensureTickerColumns(db);
       await ensureEventColumns(db);
       settingsSchemaReady = true;
@@ -1590,7 +1585,7 @@ export const lahzaRouter = router({
       if (!session) throw new Error("جلسة المندوب غير موجودة");
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      await db.update(drivers).set({ available: input.available }).where(and(eq(drivers.id, session.driverId), eq(drivers.active, true)));
+      await db.update(drivers).set({ available: input.available, readyForOrders: input.available }).where(and(eq(drivers.id, session.driverId), eq(drivers.active, true)));
       return { success: true, available: input.available };
     }),
     respondToAssignment: publicProcedure.input(z.object({ orderId: z.number().int().positive(), accept: z.boolean() })).mutation(async ({ ctx, input }) => {
@@ -2951,7 +2946,7 @@ export const lahzaRouter = router({
           jarabulusMinimumOrder: jarabulusOrderMinimum(settings),
           jarabulusPreparationMinutes: jarabulusOrderPreparationMinutes(settings),
           pointsRewardPercent: settings.pointsRewardPercent,
-          driverPercent: settings.driverDeliveryPercent ?? 0,
+          driverPercent: settings.driverDeliveryPercent ?? 0, driverDispatchTimeoutMinutes: settings.driverDispatchTimeoutMinutes ?? 3,
           pricePerKm: settings.deliveryPricePerKm ?? 2,
           wosselLiPricePerKm: settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm ?? 2,
           manbijStorePricePerKm: settings.manbijStorePricePerKm ?? settings.deliveryPricePerKm ?? 2,
@@ -2963,12 +2958,12 @@ export const lahzaRouter = router({
           wosselLiMinutesPerKm: settings.wosselLiMinutesPerKm ?? 5,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, driverDispatchTimeoutMinutes: z.number().int().min(1).max(60).default(3), pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureJarabulusGatewaySchema(db);
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, driverDispatchTimeoutMinutes: input.driverDispatchTimeoutMinutes, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),

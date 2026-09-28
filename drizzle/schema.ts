@@ -231,6 +231,7 @@ export const systemSettings = mysqlTable("system_settings", {
   eventStayVisible: boolean("eventStayVisible").notNull().default(false),
   eventShowSeconds: int("eventShowSeconds").notNull().default(5),
   eventRepeatMinutes: int("eventRepeatMinutes").notNull().default(0),
+  driverDispatchTimeoutMinutes: int("driverDispatchTimeoutMinutes").notNull().default(3),
   categoryOverrides: text("categoryOverrides"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -374,6 +375,7 @@ export const drivers = mysqlTable("drivers", {
   region: varchar("region", { length: 120 }).notNull().default("منبج"),
   active: boolean("active").notNull().default(true),
   available: boolean("available").notNull().default(true),
+  readyForOrders: boolean("readyForOrders").notNull().default(true),
   locationLat: int("locationLat"),
   locationLng: int("locationLng"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -391,6 +393,13 @@ export const orderAssignments = mysqlTable("order_assignments", {
   acceptedAt: timestamp("acceptedAt"),
   deliveredAt: timestamp("deliveredAt"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export const driverDispatchRounds = mysqlTable("driver_dispatch_rounds", {
+  id: int("id").autoincrement().primaryKey(), orderId: int("orderId").notNull().unique().references(() => orders.id, { onDelete: "cascade" }), status: mysqlEnum("status", ["open", "assigned", "expired", "cancelled"]).notNull().default("open"), expiresAt: timestamp("expiresAt").notNull(), winnerDriverId: int("winnerDriverId").references(() => drivers.id, { onDelete: "set null" }), assignedAt: timestamp("assignedAt"), createdAt: timestamp("createdAt").defaultNow().notNull(), updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+export const driverDispatchResponses = mysqlTable("driver_dispatch_responses", {
+  id: int("id").autoincrement().primaryKey(), roundId: int("roundId").notNull().references(() => driverDispatchRounds.id, { onDelete: "cascade" }), orderId: int("orderId").notNull().references(() => orders.id, { onDelete: "cascade" }), driverId: int("driverId").notNull().references(() => drivers.id, { onDelete: "cascade" }), response: mysqlEnum("response", ["yes", "no", "too_late"]).notNull(), respondedAt: timestamp("respondedAt").defaultNow().notNull(),
 });
 
 export const inventoryMovements = mysqlTable("inventory_movements", {
