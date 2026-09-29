@@ -226,6 +226,11 @@ async function ensureJarabulusGatewaySchemaWork(db: NonNullable<Awaited<ReturnTy
   await ensureColumn("system_settings", "jarabulusGatewayPricePerKm", "INT NOT NULL DEFAULT 2");
   await ensureColumn("system_settings", "jarabulusGatewayMinutesPerKm", "INT NOT NULL DEFAULT 15");
   await ensureColumn("system_settings", "wosselLiMinutesPerKm", "INT NOT NULL DEFAULT 5");
+  await ensureColumn("system_settings", "driverPayMode", "ENUM('percent','fixed') NOT NULL DEFAULT 'percent'");
+  await ensureColumn("system_settings", "driverFixedFee", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("system_settings", "storeCommissionPercent", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("orders", "driverFee", "INT NOT NULL DEFAULT 0");
+  await ensureColumn("orders", "storeCommissionAmount", "INT NOT NULL DEFAULT 0");
   await ensureColumn("orders", "pickupContactPhone", "VARCHAR(24) NULL");
   await ensureColumn("orders", "itemDescription", "VARCHAR(500) NULL");
   await ensureColumn("orders", "itemWeight", "VARCHAR(80) NULL");
@@ -315,6 +320,15 @@ function deliveryServicePricing(settings: {
     wossel_li: [settings.wosselLiPricePerKm ?? settings.wosselLiPricePerKm, settings.wosselLiMinutesPerKm, Number(settings.wosselLiPricePerKm) || fallbackPrice, 5],
   }[service];
   return { pricePerKm: Math.max(0, Number(values[0]) || Number(values[2]) || 0), minutesPerKm: Math.max(0, Number(values[1]) || Number(values[3]) || 0) };
+}
+function calculateDriverFee(deliveryFeeLegacy: number, settings: { driverPayMode?: string | null; driverDeliveryPercent?: number | null; driverFixedFee?: number | null }) {
+  if (settings.driverPayMode === "fixed") return toLegacySyp(Math.max(0, Math.round(Number(settings.driverFixedFee) || 0)));
+  const percent = Math.min(100, Math.max(0, Number(settings.driverDeliveryPercent ?? 0)));
+  return Math.round(Math.max(0, Number(deliveryFeeLegacy) || 0) * percent / 100);
+}
+function calculateStoreCommission(itemsTotalLegacy: number, settings: { storeCommissionPercent?: number | null }) {
+  const percent = Math.min(100, Math.max(0, Number(settings.storeCommissionPercent ?? 0)));
+  return Math.round(Math.max(0, Number(itemsTotalLegacy) || 0) * percent / 100);
 }
 function estimatedRouteMinutes(routeDurationSeconds: number, distanceMeters: number, minutesPerKm: number, baseMinutes = 20) {
   const billableKm = Math.max(1, Math.ceil(Math.max(0, distanceMeters) / 1000));
@@ -594,8 +608,10 @@ export async function handleWahaWebhook(body: unknown) {
       return;
     }
     const now = new Date();
+    const feeSettings = await getSettings();
+    const driverFee = calculateDriverFee(Number(activeAssignment.order.deliveryFee ?? 0), feeSettings);
     await db.update(orderAssignments).set({ status: "delivered", deliveredAt: now }).where(and(eq(orderAssignments.id, activeAssignment.assignment.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"])));
-    await db.update(orders).set({ status: "completed", statusChangedAt: now, statusReason: "اكتمل الطلب بأمر المندوب 10" }).where(and(eq(orders.id, activeAssignment.order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
+    await db.update(orders).set({ status: "completed", driverFee, statusChangedAt: now, statusReason: "اكتمل الطلب بأمر المندوب 10" }).where(and(eq(orders.id, activeAssignment.order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
     await db.update(drivers).set({ available: driver.readyForOrders }).where(eq(drivers.id, driver.id));
     await createOrderStatusNotification(db, activeAssignment.order, "completed");
     await awardCustomerPoint(db, activeAssignment.order.customerPhone, "order_completed", activeAssignment.order.id);
@@ -676,15 +692,17 @@ export async function autoCompleteDueOrders() {
   await processPharmacyPricingReminders(db);
   await expireUnansweredDriverAssignments(db);
   const now = new Date();
+  const feeSettings = await getSettings();
   const due = await db.select().from(orders).where(and(
     inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]),
     eq(orders.manualStatusOverride, false),
     lte(sql`DATE_ADD(${orders.statusChangedAt}, INTERVAL GREATEST(${orders.preparationMinutes}, 30) MINUTE)`, now),
   )).limit(100);
   for (const order of due) {
-    await db.update(orders).set({ status: "completed", statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
+    const assignedDriverId = (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, order.id)).limit(1))[0]?.driverId;
+    await db.update(orders).set({ status: "completed", driverFee: assignedDriverId ? calculateDriverFee(Number(order.deliveryFee ?? 0), feeSettings) : 0, statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
     await deductCompletedOrderInventory(db, order.id);
-    await db.update(drivers).set({ available: true }).where(eq(drivers.id, (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, order.id)).limit(1))[0]?.driverId ?? -1));
+    await db.update(drivers).set({ available: true }).where(eq(drivers.id, assignedDriverId ?? -1));
     // Automatic timeout may close the stale workflow, but must not tell the customer
     // that the order was delivered. Customer completion is announced only after
     // the courier explicitly sends command 10 through WhatsApp.
@@ -1629,9 +1647,11 @@ export const lahzaRouter = router({
       startOfDay.setHours(0, 0, 0, 0);
       const settings = await getSettings();
       const driverPercent = Math.min(100, Math.max(0, Number(settings.driverDeliveryPercent ?? 0)));
-      const completedToday = await db.select({ orderId: orderAssignments.orderId, customerName: orders.customerName, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveredAt: orderAssignments.deliveredAt }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "delivered"), eq(orders.status, "completed"), gte(orderAssignments.deliveredAt, startOfDay))).orderBy(desc(orderAssignments.deliveredAt));
-      const completedOrders = completedToday.map(order => ({ ...order, driverFee: Math.round(Number(order.deliveryFee ?? 0) * driverPercent / 100) }));
-      return { ...driver, assignments, driverPercent, completedOrders, completedOrdersTotal: completedOrders.reduce((sum, order) => sum + order.driverFee, 0) };
+      const driverPayMode = settings.driverPayMode ?? "percent";
+      const driverFixedFee = Math.max(0, Number(settings.driverFixedFee ?? 0));
+      const completedToday = await db.select({ orderId: orderAssignments.orderId, customerName: orders.customerName, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, driverFee: orders.driverFee, deliveredAt: orderAssignments.deliveredAt }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), eq(orderAssignments.status, "delivered"), eq(orders.status, "completed"), gte(orderAssignments.deliveredAt, startOfDay))).orderBy(desc(orderAssignments.deliveredAt));
+      const completedOrders = completedToday.map(order => ({ ...order, driverFee: Number(order.driverFee ?? 0) || calculateDriverFee(Number(order.deliveryFee ?? 0), settings) }));
+      return { ...driver, assignments, driverPercent, driverPayMode, driverFixedFee, completedOrders, completedOrdersTotal: completedOrders.reduce((sum, order) => sum + order.driverFee, 0) };
     }),
     setAvailable: publicProcedure.input(z.object({ available: z.boolean() })).mutation(async ({ ctx, input }) => {
       const session = await readDriverSession(ctx);
@@ -2442,6 +2462,7 @@ export const lahzaRouter = router({
         totalAmount = deliveryFee;
       }
 
+      const storeCommissionAmount = input.orderType === "delivery" ? calculateStoreCommission(finalItemsTotal, settings) : 0;
       let created: any;
       try {
         created = await db.insert(orders).values({
@@ -2461,6 +2482,8 @@ export const lahzaRouter = router({
         pointsRewardPercent,
         deliveryDistanceMeters,
         deliveryFee,
+        driverFee: 0,
+        storeCommissionAmount,
         preparationMinutes,
         // Some older Railway databases still require this legacy enum column
         // to have a value. Wossel Li never displays or uses this technical
@@ -2999,7 +3022,7 @@ export const lahzaRouter = router({
           jarabulusMinimumOrder: jarabulusOrderMinimum(settings),
           jarabulusPreparationMinutes: jarabulusOrderPreparationMinutes(settings),
           pointsRewardPercent: settings.pointsRewardPercent,
-          driverPercent: settings.driverDeliveryPercent ?? 0, driverDispatchTimeoutMinutes: settings.driverDispatchTimeoutMinutes ?? 3,
+          driverPercent: settings.driverDeliveryPercent ?? 0, driverPayMode: settings.driverPayMode ?? "percent", driverFixedFee: settings.driverFixedFee ?? 0, storeCommissionPercent: settings.storeCommissionPercent ?? 0, driverDispatchTimeoutMinutes: settings.driverDispatchTimeoutMinutes ?? 3,
           pricePerKm: settings.deliveryPricePerKm ?? 2,
           wosselLiPricePerKm: settings.wosselLiPricePerKm ?? settings.deliveryPricePerKm ?? 2,
           manbijStorePricePerKm: settings.manbijStorePricePerKm ?? settings.deliveryPricePerKm ?? 2,
@@ -3011,12 +3034,12 @@ export const lahzaRouter = router({
           wosselLiMinutesPerKm: settings.wosselLiMinutesPerKm ?? 5,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, driverDispatchTimeoutMinutes: z.number().int().min(1).max(60).default(3), pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, driverPayMode: z.enum(["percent", "fixed"]).default("percent"), driverFixedFee: newSypMoneyInput.max(10_000_000).default(0), storeCommissionPercent: deliveryPercentInput.default(0), driverDispatchTimeoutMinutes: z.number().int().min(1).max(60).default(3), pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureJarabulusGatewaySchema(db);
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, driverDispatchTimeoutMinutes: input.driverDispatchTimeoutMinutes, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, driverPayMode: input.driverPayMode, driverFixedFee: input.driverFixedFee, storeCommissionPercent: input.storeCommissionPercent, driverDispatchTimeoutMinutes: input.driverDispatchTimeoutMinutes, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),
@@ -3143,14 +3166,15 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const settings = await getSettings();
-        const rows = await db.select({ orderId: orders.id, customerName: orders.customerName, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, updatedAt: orders.updatedAt, liveDriverName: drivers.name, archivedDriverName: orderAssignments.driverName }).from(orders).leftJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).leftJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(eq(orders.status, "completed")).orderBy(desc(orders.updatedAt)).limit(500);
+        const rows = await db.select({ orderId: orders.id, customerName: orders.customerName, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, driverFee: orders.driverFee, storeCommissionAmount: orders.storeCommissionAmount, updatedAt: orders.updatedAt, liveDriverName: drivers.name, archivedDriverName: orderAssignments.driverName }).from(orders).leftJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).leftJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(eq(orders.status, "completed")).orderBy(desc(orders.updatedAt)).limit(500);
         const percent = Math.min(100, Math.max(0, Number(settings.driverDeliveryPercent ?? 0)));
         const items = rows.map(row => {
           const deliveryFee = Number(row.deliveryFee ?? 0);
-          const driverFee = Math.round(deliveryFee * percent / 100);
-          return { orderId: row.orderId, customerName: row.customerName, driverName: row.liveDriverName ?? row.archivedDriverName ?? "غير مسند", deliveryFee: toNewSyp(deliveryFee), driverFee: toNewSyp(driverFee), lahzaNet: toNewSyp(deliveryFee - driverFee), totalAmount: toNewSyp(Number(row.totalAmount ?? 0)), completedAt: row.updatedAt };
+          const driverFee = Number(row.driverFee ?? 0) || calculateDriverFee(deliveryFee, settings);
+          const storeCommission = Number(row.storeCommissionAmount ?? 0);
+          return { orderId: row.orderId, customerName: row.customerName, driverName: row.liveDriverName ?? row.archivedDriverName ?? "غير مسند", deliveryFee: toNewSyp(deliveryFee), driverFee: toNewSyp(driverFee), storeCommission: toNewSyp(storeCommission), lahzaNet: toNewSyp(deliveryFee - driverFee), storeNet: toNewSyp(Math.max(0, Number(row.totalAmount ?? 0) - deliveryFee - storeCommission)), totalAmount: toNewSyp(Number(row.totalAmount ?? 0)), completedAt: row.updatedAt };
         });
-        return { driverPercent: percent, orders: items, totals: { deliveryFee: items.reduce((sum, item) => sum + item.deliveryFee, 0), driverFee: items.reduce((sum, item) => sum + item.driverFee, 0), lahzaNet: items.reduce((sum, item) => sum + item.lahzaNet, 0) } };
+        return { driverPercent: percent, driverPayMode: settings.driverPayMode ?? "percent", driverFixedFee: settings.driverFixedFee ?? 0, storeCommissionPercent: settings.storeCommissionPercent ?? 0, orders: items, totals: { deliveryFee: items.reduce((sum, item) => sum + item.deliveryFee, 0), driverFee: items.reduce((sum, item) => sum + item.driverFee, 0), storeCommission: items.reduce((sum, item) => sum + item.storeCommission, 0), lahzaNet: items.reduce((sum, item) => sum + item.lahzaNet, 0) } };
       }),
     }),
     analytics: router({
