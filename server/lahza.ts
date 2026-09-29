@@ -484,7 +484,8 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
     Array.from(grouped.values()).forEach(items => {
       const first = items[0];
       const itemsText = items.map((item: (typeof partnerItems)[number], index: number) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatSyp(item.unitPrice)} — المجموع: ${formatSyp(item.lineTotal)}`).join("\n");
-      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${orderId}`, body: `يرجى تجهيز الطلب #${orderId}\n\n${itemsText}\n\nالإجمالي: ${formatSyp(row.order.totalAmount)}` });
+      const partnerItemsTotal = items.reduce((sum, item) => sum + Number(item.lineTotal ?? 0), 0);
+      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${orderId}`, body: `يرجى تجهيز الطلب #${orderId}\n\n${itemsText}\n\nمجموع المواد: ${formatSyp(partnerItemsTotal)}` });
     });
   }
   const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${orderId} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${row.driver.phone}\nللتواصل عبر واتساب: https://wa.me/${row.driver.phone.replace(/\D/g, "")}` };
