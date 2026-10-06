@@ -236,7 +236,7 @@ export const systemSettings = mysqlTable("system_settings", {
   eventStayVisible: boolean("eventStayVisible").notNull().default(false),
   eventShowSeconds: int("eventShowSeconds").notNull().default(5),
   eventRepeatMinutes: int("eventRepeatMinutes").notNull().default(0),
-  driverDispatchTimeoutMinutes: int("driverDispatchTimeoutMinutes").notNull().default(3),
+  driverDispatchTimeoutMinutes: int("driverDispatchTimeoutMinutes").notNull().default(15),
   categoryOverrides: text("categoryOverrides"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
