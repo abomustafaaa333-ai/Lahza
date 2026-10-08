@@ -81,7 +81,7 @@ export const catalogItems = mysqlTable("catalog_items", {
   customCategoryId: int("customCategoryId").references(() => customCategories.id, { onDelete: "set null" }),
   imageUrl: varchar("imageUrl", { length: 500 }),
   imageUrls: text("imageUrls"),
-  clothingSizes: varchar("clothingSizes", { length: 500 }),
+  clothingSizes: text("clothingSizes"),
   clothingColors: varchar("clothingColors", { length: 500 }),
   clothingVariantImages: text("clothingVariantImages"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

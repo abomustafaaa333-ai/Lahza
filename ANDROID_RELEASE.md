@@ -1,32 +1,45 @@
 # إصدار Android الإنتاجي
 
-تم إعداد مشروع Capacitor بمعرّف الحزمة النهائي `com.lahza.app`، وإدماج أيقونة لحظة المعتمدة داخل موارد Android.
+معرّف الحزمة النهائي هو `com.lahza.app`. إصدار Android الحالي هو `2.3.2` برقم بناء `40`، وموقّع بمفتاح الإصدار المتوافق مع APK المنشور سابقاً؛ لذلك يمكن تثبيته كتحديث فوق النسخة الموجودة.
 
 ## بناء النسخة
 
 ```bash
+pnpm install --frozen-lockfile
 pnpm build:mobile
-pnpm build
-pnpm exec cap copy android
+pnpm exec cap sync android
 cd android
-./gradlew assembleRelease
+./gradlew app:assembleRelease
 ```
 
-ينتج البناء ملفاً غير موقّع في:
+لإنتاج نسخة موقّعة، مرّر خصائص Gradle التالية من بيئة آمنة خارج المستودع، ولا تكتب قيمها في الملفات أو سجل Git:
+
+- `lahzaKeystoreFile`
+- `lahzaKeystorePassword`
+- `lahzaKeyAlias`
+- `lahzaKeyPassword`
+
+يدعم المشروع تمريرها عبر متغيرات البيئة ذات البادئة `ORG_GRADLE_PROJECT_`. عند إعدادها، ينتج APK الموقّع في:
 
 ```text
-android/app/build/outputs/apk/release/app-release-unsigned.apk
+android/app/build/outputs/apk/release/app-release.apk
 ```
 
-## توقيع النسخة محلياً
+بعد التحقق من التوقيع ورقم الإصدار، احفظ نسخة التنزيل في:
 
-لا تحفظ ملف keystore أو كلمات المرور داخل GitHub. استخدم ملف keystore جديداً محفوظاً خارج المشروع، ثم وقّع النسخة محلياً باستخدام Android Studio أو `apksigner`، واحتفظ بنسخة احتياطية من الملف وكلمة مروره في مكان آمن.
+```text
+server/downloads/Lahza-v2.3.2-release-signed.apk
+```
 
-قبل أول رفع إلى Google Play يجب مراجعة `applicationId` و`versionCode` و`versionName` وتثبيت القيم النهائية. لا تغيّر معرّف الحزمة بعد نشر التطبيق.
+ويضمّن أمر `pnpm build` هذا الملف في `dist/public/download`، بينما يشير زر تنزيل التطبيق إلى النسخة نفسها.
 
-## ملاحظات
+## الإشعارات
 
-- هذه النسخة تستخدم `com.lahza.app` بدلاً من معرّف الاختبار القديم.
-- تستهدف Android API 36.
-- أي تغيير في مفتاح التوقيع يجعلها تطبيقاً جديداً بالنسبة للنسخة التجريبية القديمة.
-- بيانات الحسابات والطلبات تبقى في خادم Railway وقاعدة البيانات نفسها، بينما قد يحتاج مستخدمو النسخة القديمة إلى تثبيت نظيف.
+يبقى `android/app/google-services.json` وملحق Capacitor للإشعارات الفورية مفعّلين في بناء Android. ويرسل الخادم إشعارات FCM باستخدام إعداد `FIREBASE_SERVICE_ACCOUNT_JSON` أو `FIREBASE_SERVICE_ACCOUNT_JSON_BASE64`؛ حافظ على متغيرات البيئة الحالية في الاستضافة عند النشر.
+
+## حماية التوقيع
+
+- لا تحفظ ملف keystore أو كلمات مروره داخل المستودع.
+- حافظ على مفتاح التوقيع نفسه بين الإصدارات؛ تغيير المفتاح يمنع تثبيت النسخة كتحديث فوق النسخة السابقة.
+- لا تغيّر معرّف الحزمة `com.lahza.app` بعد النشر.
+- تستهدف النسخة Android API 36 والحد الأدنى API 24.

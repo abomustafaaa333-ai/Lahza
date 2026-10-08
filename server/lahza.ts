@@ -1139,6 +1139,7 @@ export async function removeDemoStores() {
   await db.delete(catalogItems).where(like(catalogItems.code, "demo-%"));
   await db.delete(stores).where(and(isNull(stores.partnerId), inArray(stores.name, demoStoreNameList), gte(stores.sortOrder, 900)));
 }
+let catalogClothingSizesSchemaPromise: Promise<void> | null = null;
 async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   await ensureColumns(db, "catalog_items", [
     ["imageUrl", "VARCHAR(500) NULL"],
@@ -1146,10 +1147,20 @@ async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof
     ["stockInitialQuantity", "INT NOT NULL DEFAULT 0"],
     ["stockAlertPercent", "INT NOT NULL DEFAULT 20"],
     ["imageUrls", "TEXT NULL"],
-    ["clothingSizes", "VARCHAR(500) NULL"],
+    ["clothingSizes", "TEXT NULL"],
     ["clothingColors", "VARCHAR(500) NULL"],
     ["clothingVariantImages", "TEXT NULL"],
   ]);
+  if (!catalogClothingSizesSchemaPromise) {
+    catalogClothingSizesSchemaPromise = (async () => {
+      const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `catalog_items` LIKE 'clothingSizes'"));
+      const column = Array.isArray(columns) ? columns[0] as { Type?: unknown } | undefined : undefined;
+      if (column && String(column.Type ?? "").toLowerCase().startsWith("varchar")) {
+        await db.execute(sql.raw("ALTER TABLE `catalog_items` MODIFY COLUMN `clothingSizes` TEXT NULL"));
+      }
+    })().catch(error => { catalogClothingSizesSchemaPromise = null; throw error; });
+  }
+  await catalogClothingSizesSchemaPromise;
 }
 
 async function ensureCatalogSeed() {
@@ -1286,9 +1297,9 @@ export const partnerProductInput = z.object({
   available: z.boolean().default(true),
   imageUrl: z.string().trim().url("أدخل رابط صورة صالحاً").max(500).optional().or(z.literal("")),
   imageUrls: z.array(z.string().url()).max(10).default([]),
-  clothingSizes: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
+  clothingSizes: z.array(z.string().trim().min(1).max(200)).max(20).default([]),
   clothingColors: z.array(z.string().trim().min(1).max(30)).max(20).default([]),
-  clothingVariantImages: z.array(z.object({ size: z.string().trim().max(30), color: z.string().trim().max(30), imageUrls: z.array(z.string().url()).max(10) })).max(100).default([]),
+  clothingVariantImages: z.array(z.object({ size: z.string().trim().max(200), color: z.string().trim().max(30), imageUrls: z.array(z.string().url()).max(10) })).max(100).default([]),
 });
 
 export const partnerOfferInput = z.object({
@@ -1355,7 +1366,7 @@ async function awardCustomerPoint(db: NonNullable<Awaited<ReturnType<typeof getD
 }
 
 export function calculateLineTotal(quantity: number, unitPrice: number, unit: string) {
-  if (unit === "جرام") return Math.round((quantity / 1000) * unitPrice);
+  if (unit === "جرام" || unit === "غرام") return Math.round((quantity / 1000) * unitPrice);
   return Math.round(quantity * unitPrice);
 }
 
@@ -2134,6 +2145,28 @@ export const lahzaRouter = router({
       const traffic = storeIds.length ? await db.select({ source: storeTrafficEvents.source }).from(storeTrafficEvents).where(and(inArray(storeTrafficEvents.storeId, storeIds), gte(storeTrafficEvents.createdAt, periodStart), lt(storeTrafficEvents.createdAt, new Date(periodEnd.getTime() + 1)))) : [];
       const qrVisits = traffic.filter(event => event.source === "qr").length;
       return { periodStart, periodEnd, stores: assignedStores, current: summarize(currentRows), previous: summarize(previousRows), visits: traffic.length, qrVisits, directVisits: traffic.length - qrVisits };
+    }),
+    completedOrders: publicProcedure.query(async ({ ctx }) => {
+      const { db, partner } = await requirePartner(ctx);
+      const assignedStores = await db.select({ id: stores.id }).from(stores).where(eq(stores.partnerId, partner.id));
+      const storeIds = assignedStores.map(store => store.id);
+      if (!storeIds.length) return [];
+      const rows = await db.select({ orderId: orders.id, createdAt: orders.createdAt, itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, lineTotal: orderLines.lineTotal })
+        .from(orderLines)
+        .innerJoin(orders, eq(orderLines.orderId, orders.id))
+        .innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id))
+        .where(and(inArray(catalogItems.storeId, storeIds), eq(orders.status, "completed")))
+        .orderBy(desc(orders.createdAt))
+        .limit(1000);
+      const byOrder = new Map<number, { orderId: number; createdAt: Date; itemTotal: number; items: { name: string; quantity: string | number; unit: string; lineTotal: number }[] }>();
+      for (const row of rows) {
+        const order = byOrder.get(row.orderId) ?? { orderId: row.orderId, createdAt: row.createdAt, itemTotal: 0, items: [] };
+        const lineTotal = Number(row.lineTotal ?? 0);
+        order.itemTotal += lineTotal;
+        order.items.push({ name: row.itemName, quantity: row.quantity, unit: row.unit, lineTotal });
+        byOrder.set(row.orderId, order);
+      }
+      return Array.from(byOrder.values());
     }),
     store: router({
       update: publicProcedure.input(z.object({ storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")), workHours: storeHoursSchema.optional() })).mutation(async ({ ctx, input }) => {
