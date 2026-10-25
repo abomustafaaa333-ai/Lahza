@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { automaticDiscounts, catalogItems, contestCampaigns, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, driverDispatchResponses, driverDispatchRounds, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
-import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
+import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, productFirstCategories, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
@@ -1960,6 +1960,46 @@ export const lahzaRouter = router({
         .orderBy(desc(catalogItems.available), stores.name, catalogItems.name)
         .limit(30);
       return results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen === null ? true : effectiveStoreOpen(result.storeOpen, result.workHours) }));
+    }),
+    /** Product-first listing for everyday categories: every visible store's products, open stores first. */
+    categoryProducts: publicProcedure.input(z.object({ category: z.enum(productFirstCategories) })).query(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await ensureCatalogItemSchema(db);
+      await ensureJarabulusGatewaySchema(db);
+      await ensureProfileImageColumns(db);
+      const rows = await db.select({
+        product: catalogItems,
+        storeId: stores.id,
+        storeName: stores.name,
+        storeCategory: stores.category,
+        storeImageUrl: stores.imageUrl,
+        partnerImageUrl: partners.imageUrl,
+        partnerStoreOpen: partners.storeOpen,
+        workHours: partners.workHours,
+      }).from(catalogItems)
+        .innerJoin(stores, eq(catalogItems.storeId, stores.id))
+        .leftJoin(partners, eq(stores.partnerId, partners.id))
+        .where(and(
+          eq(stores.category, input.category),
+          eq(stores.active, true),
+          customerStoreVisibilityCondition(ctx.city),
+          or(isNull(stores.partnerId), eq(partners.active, true)),
+          eq(catalogItems.deleted, false),
+          eq(catalogItems.available, true),
+        ))
+        .orderBy(catalogItems.name, stores.name)
+        .limit(300);
+      return rows
+        .map(row => ({
+          ...row.product,
+          storeId: row.storeId,
+          storeName: row.storeName,
+          storeCategory: row.storeCategory,
+          storeImageUrl: row.partnerImageUrl || row.storeImageUrl,
+          storeOpen: row.partnerStoreOpen === null ? true : effectiveStoreOpen(row.partnerStoreOpen, row.workHours),
+        }))
+        .sort((a, b) => Number(b.storeOpen) - Number(a.storeOpen));
     }),
     availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
