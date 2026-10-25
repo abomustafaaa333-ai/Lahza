@@ -273,9 +273,10 @@ function HeaderWordmarkMotion() {
           <text x="200" y="84" textAnchor="middle" className="lahza-wordmark-fill">لحظة</text>
           <text x="200" y="84" textAnchor="middle" className="lahza-wordmark-stroke">لحظة</text>
         </g>
+        {/* Speed lines placed as in the primary logo: under the ظ, the lower one shifted toward the ة. */}
         <g className="lahza-wordmark-accents">
-          <rect x="74" y="88" width="62" height="9" rx="4.5" />
-          <rect x="104" y="101" width="38" height="9" rx="4.5" />
+          <rect x="162.5" y="83.3" width="40" height="12" rx="6" />
+          <rect x="152.5" y="97.4" width="33" height="11" rx="5.5" />
         </g>
         <g className="lahza-wordmark-pen">
           <circle cx="0" cy="56" r="9" className="lahza-pen-glow" filter="url(#lahza-pen-glow)" />
