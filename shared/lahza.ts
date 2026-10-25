@@ -60,6 +60,17 @@ for (const legacyCategory of ["chicken", "breakfast", "lamb", "fuel", "beauty_bo
 export const storeCategories = ["restaurants", "groceries", "household", "produce", "bakery", "butcher", "gas", "pharmacy", "sweets", "clothing", "mobile_accessories", "beauty_personal_care", "baby", "school_stationery"] as const satisfies readonly LahzaCategory[];
 
 /** الأقسام الظاهرة للعميل في صفحة طلبك للبيت. */
+/**
+ * Everyday goods where customers care about the product more than the shop.
+ * These categories open on a product list (with the store name shown small);
+ * restaurants, pharmacies and the rest keep the store-first layout.
+ */
+export const productFirstCategories = ["groceries", "household", "produce", "baby", "school_stationery", "beauty_personal_care"] as const satisfies readonly LahzaCategory[];
+
+export function isProductFirstCategory(category: LahzaCategory) {
+  return (productFirstCategories as readonly LahzaCategory[]).includes(category);
+}
+
 export const customerDeliveryCategories = ["restaurants", "groceries", "household", "produce", "pharmacy", "bakery", "sweets", "butcher", "baby", "school_stationery", "beauty_personal_care", "mobile_accessories", "clothing", "gas"] as const satisfies readonly LahzaCategory[];
 
 export type RestaurantType = "all" | "breakfast" | "chicken" | "grills" | "sandwiches";

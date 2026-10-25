@@ -1,0 +1,294 @@
+/*
+ * Lahza customer redesign.
+ * Loaded after index.css so these rules win over the older layered styles.
+ * Palette: teal for brand and prices, orange for every primary action,
+ * warm brown only for text. Avoid adding new colours here.
+ */
+:root {
+  --lz-teal: #00666b;
+  --lz-teal-dark: #004d51;
+  --lz-teal-soft: #e8f3f3;
+  --lz-orange: #ff742d;
+  --lz-orange-dark: #e95e2a;
+  --lz-orange-soft: #fff1e9;
+  --lz-ink: #3a2418;
+  --lz-muted: #7c6252;
+  --lz-soft: #a68b78;
+  --lz-line: #f0e7e0;
+  --lz-bg: #fffdf8;
+  --lz-card: #ffffff;
+  --lz-green: #1f8a4c;
+  --lz-green-soft: #e9f7ef;
+  --lz-red: #c0392b;
+  --lz-red-soft: #fdecea;
+  --lz-radius: 18px;
+}
+
+.lahza-app-shell { background: var(--lz-bg) !important; color: var(--lz-ink); }
+.lahza-app-shell .section-title { color: var(--lz-ink) !important; font-size: 1.15rem !important; font-weight: 800 !important; letter-spacing: 0 !important; }
+.lahza-app-shell .section-eyebrow { color: var(--lz-orange-dark); }
+.screen-transition-internal { padding-top: 0 !important; }
+
+/* ---------- Floating cart / bell: compact icons in the top-left corner ---------- */
+.top-action-cluster { top: .7rem !important; left: .9rem !important; gap: .4rem !important; }
+.top-action-cluster .persistent-cart-button,
+.top-action-cluster .persistent-notifications-button {
+  width: 2.75rem !important; min-width: 2.75rem !important; height: 2.75rem !important; padding: 0 !important;
+  border: 1px solid var(--lz-line) !important; border-radius: 14px !important;
+  color: var(--lz-ink) !important; background: #fff !important; box-shadow: 0 6px 16px -12px rgba(58,36,24,.5) !important;
+}
+.top-action-cluster .persistent-cart-button span { display: none !important; }
+.top-action-cluster .persistent-cart-button b,
+.top-action-cluster .persistent-notifications-button b {
+  position: absolute; top: -6px; left: -6px; display: grid; min-width: 1.25rem; height: 1.25rem; place-items: center; padding: 0 .25rem;
+  border: 2px solid #fff; border-radius: 999px; color: #fff !important; background: var(--lz-orange) !important; font-size: .68rem; font-weight: 800; line-height: 1;
+}
+.lahza-screen-home .top-action-cluster .persistent-cart-button,
+.lahza-screen-home .top-action-cluster .persistent-notifications-button {
+  border-color: transparent !important; color: #fff !important; background: rgba(255,255,255,.16) !important; box-shadow: none !important;
+}
+.lahza-screen-home .top-action-cluster b { border-color: var(--lz-teal) !important; }
+
+/* ---------- App bar shared by inner pages ---------- */
+.lahza-appbar {
+  position: sticky; top: 0; z-index: 40; display: flex; min-height: 4.2rem; align-items: center; gap: .75rem;
+  padding: .55rem 1rem; padding-left: 7.4rem; border-bottom: 1px solid var(--lz-line); background: rgba(255,253,248,.96); backdrop-filter: blur(10px);
+}
+.lahza-appbar-back {
+  display: grid; flex: none; width: 2.6rem; height: 2.6rem; place-items: center; border: 1px solid var(--lz-line); border-radius: 13px; color: var(--lz-ink); background: #fff;
+}
+.lahza-appbar-back:active { transform: scale(.94); }
+.lahza-appbar-copy { min-width: 0; flex: 1; }
+.lahza-appbar-copy small { display: block; overflow: hidden; color: var(--lz-soft); font-size: .72rem; font-weight: 700; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.lahza-appbar-copy h1 { overflow: hidden; color: var(--lz-ink); font-size: 1.12rem; font-weight: 800; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.lahza-page-detail { margin-top: .9rem; margin-bottom: .2rem; color: var(--lz-muted); font-size: .85rem; line-height: 1.7; }
+.lahza-appbar + .app-shell, .lahza-page-detail + .app-shell, .lahza-page-detail + section { padding-top: 1rem; }
+
+/* ---------- Home header ---------- */
+.lahza-home-header { padding: .7rem 0 1.15rem; border-radius: 0 0 26px 26px; color: #fff; background: linear-gradient(160deg, var(--lz-teal), var(--lz-teal-dark)); }
+.lahza-home-header-top { display: flex; min-height: 3rem; align-items: center; gap: .6rem; padding-left: 7rem !important; }
+.lahza-home-location { min-width: 0; }
+.lahza-home-location small { display: block; color: rgba(255,255,255,.75); font-size: .72rem; font-weight: 600; }
+.lahza-home-location strong { display: flex; align-items: center; gap: .3rem; font-size: 1.02rem; font-weight: 800; }
+.lahza-home-support { display: grid; flex: none; width: 2.4rem; height: 2.4rem; place-items: center; border-radius: 12px; color: #fff; background: rgba(255,255,255,.16); }
+.lahza-home-search {
+  display: flex; width: 100%; height: 3rem; align-items: center; gap: .6rem; margin-top: .75rem; padding: 0 .95rem; overflow: hidden;
+  border: 0; border-radius: 14px; color: var(--lz-soft); background: #fff; font-size: .9rem; text-align: right;
+}
+.lahza-home-search span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Home sections ---------- */
+.lahza-app-shell .home-discover-section { padding-top: 1rem; }
+.lahza-app-shell .home-offer-gallery { margin: 0 0 .4rem !important; }
+.lahza-app-shell .home-section-heading { display: flex !important; align-items: center !important; justify-content: space-between !important; margin: 1.35rem 0 .7rem !important; }
+.lahza-app-shell .home-section-heading button { display: inline-flex; align-items: center; gap: .15rem; color: var(--lz-teal) !important; font-size: .8rem !important; font-weight: 700 !important; }
+.lahza-app-shell .home-discover-section .home-category-row {
+  display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)) !important; gap: .85rem .6rem !important; overflow: visible !important; padding: 0 !important;
+}
+.lahza-app-shell .home-discover-section .home-category-row > .home-category-card { display: flex !important; width: auto !important; min-width: 0 !important; flex-direction: column !important; align-items: center !important; gap: .35rem !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; }
+.lahza-app-shell .home-discover-section .home-category-row > .home-category-card .home-category-emoji {
+  display: grid !important; width: 100% !important; height: auto !important; aspect-ratio: 1 / 1; place-items: center; overflow: hidden !important; border-radius: 18px !important; background: var(--lz-teal-soft) !important; box-shadow: none !important;
+}
+.lahza-app-shell .home-discover-section .home-category-row > .home-category-card .home-category-emoji img { width: 100% !important; height: 100% !important; object-fit: cover !important; border-radius: 0 !important; }
+.lahza-app-shell .home-discover-section .home-category-row > .home-category-card > span:last-child,
+.lahza-app-shell .home-discover-section .home-category-row > .home-category-all > .home-category-all-label { color: var(--lz-ink) !important; font-size: .74rem !important; font-weight: 700 !important; line-height: 1.3 !important; text-align: center !important; white-space: normal !important; }
+.lahza-app-shell .home-category-all-grid { display: grid !important; width: 100% !important; aspect-ratio: 1 / 1; grid-template-columns: 1fr 1fr; gap: .3rem; padding: 1.05rem; border-radius: 18px; background: var(--lz-teal-soft); }
+.lahza-app-shell .home-category-all-grid span { border-radius: 6px; background: var(--lz-teal); opacity: .75; }
+
+.lahza-service-cards { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; margin-top: 1.2rem; }
+.lahza-service-card { display: flex; align-items: center; gap: .6rem; padding: .8rem; border: 0; border-radius: 16px; text-align: right; }
+.lahza-service-card > span:first-child { display: grid; flex: none; width: 2.4rem; height: 2.4rem; place-items: center; border-radius: 12px; color: #fff; }
+.lahza-service-card strong { display: block; color: var(--lz-ink); font-size: .9rem; font-weight: 800; }
+.lahza-service-card small { display: block; color: var(--lz-muted); font-size: .7rem; }
+.lahza-service-card-teal { background: var(--lz-teal-soft); }
+.lahza-service-card-teal > span:first-child { background: var(--lz-teal); }
+.lahza-service-card-orange { background: var(--lz-orange-soft); }
+.lahza-service-card-orange > span:first-child { background: var(--lz-orange); }
+.lahza-home-notice { display: flex; align-items: flex-start; gap: .45rem; margin-top: .75rem; padding: .7rem .8rem; border-radius: 14px; color: var(--lz-muted); background: #fff; border: 1px solid var(--lz-line); font-size: .74rem; line-height: 1.7; }
+.lahza-home-notice svg { flex: none; margin-top: .2rem; color: var(--lz-teal); }
+.lahza-gateway-card { display: flex; width: 100%; align-items: center; gap: .7rem; margin-bottom: 1rem; padding: .85rem; border: 1px solid var(--lz-line); border-radius: var(--lz-radius); background: #fff; text-align: right; }
+.lahza-gateway-card > span:first-child { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; border-radius: 12px; color: #fff; background: var(--lz-orange); }
+.lahza-gateway-card > span:nth-child(2) { flex: 1; }
+.lahza-gateway-card strong { display: block; font-size: .92rem; font-weight: 800; }
+.lahza-gateway-card small { color: var(--lz-muted); font-size: .74rem; }
+
+/* ---------- Store rows (home + category) ---------- */
+.lahza-store-list { display: grid; gap: .65rem; }
+.lahza-store-row { display: flex; width: 100%; align-items: center; gap: .75rem; padding: .6rem; border: 1px solid var(--lz-line); border-radius: var(--lz-radius); background: #fff; text-align: right; }
+.lahza-store-row > img { width: 4.3rem; height: 4.3rem; flex: none; border-radius: 14px; object-fit: cover; }
+.lahza-store-row-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: .1rem; }
+.lahza-store-row-copy strong { overflow: hidden; color: var(--lz-ink); font-size: .95rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.lahza-store-row-copy small { color: var(--lz-muted); font-size: .76rem; }
+.lahza-store-row-copy b { color: var(--lz-orange-dark); font-size: .74rem; font-weight: 700; }
+.lahza-store-row-copy b.lahza-store-orders { color: var(--lz-soft); }
+.lahza-status-chip { flex: none; align-self: flex-start; padding: .2rem .6rem; border-radius: 999px; color: var(--lz-green); background: var(--lz-green-soft); font-size: .7rem; font-weight: 700; }
+.lahza-status-chip.lahza-status-closed { color: var(--lz-red); background: var(--lz-red-soft); }
+.lahza-empty-card { display: grid; gap: .4rem; padding: 1.6rem 1rem; border: 1px dashed #e6d6cb; border-radius: var(--lz-radius); color: var(--lz-muted); background: #fff; font-size: .85rem; text-align: center; }
+.lahza-empty-card strong { color: var(--lz-ink); font-weight: 800; }
+
+/* ---------- Product-first / store tabs ---------- */
+.lahza-segmented { display: grid; grid-template-columns: 1fr 1fr; gap: .3rem; margin-bottom: .9rem; padding: .3rem; border-radius: 14px; background: #f5eee8; }
+.lahza-segmented button { height: 2.5rem; border: 0; border-radius: 11px; color: var(--lz-muted); background: transparent; font-size: .88rem; font-weight: 700; }
+.lahza-segmented button.lahza-segmented-active { color: var(--lz-teal); background: #fff; box-shadow: 0 4px 10px -8px rgba(58,36,24,.6); }
+
+/* ---------- Product grid (store + category) ---------- */
+.lahza-app-shell .product-image-grid { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: .7rem !important; }
+@media (min-width: 640px) { .lahza-app-shell .product-image-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } }
+.lahza-app-shell .product-image-card {
+  position: relative !important; display: flex !important; min-height: 0 !important; flex-direction: column !important; align-items: stretch !important; gap: .25rem !important;
+  padding: .5rem .5rem .6rem !important; border: 1px solid var(--lz-line) !important; border-radius: var(--lz-radius) !important; background: #fff !important; box-shadow: none !important; text-align: right !important;
+}
+.lahza-app-shell .product-image-card.product-image-card-closed { opacity: .6; }
+.lahza-app-shell .product-image-wrap { display: grid !important; width: 100% !important; height: auto !important; aspect-ratio: 4 / 3; place-items: center; overflow: hidden !important; border-radius: 13px !important; background: var(--lz-teal-soft) !important; }
+.lahza-app-shell .product-image-wrap img { width: 100% !important; height: 100% !important; object-fit: cover !important; }
+.lahza-app-shell .product-image-card > strong { display: -webkit-box !important; overflow: hidden !important; margin-top: .3rem; color: var(--lz-ink) !important; font-size: .86rem !important; font-weight: 800 !important; line-height: 1.45 !important; white-space: normal !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lahza-app-shell .product-card-store { display: flex; align-items: center; gap: .25rem; overflow: hidden; color: var(--lz-soft); font-size: .7rem; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.lahza-app-shell .product-card-footer { display: flex; align-items: center; justify-content: space-between; gap: .4rem; margin-top: auto; padding-top: .3rem; }
+.lahza-app-shell .product-card-price { display: flex !important; min-width: 0; flex-direction: column; color: var(--lz-teal) !important; font-size: .84rem !important; font-weight: 800 !important; line-height: 1.3; }
+.lahza-app-shell .product-card-price small { color: var(--lz-soft); font-size: .66rem; font-weight: 600; }
+.lahza-app-shell .product-add-circle {
+  position: static !important; display: grid !important; flex: none; width: 2.15rem !important; height: 2.15rem !important; place-items: center;
+  border: 0 !important; border-radius: 11px !important; color: #fff !important; background: var(--lz-orange) !important; box-shadow: none !important; font-size: .62rem; font-weight: 800;
+}
+.lahza-app-shell .product-image-card-closed .product-add-circle, .lahza-app-shell .product-image-card:disabled .product-add-circle { width: auto !important; padding: 0 .5rem; color: var(--lz-red) !important; background: var(--lz-red-soft) !important; }
+.lahza-app-shell .store-product-search { display: flex !important; height: 2.9rem !important; align-items: center !important; gap: .5rem !important; margin-bottom: .9rem !important; padding: 0 .9rem !important; border: 1px solid var(--lz-line) !important; border-radius: 14px !important; background: #fff !important; box-shadow: none !important; }
+.lahza-app-shell .store-product-search svg { color: var(--lz-soft) !important; }
+.lahza-app-shell .store-product-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: .9rem; }
+
+/* ---------- Store page ---------- */
+.lahza-app-shell .store-hero { min-height: 14.5rem !important; border-radius: 0 0 26px 26px; background: var(--lz-teal-dark) !important; }
+.lahza-app-shell .store-hero-back { top: .7rem !important; right: 1rem !important; border: 0 !important; border-radius: 13px !important; color: var(--lz-ink) !important; background: #fff !important; }
+.lahza-app-shell .store-hero-copy h1 { font-size: 1.6rem !important; font-weight: 900 !important; }
+.lahza-app-shell .store-status-row { display: flex !important; flex-wrap: wrap; gap: .45rem !important; margin: .9rem 0 1rem !important; }
+.lahza-app-shell .store-status-row > span, .lahza-app-shell .store-status-row > button {
+  display: inline-flex !important; min-height: 2.2rem !important; align-items: center; gap: .3rem; padding: 0 .75rem !important;
+  border: 1px solid var(--lz-line) !important; border-radius: 999px !important; color: var(--lz-muted) !important; background: #fff !important; box-shadow: none !important; font-size: .76rem !important; font-weight: 700 !important;
+}
+.lahza-app-shell .store-status-row svg { color: currentColor !important; }
+.lahza-app-shell .store-status-row .store-status-open { border-color: transparent !important; color: var(--lz-green) !important; background: var(--lz-green-soft) !important; }
+.lahza-app-shell .store-status-row .store-status-closed { border-color: transparent !important; color: var(--lz-red) !important; background: var(--lz-red-soft) !important; }
+.lahza-app-shell .store-status-row > button { color: var(--lz-orange-dark) !important; border-color: #ffd9c4 !important; background: var(--lz-orange-soft) !important; }
+.lahza-app-shell .store-products-heading { margin: .3rem 0 .7rem !important; }
+
+/* ---------- Product page ---------- */
+.lahza-product-page { padding-bottom: 7.5rem; }
+.lahza-product-card { padding: .2rem 0; }
+.lahza-product-card > .overflow-hidden { border-radius: 20px !important; background: var(--lz-teal-soft) !important; }
+.lahza-product-title { display: flex; align-items: flex-start; justify-content: space-between; gap: .8rem; margin-top: 1rem; }
+.lahza-product-title h2 { color: var(--lz-ink); font-size: 1.3rem; font-weight: 900; line-height: 1.4; }
+.lahza-product-title strong { flex: none; color: var(--lz-teal); font-size: 1.1rem; font-weight: 800; }
+.lahza-product-meta { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; color: var(--lz-muted); font-size: .8rem; }
+.lahza-choice { padding: .5rem 1rem; border: 1px solid var(--lz-line); border-radius: 999px; color: var(--lz-ink); background: #fff; font-size: .85rem; font-weight: 700; }
+.lahza-choice.lahza-choice-active { border: 2px solid var(--lz-teal); color: var(--lz-teal); background: var(--lz-teal-soft); }
+.lahza-app-shell .quantity-control { display: flex !important; align-items: center; gap: .4rem; max-width: 12rem; padding: .3rem !important; border: 1px solid var(--lz-line) !important; border-radius: 16px !important; background: #fff !important; }
+.lahza-app-shell .quantity-control button { display: grid !important; width: 2.6rem !important; height: 2.6rem !important; flex: none; place-items: center; border: 0 !important; border-radius: 12px !important; color: var(--lz-teal) !important; background: var(--lz-teal-soft) !important; }
+.lahza-app-shell .quantity-control input { min-width: 0; flex: 1; border: 0 !important; box-shadow: none !important; font-size: 1.05rem !important; font-weight: 800; text-align: center; }
+/* sticky (not fixed): the screen transition wrapper is transformed, which would trap a fixed element */
+.lahza-sticky-cta { position: sticky; z-index: 45; bottom: 0; margin: 1.2rem -1.1rem 0; padding: .75rem 1.1rem calc(.9rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--lz-line); background: rgba(255,253,248,.97); }
+.lahza-product-page { padding-bottom: 0 !important; }
+
+/* ---------- Primary buttons (orange everywhere) ---------- */
+.lahza-primary-cta, .lahza-app-shell .primary-full-button {
+  display: flex !important; width: 100% !important; min-height: 3.25rem !important; align-items: center !important; justify-content: center !important; gap: .5rem !important;
+  border: 0 !important; border-radius: 16px !important; color: #fff !important; background: var(--lz-orange) !important; box-shadow: 0 10px 22px -16px rgba(233,94,42,.9) !important; font-size: 1rem !important; font-weight: 800 !important;
+}
+.lahza-primary-cta:hover, .lahza-app-shell .primary-full-button:hover { background: var(--lz-orange-dark) !important; }
+.lahza-primary-cta:disabled { opacity: .55; }
+
+/* ---------- Bottom navigation ---------- */
+.lahza-app-shell .home-bottom-nav {
+  right: 0 !important; bottom: 0 !important; left: 0 !important; width: 100% !important; max-width: none !important; height: auto !important; margin: 0 !important; transform: none !important;
+  display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)) !important; gap: 0 !important; padding: .4rem .4rem calc(.45rem + env(safe-area-inset-bottom)) !important;
+  border: 0 !important; border-top: 1px solid var(--lz-line) !important; border-radius: 0 !important; background: rgba(255,255,255,.98) !important; box-shadow: 0 -8px 24px -22px rgba(58,36,24,.6) !important;
+}
+.lahza-app-shell .home-bottom-nav button {
+  display: flex !important; min-width: 0 !important; height: auto !important; flex-direction: column !important; align-items: center !important; gap: .2rem !important; padding: .25rem 0 !important;
+  border: 0 !important; border-radius: 0 !important; color: var(--lz-soft) !important; background: transparent !important; box-shadow: none !important;
+}
+.lahza-app-shell .home-bottom-nav button span { color: inherit !important; font-size: .68rem !important; font-weight: 700 !important; line-height: 1.2 !important; }
+.lahza-app-shell .home-bottom-nav button svg { width: 2.6rem !important; height: 1.9rem !important; padding: .3rem .7rem; border-radius: 12px; color: inherit !important; }
+.lahza-app-shell .home-bottom-nav button.home-bottom-nav-active { color: var(--lz-teal) !important; background: transparent !important; }
+.lahza-app-shell .home-bottom-nav button.home-bottom-nav-active span, .lahza-app-shell .home-bottom-nav button.home-bottom-nav-active svg { color: var(--lz-teal) !important; }
+.lahza-app-shell .home-bottom-nav button.home-bottom-nav-active svg { background: var(--lz-teal-soft); }
+
+/* ---------- Checkout & cart ---------- */
+.lahza-app-shell .checkout-card { border: 1px solid var(--lz-line) !important; border-radius: var(--lz-radius) !important; box-shadow: none !important; }
+.lahza-app-shell .checkout-flow-steps { gap: .4rem !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; }
+.lahza-app-shell .checkout-flow-steps button { flex: 1; display: flex !important; flex-direction: column; align-items: stretch !important; gap: .3rem !important; min-height: 0 !important; padding: 0 !important; border: 0 !important; color: var(--lz-soft) !important; background: none !important; box-shadow: none !important; font-size: .76rem !important; font-weight: 700 !important; text-align: right; }
+.lahza-app-shell .checkout-flow-steps button::before { content: ""; display: block; height: 5px; border-radius: 3px; background: var(--lz-line); }
+.lahza-app-shell .checkout-flow-steps button b { display: none !important; }
+.lahza-app-shell .checkout-flow-steps button.checkout-flow-active { color: var(--lz-teal) !important; }
+.lahza-app-shell .checkout-flow-steps button.checkout-flow-active::before { background: var(--lz-teal); }
+.lahza-app-shell .cart-line { display: flex !important; align-items: center !important; }
+.lahza-app-shell .cart-line-copy { display: flex !important; flex-direction: column !important; gap: .2rem !important; }
+.lahza-app-shell .cart-line-copy strong { display: block !important; color: var(--lz-ink) !important; font-size: .88rem !important; white-space: normal !important; }
+.lahza-app-shell .cart-line-copy > span { display: block !important; color: var(--lz-soft) !important; font-size: .72rem !important; }
+.lahza-app-shell .cart-line-actions strong { color: var(--lz-teal) !important; font-size: .85rem !important; white-space: nowrap; }
+.lahza-app-shell .cart-inline-quantity { display: inline-flex !important; width: max-content; align-items: center; gap: .5rem !important; padding: .15rem !important; border: 1px solid var(--lz-line) !important; border-radius: 11px !important; background: #fff !important; }
+.lahza-app-shell .cart-inline-quantity button { display: grid !important; width: 1.8rem !important; height: 1.8rem !important; place-items: center; border-radius: 8px !important; color: var(--lz-teal) !important; background: var(--lz-teal-soft) !important; }
+.lahza-app-shell .total-row strong.total-row-pending { color: var(--lz-soft) !important; font-size: .78rem !important; font-weight: 600 !important; }
+.lahza-app-shell .total-row-grand strong { color: var(--lz-teal) !important; }
+
+/* ---------- Forms (wossel li, checkout) ---------- */
+.lahza-app-shell .checkout-card input:not([type="checkbox"]):not([type="radio"]),
+.lahza-app-shell .checkout-card textarea,
+.lahza-app-shell .checkout-card select,
+.lahza-app-shell .route-field input {
+  border: 1px solid #e8dcd3 !important; border-radius: 13px !important; background: #fff !important; box-shadow: none !important;
+}
+.lahza-app-shell .checkout-card input:focus, .lahza-app-shell .checkout-card textarea:focus, .lahza-app-shell .route-field input:focus { border-color: var(--lz-teal) !important; outline: 2px solid var(--lz-teal-soft) !important; }
+
+/* ---------- Login ---------- */
+.customer-auth-card { display: flex !important; flex-direction: column !important; }
+.customer-auth-card > * { order: 0 !important; }
+.customer-auth-primary { background: var(--lz-orange) !important; }
+.customer-auth-secondary svg, .customer-auth-guest svg { color: currentColor !important; opacity: .9; }
+.customer-auth-primary-logo { filter: brightness(0) invert(1); }
+
+/* Phones at 360px and below */
+@media (max-width: 380px) {
+  .lahza-appbar { padding-left: 6.8rem; }
+  .lahza-app-shell .home-bottom-nav button span { font-size: .62rem !important; }
+}
+
+/* Map / GPS button inside checkout forms reads as a real button */
+.lahza-app-shell button.location-actions {
+  display: flex !important; width: 100% !important; min-height: 3rem !important; align-items: center !important; justify-content: center !important; gap: .45rem !important;
+  border: 1.5px solid var(--lz-teal) !important; border-radius: 14px !important; color: var(--lz-teal) !important; background: var(--lz-teal-soft) !important; font-size: .9rem !important; font-weight: 800 !important;
+}
+
+/* Product page uses its own sticky add button instead of the tab bar */
+.lahza-app-shell.lahza-screen-productQuantity .home-bottom-nav { display: none !important; }
+
+/* Cart / bell icons keep a visible colour on white buttons */
+.top-action-cluster .persistent-cart-button svg, .top-action-cluster .persistent-notifications-button svg { color: currentColor !important; }
+
+/* Home: remove the legacy negative offsets that pushed the offers banner over the header */
+.lahza-app-shell .home-discover-section { top: 0 !important; margin-bottom: 0 !important; }
+.lahza-app-shell .home-discover-section .home-category-row { top: 0 !important; }
+.lahza-app-shell .home-offer-gallery, .lahza-app-shell .home-discover-section > .global-offer-bar { position: relative !important; top: 0 !important; width: 100% !important; margin: 0 0 .4rem !important; }
+.lahza-app-shell .home-discover-section > .home-offer-gallery .hero-image-frame { transform: none !important; border-radius: 20px !important; }
+.lahza-app-shell .home-section-heading .section-title { margin: 0 !important; line-height: 1.5 !important; }
+
+/* Checkout totals and step labels */
+.lahza-app-shell .total-row strong { color: var(--lz-ink) !important; }
+.lahza-app-shell .checkout-flow-steps { padding-inline: .1rem !important; overflow: visible !important; }
+
+.customer-auth-primary-logo { filter: brightness(0) invert(1) !important; }
+
+/* App bar rendered inside a padded .app-shell (account screen) spans the full width */
+.app-shell > .lahza-appbar { margin-inline: -1.1rem; }
+
+/* All-categories page: image tiles in three columns */
+.lahza-app-shell .category-grid { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: .9rem .6rem !important; }
+.lahza-app-shell .category-card { position: relative; display: flex !important; min-height: 0 !important; flex-direction: column !important; align-items: center !important; gap: .4rem !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; text-align: center !important; }
+.lahza-app-shell .category-card .category-icon { display: grid !important; width: 100% !important; height: auto !important; aspect-ratio: 1 / 1; overflow: hidden; border-radius: 18px !important; background: var(--lz-teal-soft) !important; }
+.lahza-app-shell .category-card .category-icon img { width: 100% !important; height: 100% !important; object-fit: cover !important; }
+.lahza-app-shell .category-card-copy span { color: var(--lz-ink) !important; font-size: .78rem !important; font-weight: 700 !important; line-height: 1.35 !important; }
+.lahza-app-shell .category-card-copy small, .lahza-app-shell .category-card > svg { display: none !important; }
+.lahza-app-shell .category-card .category-badge { position: absolute; top: -4px; left: -4px; }
+.lahza-app-shell .category-card.category-card-active .category-icon { outline: 2px solid var(--lz-teal); }
+.lahza-app-shell .category-card-copy { width: 100%; }
+.lahza-app-shell .category-card-copy span { display: block; white-space: normal !important; overflow-wrap: anywhere; }
+.lahza-app-shell .account-screen { padding-top: 0 !important; }
+.lahza-app-shell .total-row.total-row-grand strong { color: var(--lz-teal) !important; }
