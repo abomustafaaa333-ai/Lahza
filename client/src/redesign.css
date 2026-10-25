@@ -243,7 +243,6 @@
 .customer-auth-card > * { order: 0 !important; }
 .customer-auth-primary { background: var(--lz-orange) !important; }
 .customer-auth-secondary svg, .customer-auth-guest svg { color: currentColor !important; opacity: .9; }
-.customer-auth-primary-logo { filter: brightness(0) invert(1); }
 
 /* Phones at 360px and below */
 @media (max-width: 380px) {
@@ -274,7 +273,6 @@
 .lahza-app-shell .total-row strong { color: var(--lz-ink) !important; }
 .lahza-app-shell .checkout-flow-steps { padding-inline: .1rem !important; overflow: visible !important; }
 
-.customer-auth-primary-logo { filter: brightness(0) invert(1) !important; }
 
 /* App bar rendered inside a padded .app-shell (account screen) spans the full width */
 .app-shell > .lahza-appbar { margin-inline: -1.1rem; }
@@ -292,3 +290,13 @@
 .lahza-app-shell .category-card-copy span { display: block; white-space: normal !important; overflow-wrap: anywhere; }
 .lahza-app-shell .account-screen { padding-top: 0 !important; }
 .lahza-app-shell .total-row.total-row-grand strong { color: var(--lz-teal) !important; }
+
+/* Login logo keeps its original colours on a light tile (inverting it hid the orange mark) */
+.customer-auth-brand { background: #fff !important; border-color: transparent !important; box-shadow: 0 14px 30px -20px rgba(0,0,0,.7) !important; }
+
+/* Notification / cart count: anchor to the left corner only, otherwise the old right offset stretches it */
+.top-action-cluster .persistent-cart-button b, .top-action-cluster .persistent-notifications-button b { top: -6px !important; right: auto !important; left: -6px !important; width: auto !important; }
+
+/* Long category names wrap instead of being clipped */
+.lahza-app-shell .category-grid .category-card, .lahza-app-shell .category-grid .category-card-copy { overflow: visible !important; max-width: 100%; }
+.lahza-app-shell .category-grid .category-card-copy > span { overflow: visible !important; text-overflow: clip !important; white-space: normal !important; word-break: break-word; }
