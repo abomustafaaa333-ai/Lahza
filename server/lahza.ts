@@ -1041,6 +1041,19 @@ async function setCustomerCookie(ctx: TrpcContext, customerPhone: string) {
   ctx.res.cookie(CUSTOMER_COOKIE, await createCustomerSession({ customerPhone }), { ...getSessionCookieOptions(ctx.req), maxAge: CUSTOMER_SESSION_MAX_AGE_MS });
 }
 
+/** Campaigns older than this stop appearing in the bell, so a fresh install is not greeted by months-old offers. */
+const CAMPAIGN_FEED_MAX_AGE_DAYS = 14;
+
+function visibleCampaignCondition(now: Date) {
+  const oldest = new Date(now.getTime() - CAMPAIGN_FEED_MAX_AGE_DAYS * 24 * 60 * 60 * 1000);
+  return and(
+    eq(notificationCampaigns.active, true),
+    or(isNull(notificationCampaigns.scheduledAt), lte(notificationCampaigns.scheduledAt, now)),
+    or(isNull(notificationCampaigns.expiresAt), gte(notificationCampaigns.expiresAt, now)),
+    gte(sql`COALESCE(${notificationCampaigns.scheduledAt}, ${notificationCampaigns.createdAt})`, oldest),
+  );
+}
+
 function assertNotLocked(limiter: RateLimiter, key: string) {
   const wait = limiter.blockedFor(key);
   if (wait > 0) throw new Error(`محاولات كثيرة، حاول مجدداً بعد ${formatWait(wait)}`);
@@ -1611,11 +1624,23 @@ export const lahzaRouter = router({
     feed: publicProcedure.input(z.object({ deviceId: deviceIdSchema })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const now = new Date();
-      const campaigns = await db.select().from(notificationCampaigns).where(and(eq(notificationCampaigns.active, true), or(isNull(notificationCampaigns.scheduledAt), lte(notificationCampaigns.scheduledAt, now)), or(isNull(notificationCampaigns.expiresAt), gte(notificationCampaigns.expiresAt, now)))).orderBy(desc(notificationCampaigns.createdAt));
+      const campaigns = await db.select().from(notificationCampaigns).where(visibleCampaignCondition(new Date())).orderBy(desc(notificationCampaigns.createdAt));
       const reads = await db.select({ campaignId: customerNotifications.campaignId, readAt: customerNotifications.readAt }).from(customerNotifications).where(eq(customerNotifications.deviceId, input.deviceId));
       const readByCampaign = new Map(reads.map(row => [row.campaignId, row.readAt]));
       return campaigns.map(campaign => ({ ...campaign, readAt: readByCampaign.get(campaign.id) ?? null, unread: !readByCampaign.has(campaign.id) }));
+    }),
+    /** Clears the bell badge: marks every visible campaign read for this device, and the signed-in customer's order updates. */
+    markAllRead: publicProcedure.input(z.object({ deviceId: deviceIdSchema, customerPhone: internationalPhoneSchema.optional() })).mutation(async ({ ctx, input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const campaigns = await db.select({ id: notificationCampaigns.id }).from(notificationCampaigns).where(visibleCampaignCondition(new Date()));
+      const readAt = new Date();
+      if (campaigns.length) await db.insert(customerNotifications).values(campaigns.map(campaign => ({ campaignId: campaign.id, deviceId: input.deviceId, readAt }))).onDuplicateKeyUpdate({ set: { readAt } });
+      if (input.customerPhone) {
+        await requireCustomerPhone(ctx, input.customerPhone);
+        await db.update(orderNotifications).set({ readAt }).where(and(eq(orderNotifications.customerPhone, input.customerPhone), isNull(orderNotifications.readAt)));
+      }
+      return { success: true };
     }),
     markRead: publicProcedure.input(z.object({ deviceId: deviceIdSchema, campaignId: z.number().int().positive() })).mutation(async ({ input }) => {
       const db = await getDb();

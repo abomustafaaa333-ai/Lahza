@@ -300,3 +300,53 @@
 /* Long category names wrap instead of being clipped */
 .lahza-app-shell .category-grid .category-card, .lahza-app-shell .category-grid .category-card-copy { overflow: visible !important; max-width: 100%; }
 .lahza-app-shell .category-grid .category-card-copy > span { overflow: visible !important; text-overflow: clip !important; white-space: normal !important; word-break: break-word; }
+
+/* ---------- Animated home header ----------
+ * Two soft light orbs drift behind the location row and search bar, with a
+ * slow diagonal sheen. Pure CSS, GPU-friendly (transform/opacity only), and
+ * switched off for people who ask the system to reduce motion.
+ */
+.lahza-home-header {
+  position: relative; isolation: isolate; overflow: hidden;
+  background:
+    radial-gradient(rgba(255,255,255,.16) 1.2px, transparent 1.4px) 0 0 / 20px 20px,
+    linear-gradient(160deg, var(--lz-teal), var(--lz-teal-dark));
+  animation: lahza-dots 24s linear infinite;
+}
+@keyframes lahza-dots { to { background-position: 40px 80px, 0 0; } }
+.lahza-home-header > * { position: relative; z-index: 1; }
+.lahza-home-header::before,
+.lahza-home-header::after {
+  content: ""; position: absolute; z-index: 0; pointer-events: none; border-radius: 50%; filter: blur(28px); will-change: transform;
+}
+.lahza-home-header::before {
+  top: -55%; right: -18%; width: 70%; aspect-ratio: 1;
+  background: radial-gradient(circle, rgba(255,140,70,.75), rgba(255,116,45,0) 68%);
+  animation: lahza-orb-a 14s ease-in-out infinite alternate;
+}
+.lahza-home-header::after {
+  bottom: -70%; left: -20%; width: 80%; aspect-ratio: 1;
+  background: radial-gradient(circle, rgba(120,230,220,.6), rgba(0,102,107,0) 70%);
+  animation: lahza-orb-b 18s ease-in-out infinite alternate;
+}
+.lahza-home-header .lahza-home-header-top::after {
+  content: ""; position: absolute; z-index: -1; inset: -3rem -60% -6rem; pointer-events: none;
+  background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.13) 50%, transparent 62%);
+  animation: lahza-sheen 7s ease-in-out infinite;
+}
+.lahza-home-search { box-shadow: 0 12px 28px -18px rgba(0,0,0,.55); }
+@keyframes lahza-orb-a { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-35%, 25%) scale(1.15); } 100% { transform: translate(-70%, 10%) scale(.95); } }
+@keyframes lahza-orb-b { 0% { transform: translate(0, 0) scale(1); } 50% { transform: translate(30%, -20%) scale(1.1); } 100% { transform: translate(60%, -5%) scale(1); } }
+@keyframes lahza-sheen { 0%, 20% { transform: translateX(60%); opacity: 0; } 45% { opacity: 1; } 70%, 100% { transform: translateX(-60%); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .lahza-home-header, .lahza-home-header::before, .lahza-home-header::after, .lahza-home-header .lahza-home-header-top::after { animation: none; }
+}
+
+/* Mark-all-read action in the notifications dialog */
+.notification-mark-all { display: inline-flex; align-self: flex-start; align-items: center; gap: .35rem; margin: .1rem 0 .5rem; padding: .4rem .8rem; border: 1px solid var(--lz-line); border-radius: 999px; color: var(--lz-teal); background: var(--lz-teal-soft); font-size: .8rem; font-weight: 700; }
+.notification-mark-all:disabled { opacity: .6; }
+
+/* Home categories: two-line labels keep their own space instead of spilling onto the next row */
+.lahza-app-shell .home-discover-section .home-category-row > .home-category-card { height: auto !important; min-height: 0 !important; }
+.lahza-app-shell .home-discover-section .home-category-row > .home-category-card > span:last-child,
+.lahza-app-shell .home-discover-section .home-category-row > .home-category-all > .home-category-all-label { display: -webkit-box !important; min-height: 2.6em; overflow: hidden !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
