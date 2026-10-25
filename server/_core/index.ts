@@ -8,6 +8,7 @@ import { autoCompleteDueOrders, removeDemoStores, ensureLahzaRuntimeSchema, hand
 import { startDailyReadinessReminders } from "../daily-readiness-reminders";
 import { ensureScheduledPushSchema, runScheduledPushNotifications } from "../notificationDelivery";
 import { ensureDatabaseCompatibility, migrateDatabase } from "../db";
+import { isAuthorizedWebhook } from "../security";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -28,10 +29,27 @@ async function startServer() {
     if (req.method === "OPTIONS") return res.sendStatus(204);
     next();
   });
-  app.use(express.json({ limit: "50mb" }));
+  app.use(express.json({ limit: "50mb", verify: (req, _res, buf) => {
+    // Keep the raw bytes only for the WhatsApp webhook so its HMAC can be checked.
+    if (req.url?.startsWith("/api/waha/webhook")) (req as typeof req & { rawBody?: Buffer }).rawBody = buf;
+  } }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.get("/health", (_req, res) => res.status(200).json({ ok: true, service: "lahza" }));
+  let warnedMissingWebhookSecret = false;
   app.post("/api/waha/webhook", (req, res) => {
+    const secret = process.env.WAHA_WEBHOOK_SECRET;
+    if (secret) {
+      const authorized = isAuthorizedWebhook(secret, {
+        token: req.query.token,
+        headerToken: req.headers["x-lahza-webhook-token"],
+        hmac: req.headers["x-webhook-hmac"],
+        rawBody: (req as typeof req & { rawBody?: Buffer }).rawBody,
+      });
+      if (!authorized) return res.status(401).json({ accepted: false });
+    } else if (!warnedMissingWebhookSecret) {
+      warnedMissingWebhookSecret = true;
+      console.warn("[Security] WAHA_WEBHOOK_SECRET is not set; the WhatsApp webhook accepts unauthenticated requests");
+    }
     void handleWahaWebhook(req.body).catch(error => console.warn("Unable to process WAHA webhook", error));
     res.status(202).json({ accepted: true });
   });
