@@ -9,6 +9,7 @@ import App from "./App";
 import "./index.css";
 import "./admin-layout-fix.css";
 import "./redesign.css";
+import "./admin-redesign.css";
 
 // Configure VITE_LAHZA_API_ORIGIN for mobile builds so the APK calls the
 // current MSHOST server. Keep the old origin as a compatibility fallback for

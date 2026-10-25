@@ -256,6 +256,36 @@ function LahzaEventCover({ event }: { event?: LahzaEventSettings }) {
   return <div className="lahza-event-cover" role="dialog" aria-label="إعلان لحظة">{event.eventLinkUrl ? <a href={event.eventLinkUrl} target="_blank" rel="noreferrer" className="lahza-event-cover-link">{image}</a> : image}<button type="button" onClick={() => setVisible(false)} className="lahza-event-cover-close" aria-label="إغلاق الإعلان">×</button></div>;
 }
 
+/**
+ * The لحظة wordmark written right-to-left behind the search area: a mask sweeps
+ * across while the outline is drawn (Arabic letters stay joined), a pen tip
+ * follows the edge, then the fill and the logo's orange speed lines appear.
+ */
+function HeaderWordmarkMotion() {
+  return (
+    <div className="lahza-wordmark-band" aria-hidden="true">
+      <svg viewBox="0 0 400 112" className="lahza-wordmark-motion">
+        <defs>
+          <clipPath id="lahza-write-clip"><rect className="lahza-write-reveal" x="30" y="0" width="340" height="112" /></clipPath>
+          <filter id="lahza-pen-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" /></filter>
+        </defs>
+        <g clipPath="url(#lahza-write-clip)">
+          <text x="200" y="84" textAnchor="middle" className="lahza-wordmark-fill">لحظة</text>
+          <text x="200" y="84" textAnchor="middle" className="lahza-wordmark-stroke">لحظة</text>
+        </g>
+        <g className="lahza-wordmark-accents">
+          <rect x="74" y="88" width="62" height="9" rx="4.5" />
+          <rect x="104" y="101" width="38" height="9" rx="4.5" />
+        </g>
+        <g className="lahza-wordmark-pen">
+          <circle cx="0" cy="56" r="9" className="lahza-pen-glow" filter="url(#lahza-pen-glow)" />
+          <circle cx="0" cy="56" r="3.5" className="lahza-pen-tip" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; searchPlaceholder: string; city: CityKey }) {
   return (
     <header className="lahza-home-header">
@@ -263,6 +293,7 @@ function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; s
         <div className="lahza-home-location"><small>التوصيل إلى</small><strong><MapPinCheck className="h-4 w-4" /> {CITY_LABELS[city]}</strong></div>
         <a className="lahza-home-support" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><MessageCircle className="h-5 w-5" /></a>
       </div>
+      <HeaderWordmarkMotion />
       <div className="app-shell"><button type="button" className="lahza-home-search" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span></button></div>
     </header>
   );
@@ -774,6 +805,8 @@ export default function Home() {
   const deviceId = useMemo(() => getDeviceId(), []);
   const notificationsQuery = trpc.lahza.notifications.feed.useQuery({ deviceId }, { enabled: !isStaticDemo && Boolean(customerAuth), refetchInterval: 60_000, staleTime: 30_000 });
   const markNotificationRead = trpc.lahza.notifications.markRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); } });
+  const markAllNotificationsRead = trpc.lahza.notifications.markAllRead.useMutation({ onSuccess: () => { void notificationsQuery.refetch(); void orderNotificationsQuery.refetch(); toast.success("تم تحديد كل الإشعارات كمقروءة"); }, onError: error => toast.error(error.message) });
+  const unreadNotificationCount = (notificationsQuery.data ?? []).filter(notification => notification.unread).length + (orderNotificationsQuery.data ?? []).length;
   const registerPushToken = trpc.lahza.notifications.registerPushToken.useMutation();
 
   useEffect(() => {
@@ -1271,10 +1304,10 @@ export default function Home() {
   return (
     <main dir="rtl" className={`lahza-app-shell lahza-screen-${screen} min-h-screen text-slate-950`} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       <div className={`pull-refresh-indicator ${pullDistance > 0 || refreshing ? "pull-refresh-indicator-visible" : ""}`} style={{ transform: `translate(-50%, ${refreshing ? 12 : Math.min(62, pullDistance * .72) - 44}px)` }} role="status" aria-live="polite"><span className={refreshing ? "pull-refresh-spinner" : ""}><ArrowLeft className="h-4 w-4 -rotate-90" /></span><small>{refreshing ? "جارٍ التحديث" : pullDistance >= 72 ? "اترك للتحديث" : "اسحب للتحديث"}</small></div>
-      <div className="top-action-cluster" dir="ltr">{driverSessionQuery.data ? <button type="button" className="persistent-notifications-button" onClick={() => window.location.href = "/?driverApp=1"} aria-label="فتح لوحة المندوب"><LayoutDashboard className="h-5 w-5" /></button> : null}<PersistentCartButton onCart={openCart} cartCount={cart.length} /><button type="button" className="persistent-notifications-button" onClick={() => setNotificationsOpen(true)} aria-label="فتح الإشعارات"><BellRing className="h-5 w-5" />{((notificationsQuery.data ?? []).filter(notification => notification.unread).length + (orderNotificationsQuery.data ?? []).length) > 0 ? <b>{(notificationsQuery.data ?? []).filter(notification => notification.unread).length + (orderNotificationsQuery.data ?? []).length}</b> : null}</button></div><LahzaEventCover event={interfaceSettingsQuery.data} />
+      <div className="top-action-cluster" dir="ltr">{driverSessionQuery.data ? <button type="button" className="persistent-notifications-button" onClick={() => window.location.href = "/?driverApp=1"} aria-label="فتح لوحة المندوب"><LayoutDashboard className="h-5 w-5" /></button> : null}<PersistentCartButton onCart={openCart} cartCount={cart.length} /><button type="button" className="persistent-notifications-button" onClick={() => setNotificationsOpen(true)} aria-label="فتح الإشعارات"><BellRing className="h-5 w-5" />{unreadNotificationCount > 0 ? <b>{unreadNotificationCount}</b> : null}</button></div><LahzaEventCover event={interfaceSettingsQuery.data} />
       {screen === "home" ? <Header onSearch={() => setSearchOpen(true)} searchPlaceholder={searchPlaceholder} city={selectedCity ?? "manbij"} /> : null}
 
-      <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}><DialogContent dir="rtl" className="notification-dialog"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right"><BellRing className="h-5 w-5 text-[#00666b]" /> إشعارات لحظة</DialogTitle><DialogDescription className="text-right">العروض وتحديثات حالة طلباتك في مكان واحد.</DialogDescription></DialogHeader><div className="notification-dialog-list">{(notificationsQuery.data ?? []).filter(notification => notification.unread).map(notification => <button key={`campaign-${notification.id}`} type="button" className="notification-dialog-item" onClick={() => { markNotificationRead.mutate({ deviceId, campaignId: notification.id }); if (notification.targetPath === "/offers") setScreen("offers"); setNotificationsOpen(false); }}><span className="notification-dialog-icon notification-dialog-icon-orange"><BellRing className="h-4 w-4" /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}{(orderNotificationsQuery.data ?? []).map(notification => <button key={`order-${notification.id}`} type="button" className="notification-dialog-item" onClick={() => { markOrderNotificationRead.mutate({ id: notification.id, customerPhone: orderNotificationPhone }); setNotificationsOpen(false); }}><span className="notification-dialog-icon"><PackageCheck className="h-4 w-4" /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}{!(notificationsQuery.data ?? []).some(notification => notification.unread) && !(orderNotificationsQuery.data ?? []).length ? <div className="notification-dialog-empty"><BellRing className="h-7 w-7" /><span>لا توجد إشعارات جديدة حالياً.</span></div> : null}</div></DialogContent></Dialog>
+      <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}><DialogContent dir="rtl" className="notification-dialog"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right"><BellRing className="h-5 w-5 text-[#00666b]" /> إشعارات لحظة</DialogTitle><DialogDescription className="text-right">العروض وتحديثات حالة طلباتك في مكان واحد.</DialogDescription></DialogHeader>{unreadNotificationCount > 0 ? <button type="button" className="notification-mark-all" disabled={markAllNotificationsRead.isPending} onClick={() => markAllNotificationsRead.mutate({ deviceId, ...(customerAuth?.mode === "customer" && customerAuth.phone ? { customerPhone: customerAuth.phone } : {}) })}><CheckCircle2 className="h-4 w-4" /> تحديد الكل كمقروء</button> : null}<div className="notification-dialog-list">{(notificationsQuery.data ?? []).filter(notification => notification.unread).map(notification => <button key={`campaign-${notification.id}`} type="button" className="notification-dialog-item" onClick={() => { markNotificationRead.mutate({ deviceId, campaignId: notification.id }); if (notification.targetPath === "/offers") setScreen("offers"); setNotificationsOpen(false); }}><span className="notification-dialog-icon notification-dialog-icon-orange"><BellRing className="h-4 w-4" /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}{(orderNotificationsQuery.data ?? []).map(notification => <button key={`order-${notification.id}`} type="button" className="notification-dialog-item" onClick={() => { markOrderNotificationRead.mutate({ id: notification.id, customerPhone: orderNotificationPhone }); setNotificationsOpen(false); }}><span className="notification-dialog-icon"><PackageCheck className="h-4 w-4" /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}{!(notificationsQuery.data ?? []).some(notification => notification.unread) && !(orderNotificationsQuery.data ?? []).length ? <div className="notification-dialog-empty"><BellRing className="h-7 w-7" /><span>لا توجد إشعارات جديدة حالياً.</span></div> : null}</div></DialogContent></Dialog>
       <ServiceDirectoryDialog open={serviceDirectoryOpen} onOpenChange={setServiceDirectoryOpen} onDelivery={openDeliveryService} onWosselLi={openWosselLiService} onTaxi={openTaxiService} />
       <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <><DialogClose aria-label="إغلاق العرض" className="absolute right-4 top-4 z-10 grid h-12 w-12 place-items-center rounded-full border border-white/70 bg-slate-950/50 text-white shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-slate-950/70 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"><X className="h-7 w-7" strokeWidth={3} /><span className="sr-only">إغلاق العرض</span></DialogClose>{selectedGalleryOffer.imageUrl ? <img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /> : <div className="grid h-52 place-items-center bg-gradient-to-br from-red-600 to-orange-500 text-white"><BadgePercent className="h-14 w-14" /></div>}<div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-[#4a2618]">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={openFeaturedOffers} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
 
