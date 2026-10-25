@@ -19,11 +19,14 @@ import type { TrpcContext } from "./_core/context";
 import { sendPushNotification } from "./pushNotifications";
 import { sendCampaignPushNow } from "./notificationDelivery";
 import { normalizeWahaReply, resolveWahaLid, sendWahaText } from "./waha";
+import { createRateLimiter, formatWait, type RateLimiter } from "./security";
 
 const scrypt = promisify(scryptCallback);
 const ADMIN_COOKIE = "lahza_admin_session";
 const PARTNER_COOKIE = "lahza_partner_session";
 const DRIVER_COOKIE = "lahza_driver_session";
+const CUSTOMER_COOKIE = "lahza_customer_session";
+const CUSTOMER_SESSION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
 const DEMO_CUSTOMER_PHONE = "+963997311078";
 const DEMO_CUSTOMER_NAME = "عميل لحظة التجريبي";
 const TEST_CUSTOMER_PHONE = "+963997777777";
@@ -34,6 +37,11 @@ const internationalPhoneSchema = z.string().regex(/^\+[1-9]\d{6,14}$/, "أدخل
 const syrianCustomerPhoneSchema = z.string().regex(/^\+9639\d{8}$/, "أدخل رقم هاتف سوري صحيحاً يبدأ بـ 9 بعد النداء +963");
 const memoryOtpCodes = new Map<string, { codeHash: string; expiresAt: number; attempts: number }>();
 const memoryOtpVerified = new Map<string, number>();
+// Failed staff logins per phone: 5 wrong passwords lock the phone for 15 minutes.
+const staffLoginFailures = createRateLimiter(5, 15 * 60_000);
+// WhatsApp verification codes per phone: one per minute and at most 5 per hour.
+const otpRequestCooldown = createRateLimiter(1, 60_000);
+const otpRequestHourly = createRateLimiter(5, 60 * 60_000);
 const recentWahaEvents = new Map<string, number>();
 const recentWahaCommands = new Map<string, number>();
 const WAHA_EVENT_DEDUPE_MS = 5 * 60_000;
@@ -102,6 +110,7 @@ type AdminSessionPayload = AdminSession & { runtimeId: string };
 type PartnerSessionPayload = PartnerSession & { runtimeId: string };
 type DriverSession = { driverId: number };
 type DriverSessionPayload = DriverSession & { runtimeId: string };
+type CustomerSession = { customerPhone: string };
 
 export function filterRestaurantStores<T extends { restaurantType: (typeof restaurantTypes)[number] }>(items: T[], category: (typeof categories)[number], restaurantType?: (typeof restaurantTypes)[number]) {
   if (category !== "restaurants" || !restaurantType || restaurantType === "all") return items;
@@ -508,8 +517,10 @@ async function notifyPharmacyPrescriptionPricing(db: NonNullable<Awaited<ReturnT
   await Promise.allSettled(recipients.map(row => sendWahaText(row.phone, { title: `وصفة طبية للطلب #${orderId}`, body: `يوجد طلب صيدلية #${orderId} يحتاج تسعيراً. يرجى مراجعة الوصفة الطبية في الرابط التالي:\n${imageUrl}\n\nأرسل السعر برسالة بهذا الشكل: السعر 50000\nالمهلة: 15 دقيقة.` })));
 }
 
+export const PHARMACY_PRICE_REPLY_PATTERN = /(?:السعر|سعر)\s*[:：-]?\s*([0-9٠-٩][0-9٠-٩,،.]*)/i;
+
 async function processPharmacyPriceReply(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, senderPhones: string[], rawReply: string) {
-  const match = rawReply.match(/(?:السعر|سعر)\s*[:：-]?\s*([0-9٠-٩][0-9٠-٩,،.]*)/i);
+  const match = rawReply.match(PHARMACY_PRICE_REPLY_PATTERN);
   if (!match) return false;
   const normalized = match[1].replace(/[٠-٩]/g, digit => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))).replace(/[.,،]/g, "");
   const priceNewSyp = Number(normalized);
@@ -569,22 +580,25 @@ export async function handleWahaWebhook(body: unknown) {
   // Deliberately read text fields only. Button and interactive replies are no
   // longer part of the driver workflow.
   const textReplyCandidates = [...collectWahaTextValues(payload), data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, payload.body, payload.text];
-  const rawReply = textReplyCandidates.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map(value => normalizeWahaReply(value)).find(value => ["نعم", "لا", "جاهز", "غير جاهز", "10"].includes(value)) ?? "";
+  const normalizedReplies = textReplyCandidates.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map(value => normalizeWahaReply(value));
+  const rawReply = normalizedReplies.find(value => ["نعم", "لا", "جاهز", "غير جاهز", "10"].includes(value)) ?? "";
+  const priceReply = normalizedReplies.find(value => PHARMACY_PRICE_REPLY_PATTERN.test(value)) ?? "";
   const completeCommand = rawReply === "10";
   const availabilityReply = rawReply === "جاهز" || rawReply === "غير جاهز" ? rawReply : "";
   const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";
   console.info("WAHA driver text received", { event: event.event ?? "direct", rawReply, senderIds, textCandidates: textReplyCandidates.filter(value => typeof value === "string").slice(0, 5) });
-  if (!availabilityReply && !orderReply && !completeCommand) return;
+  if (!availabilityReply && !orderReply && !completeCommand && !priceReply) return;
   const db = await getDb();
   if (!db) return;
-  if (/(?:السعر|سعر)\s*[:：-]?\s*[0-9٠-٩]/i.test(rawReply)) {
-    const partnerCommandKey = `partner:${senderPhones.map(normalizeWahaPhoneForMatch).sort().join(",")}:${rawReply}`;
+  if (priceReply) {
+    const partnerCommandKey = `partner:${senderPhones.map(normalizeWahaPhoneForMatch).sort().join(",")}:${priceReply}`;
     if (!claimRecentWahaKey(recentWahaCommands, partnerCommandKey, WAHA_COMMAND_DEDUPE_MS)) {
-      console.info("Ignoring duplicate WAHA partner command", { rawReply, senderPhones: senderPhones.map(maskPhone) });
+      console.info("Ignoring duplicate WAHA partner command", { priceReply, senderPhones: senderPhones.map(maskPhone) });
       return;
     }
+    if (await processPharmacyPriceReply(db, senderPhones, priceReply)) return;
   }
-  if (await processPharmacyPriceReply(db, senderPhones, rawReply)) return;
+  if (!availabilityReply && !orderReply && !completeCommand) return;
   const availableDrivers = await db.select().from(drivers);
   const driver = availableDrivers.find(candidate => senderPhones.some(phone => {
     const senderDigits = normalizeWahaPhoneForMatch(phone);
@@ -995,6 +1009,69 @@ async function readDriverSession(ctx: TrpcContext): Promise<DriverSession | null
   } catch {
     return null;
   }
+}
+
+async function createCustomerSession(payload: CustomerSession) {
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("365d")
+    .sign(sessionKey());
+}
+
+async function readCustomerSession(ctx: TrpcContext): Promise<CustomerSession | null> {
+  const token = parse(ctx.req.headers.cookie ?? "")[CUSTOMER_COOKIE];
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, sessionKey());
+    return typeof payload.customerPhone === "string" ? { customerPhone: payload.customerPhone } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Customer data is only readable by the device that verified the phone by WhatsApp code. */
+async function requireCustomerPhone(ctx: TrpcContext, phone: string) {
+  const session = await readCustomerSession(ctx);
+  if (!session || session.customerPhone !== phone) throw new Error("انتهت جلسة حسابك، سجّل الدخول من جديد برمز التحقق");
+  return session;
+}
+
+async function setCustomerCookie(ctx: TrpcContext, customerPhone: string) {
+  ctx.res.cookie(CUSTOMER_COOKIE, await createCustomerSession({ customerPhone }), { ...getSessionCookieOptions(ctx.req), maxAge: CUSTOMER_SESSION_MAX_AGE_MS });
+}
+
+function assertNotLocked(limiter: RateLimiter, key: string) {
+  const wait = limiter.blockedFor(key);
+  if (wait > 0) throw new Error(`محاولات كثيرة، حاول مجدداً بعد ${formatWait(wait)}`);
+}
+
+/** Verifies a WhatsApp code and consumes it. Throws with a customer-facing message on failure. */
+async function consumeOtpCode(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, phone: string, code: string) {
+  const memoryRecord = memoryOtpCodes.get(phone);
+  if (memoryRecord) {
+    if (memoryRecord.expiresAt <= Date.now()) {
+      memoryOtpCodes.delete(phone);
+      throw new Error("انتهت صلاحية الرمز، اطلب رمزاً جديداً");
+    }
+    if (memoryRecord.attempts >= 5) throw new Error("تجاوزت عدد المحاولات، اطلب رمزاً جديداً");
+    if (!await verifySecret(code, memoryRecord.codeHash)) {
+      memoryRecord.attempts += 1;
+      throw new Error("رمز التحقق غير صحيح");
+    }
+    memoryOtpCodes.delete(phone);
+    return;
+  }
+  const [rows] = await db.execute(sql`SELECT \`codeHash\`, \`expiresAt\`, \`attempts\` FROM \`customer_otp_codes\` WHERE \`phone\` = ${phone} LIMIT 1`);
+  const record = (Array.isArray(rows) ? rows[0] : null) as { codeHash?: string; expiresAt?: Date | string; attempts?: number } | null;
+  if (!record?.codeHash) throw new Error("اطلب رمز تحقق جديداً");
+  if (Number(record.attempts ?? 0) >= 5) throw new Error("تجاوزت عدد المحاولات، اطلب رمزاً جديداً");
+  if (new Date(record.expiresAt ?? 0).getTime() <= Date.now()) throw new Error("انتهت صلاحية الرمز، اطلب رمزاً جديداً");
+  if (!await verifySecret(code, record.codeHash)) {
+    await db.execute(sql`UPDATE \`customer_otp_codes\` SET \`attempts\` = \`attempts\` + 1 WHERE \`phone\` = ${phone}`);
+    throw new Error("رمز التحقق غير صحيح");
+  }
+  await db.execute(sql`DELETE FROM \`customer_otp_codes\` WHERE \`phone\` = ${phone}`);
 }
 
 async function requireAdmin(ctx: TrpcContext, allowed: AdminRole[] = [...adminRoles]) {
@@ -1502,7 +1579,8 @@ export const lahzaRouter = router({
     }),
   }),
   notifications: router({
-    registerPushToken: publicProcedure.input(z.object({ token: z.string().trim().min(20).max(4096), deviceId: deviceIdSchema, customerPhone: internationalPhoneSchema })).mutation(async ({ input }) => {
+    registerPushToken: publicProcedure.input(z.object({ token: z.string().trim().min(20).max(4096), deviceId: deviceIdSchema, customerPhone: internationalPhoneSchema })).mutation(async ({ ctx, input }) => {
+      await requireCustomerPhone(ctx, input.customerPhone);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureJarabulusGatewaySchema(db);
@@ -1516,13 +1594,15 @@ export const lahzaRouter = router({
       await db.update(pushTokens).set({ active: false }).where(eq(pushTokens.token, input.token));
       return { success: true };
     }),
-    orderFeed: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema, unreadOnly: z.boolean().optional() })).query(async ({ input }) => {
+    orderFeed: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema, unreadOnly: z.boolean().optional() })).query(async ({ ctx, input }) => {
+      await requireCustomerPhone(ctx, input.customerPhone);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureJarabulusGatewaySchema(db);
       return db.select().from(orderNotifications).where(and(eq(orderNotifications.customerPhone, input.customerPhone), ...(input.unreadOnly ? [isNull(orderNotifications.readAt)] : []))).orderBy(desc(orderNotifications.createdAt)).limit(30);
     }),
-    markOrderRead: publicProcedure.input(z.object({ id: z.number().int().positive(), customerPhone: internationalPhoneSchema })).mutation(async ({ input }) => {
+    markOrderRead: publicProcedure.input(z.object({ id: z.number().int().positive(), customerPhone: internationalPhoneSchema })).mutation(async ({ ctx, input }) => {
+      await requireCustomerPhone(ctx, input.customerPhone);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await db.update(orderNotifications).set({ readAt: new Date() }).where(and(eq(orderNotifications.id, input.id), eq(orderNotifications.customerPhone, input.customerPhone)));
@@ -1555,7 +1635,8 @@ export const lahzaRouter = router({
       return { success: true };
     }),
     points: router({
-      balance: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).query(async ({ input }) => {
+      balance: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).query(async ({ ctx, input }) => {
+        await requireCustomerPhone(ctx, input.phone);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const balance = (await db.select().from(customerPoints).where(eq(customerPoints.customerPhone, input.phone)).limit(1))[0];
@@ -1565,7 +1646,8 @@ export const lahzaRouter = router({
       }),
     }),
     referral: router({
-      getOrCreate: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ input }) => {
+      getOrCreate: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ ctx, input }) => {
+        await requireCustomerPhone(ctx, input.phone);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const existing = await db.select({ code: customerReferrals.code }).from(customerReferrals).where(eq(customerReferrals.ownerPhone, input.phone)).limit(1);
@@ -1669,12 +1751,19 @@ export const lahzaRouter = router({
       if (!runtimeId) throw new Error("تعذر تأمين جلسة المندوب، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const loginKey = `driver:${input.phone}`;
+      assertNotLocked(staffLoginFailures, loginKey);
       const driver = (await db.select().from(drivers).where(and(eq(drivers.phone, input.phone), eq(drivers.active, true))).limit(1))[0];
-      if (!driver) throw new Error("رقم الهاتف أو كلمة مرور المندوب غير صحيحة");
+      const rejectLogin = () => {
+        staffLoginFailures.hit(loginKey);
+        return new Error("رقم الهاتف أو كلمة مرور المندوب غير صحيحة");
+      };
+      if (!driver) throw rejectLogin();
       if (!driver.passwordHash) {
-        if (input.password !== "0000") throw new Error("رقم الهاتف أو كلمة مرور المندوب غير صحيحة");
-        await db.update(drivers).set({ passwordHash: await hashSecret("0000") }).where(eq(drivers.id, driver.id));
-      } else if (!await verifySecret(input.password, driver.passwordHash)) throw new Error("رقم الهاتف أو كلمة مرور المندوب غير صحيحة");
+        if (input.password !== DEFAULT_STAFF_PASSWORD) throw rejectLogin();
+        await db.update(drivers).set({ passwordHash: await hashSecret(DEFAULT_STAFF_PASSWORD) }).where(eq(drivers.id, driver.id));
+      } else if (!await verifySecret(input.password, driver.passwordHash)) throw rejectLogin();
+      staffLoginFailures.reset(loginKey);
       setDriverCookie(ctx, await createDriverSession({ driverId: driver.id, runtimeId }));
       return { id: driver.id, name: driver.name };
     }),
@@ -1956,6 +2045,10 @@ export const lahzaRouter = router({
     requestOtp: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      assertNotLocked(otpRequestCooldown, input.phone);
+      assertNotLocked(otpRequestHourly, input.phone);
+      otpRequestCooldown.hit(input.phone);
+      otpRequestHourly.hit(input.phone);
       console.info("Customer OTP request started", { phone: maskPhone(input.phone) });
       // OTP tables are provisioned in the production database. Avoid running DDL
       // on every public request because MySQL metadata locks can stall the API.
@@ -1970,37 +2063,20 @@ export const lahzaRouter = router({
       }
       return { success: true, expiresInSeconds: 300 };
     }),
-    verifyOtp: publicProcedure.input(z.object({ phone: internationalPhoneSchema, code: z.string().regex(/^\d{6}$/, "أدخل رمزاً من 6 أرقام") })).mutation(async ({ input }) => {
+    verifyOtp: publicProcedure.input(z.object({ phone: internationalPhoneSchema, code: z.string().regex(/^\d{6}$/, "أدخل رمزاً من 6 أرقام") })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const memoryRecord = memoryOtpCodes.get(input.phone);
-      if (memoryRecord) {
-        if (memoryRecord.expiresAt <= Date.now()) {
-          memoryOtpCodes.delete(input.phone);
-          throw new Error("انتهت صلاحية الرمز، اطلب رمزاً جديداً");
-        }
-        if (memoryRecord.attempts >= 5) throw new Error("تجاوزت عدد المحاولات، اطلب رمزاً جديداً");
-        const valid = await verifySecret(input.code, memoryRecord.codeHash);
-        if (!valid) {
-          memoryRecord.attempts += 1;
-          throw new Error("رمز التحقق غير صحيح");
-        }
-        memoryOtpCodes.delete(input.phone);
-        memoryOtpVerified.set(input.phone, Date.now() + 10 * 60_000);
-        return { success: true };
-      }
-      const [rows] = await db.execute(sql`SELECT \`codeHash\`, \`expiresAt\`, \`attempts\` FROM \`customer_otp_codes\` WHERE \`phone\` = ${input.phone} LIMIT 1`);
-      const record = (Array.isArray(rows) ? rows[0] : null) as { codeHash?: string; expiresAt?: Date | string; attempts?: number } | null;
-      if (!record?.codeHash) throw new Error("اطلب رمز تحقق جديداً");
-      if (Number(record.attempts ?? 0) >= 5) throw new Error("تجاوزت عدد المحاولات، اطلب رمزاً جديداً");
-      if (new Date(record.expiresAt ?? 0).getTime() <= Date.now()) throw new Error("انتهت صلاحية الرمز، اطلب رمزاً جديداً");
-      const valid = await verifySecret(input.code, record.codeHash);
-      if (!valid) {
-        await db.execute(sql`UPDATE \`customer_otp_codes\` SET \`attempts\` = \`attempts\` + 1 WHERE \`phone\` = ${input.phone}`);
-        throw new Error("رمز التحقق غير صحيح");
-      }
-      await db.execute(sql`DELETE FROM \`customer_otp_codes\` WHERE \`phone\` = ${input.phone}`);
-      await db.execute(sql`INSERT INTO \`customer_otp_verified\` (\`phone\`, \`expiresAt\`) VALUES (${input.phone}, DATE_ADD(NOW(), INTERVAL 10 MINUTE)) ON DUPLICATE KEY UPDATE \`expiresAt\` = VALUES(\`expiresAt\`)`);
+      await consumeOtpCode(db, input.phone, input.code);
+      memoryOtpVerified.set(input.phone, Date.now() + 10 * 60_000);
+      await setCustomerCookie(ctx, input.phone);
+      return { success: true };
+    }),
+    session: publicProcedure.query(async ({ ctx }) => {
+      const session = await readCustomerSession(ctx);
+      return session ? { phone: session.customerPhone } : null;
+    }),
+    logout: publicProcedure.mutation(({ ctx }) => {
+      ctx.res.clearCookie(CUSTOMER_COOKIE, getSessionCookieOptions(ctx.req));
       return { success: true };
     }),
     register: publicProcedure.input(z.object({ phone: internationalPhoneSchema, name: z.string().trim().min(2).max(80), city: z.enum(["منبج", "جرابلس"]) })).mutation(async ({ input }) => {
@@ -2040,7 +2116,8 @@ export const lahzaRouter = router({
       const found = (await db.select({ status: customerAccounts.status, name: customerAccounts.name, city: customerAccounts.city }).from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
       return found ?? { status: "new" as const, name: "" };
     }),
-    updatePhone: publicProcedure.input(z.object({ currentPhone: internationalPhoneSchema, newPhone: internationalPhoneSchema })).mutation(async ({ input }) => {
+    updatePhone: publicProcedure.input(z.object({ currentPhone: internationalPhoneSchema, newPhone: internationalPhoneSchema, code: z.string().regex(/^\d{6}$/, "أدخل رمزاً من 6 أرقام") })).mutation(async ({ ctx, input }) => {
+      await requireCustomerPhone(ctx, input.currentPhone);
       if (input.currentPhone === input.newPhone) return { success: true };
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
@@ -2051,6 +2128,8 @@ export const lahzaRouter = router({
       if (duplicate) throw new Error("رقم الهاتف الجديد مرتبط بحساب آخر");
       const existingPoints = (await db.select({ id: customerPoints.id }).from(customerPoints).where(eq(customerPoints.customerPhone, input.newPhone)).limit(1))[0];
       if (existingPoints) throw new Error("رقم الهاتف الجديد مرتبط برصيد نقاط، اختر رقمًا آخر");
+      // The new number must be proven by the WhatsApp code sent to it.
+      await consumeOtpCode(db, input.newPhone, input.code);
       await db.update(customerAccounts).set({ phone: input.newPhone }).where(eq(customerAccounts.id, current.id));
       await db.update(customerPoints).set({ customerPhone: input.newPhone }).where(eq(customerPoints.customerPhone, input.currentPhone));
       await db.update(pointTransactions).set({ customerPhone: input.newPhone }).where(eq(pointTransactions.customerPhone, input.currentPhone));
@@ -2058,6 +2137,7 @@ export const lahzaRouter = router({
       await db.update(customerReferrals).set({ referredPhone: input.newPhone }).where(eq(customerReferrals.referredPhone, input.currentPhone));
       await db.update(orders).set({ customerPhone: input.newPhone }).where(eq(orders.customerPhone, input.currentPhone));
       await db.update(intercityOrders).set({ customerPhone: input.newPhone }).where(eq(intercityOrders.customerPhone, input.currentPhone));
+      await setCustomerCookie(ctx, input.newPhone);
       return { success: true };
     }),
     list: publicProcedure.query(async ({ ctx }) => {
@@ -2115,9 +2195,15 @@ export const lahzaRouter = router({
       if (!runtimeId) throw new Error("تعذر تأمين جلسة الشريك، أعد فتح التطبيق وحاول مرة أخرى");
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const loginKey = `partner:${input.phone}`;
+      assertNotLocked(staffLoginFailures, loginKey);
       const foundRows = await db.select().from(partners).where(and(eq(partners.active, true), eq(partners.username, input.phone))).limit(1);
       const found = foundRows[0];
-      if (!found || !await verifySecret(input.password, found.passwordHash)) throw new Error("رقم الهاتف أو كلمة مرور الشريك غير صحيحة");
+      if (!found || !await verifySecret(input.password, found.passwordHash)) {
+        staffLoginFailures.hit(loginKey);
+        throw new Error("رقم الهاتف أو كلمة مرور الشريك غير صحيحة");
+      }
+      staffLoginFailures.reset(loginKey);
       setPartnerCookie(ctx, await createPartnerSession({ partnerId: found.id, runtimeId }));
       return { id: found.id, name: found.name };
     }),
@@ -2412,6 +2498,7 @@ export const lahzaRouter = router({
       let pointsRewardPercent = 0;
       let pointsRewardAmount = 0;
       if (input.usePointsReward) {
+        await requireCustomerPhone(ctx, input.customerPhone);
         if (input.orderType !== "delivery") throw new Error("مكافأة النقاط متاحة لطلبات التوصيل فقط");
         if (settings.pointsRewardPercent < 1) throw new Error("لم يحدد المالك نسبة مكافأة النقاط بعد");
         const pointBalance = (await db.select({ balance: customerPoints.balance }).from(customerPoints).where(eq(customerPoints.customerPhone, input.customerPhone)).limit(1))[0];
@@ -2577,7 +2664,8 @@ export const lahzaRouter = router({
       const driver = (await db.select({ name: drivers.name, locationLat: drivers.locationLat, locationLng: drivers.locationLng, updatedAt: drivers.updatedAt }).from(orderAssignments).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orderAssignments.orderId, order.id), inArray(orderAssignments.status, ["accepted", "picked_up", "delivered"]))).orderBy(desc(orderAssignments.updatedAt)).limit(1))[0];
       return { ...order, lines };
     }),
-    history: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema })).query(async ({ input }) => {
+    history: publicProcedure.input(z.object({ customerPhone: internationalPhoneSchema })).query(async ({ ctx, input }) => {
+      await requireCustomerPhone(ctx, input.customerPhone);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const customerOrders = await db.select().from(orders).where(eq(orders.customerPhone, input.customerPhone)).orderBy(desc(orders.createdAt)).limit(50);
@@ -3001,14 +3089,24 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureDefaultStaffPasswords(db);
+      const loginKey = `admin:${input.phone}`;
+      assertNotLocked(staffLoginFailures, loginKey);
       if (input.role === "owner") {
         const settings = await getSettings();
-        if (input.phone !== (settings.ownerPhone || DEFAULT_OWNER_PHONE) || !await verifySecret(input.password, settings.masterPinHash)) throw new Error("رقم الهاتف أو كلمة مرور المالك غير صحيحة");
+        if (input.phone !== (settings.ownerPhone || DEFAULT_OWNER_PHONE) || !await verifySecret(input.password, settings.masterPinHash)) {
+          staffLoginFailures.hit(loginKey);
+          throw new Error("رقم الهاتف أو كلمة مرور المالك غير صحيحة");
+        }
+        staffLoginFailures.reset(loginKey);
         setAdminCookie(ctx, await createSession({ role: "owner", runtimeId }));
         return { role: "owner" as const };
       }
       const found = await db.select().from(supervisors).where(and(eq(supervisors.username, input.phone), eq(supervisors.active, true))).limit(1);
-      if (!found[0] || !await verifySecret(input.password, found[0].passwordHash)) throw new Error("رقم الهاتف أو كلمة مرور المشرف غير صحيحة");
+      if (!found[0] || !await verifySecret(input.password, found[0].passwordHash)) {
+        staffLoginFailures.hit(loginKey);
+        throw new Error("رقم الهاتف أو كلمة مرور المشرف غير صحيحة");
+      }
+      staffLoginFailures.reset(loginKey);
       if (found[0].city !== ctx.city) throw new Error(`اختر واجهة ${found[0].city === "jarabulus" ? "جرابلس" : "منبج"} لتسجيل دخول هذا المشرف`);
       setAdminCookie(ctx, await createSession({ role: "supervisor", supervisorId: found[0].id, runtimeId }));
       return { role: "supervisor" as const, city: found[0].city };
