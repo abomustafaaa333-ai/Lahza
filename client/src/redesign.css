@@ -350,3 +350,73 @@
 .lahza-app-shell .home-discover-section .home-category-row > .home-category-card { height: auto !important; min-height: 0 !important; }
 .lahza-app-shell .home-discover-section .home-category-row > .home-category-card > span:last-child,
 .lahza-app-shell .home-discover-section .home-category-row > .home-category-all > .home-category-all-label { display: -webkit-box !important; min-height: 2.6em; overflow: hidden !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* ---------- Animated لحظة wordmark (HeaderWordmarkMotion) ----------
+ * 10s loop: write right→left (0–32%), fill + speed lines (32–45%),
+ * hold, then fade out (85–95%) and start again.
+ */
+.lahza-wordmark-band { display: flex; height: 4.6rem; align-items: center; justify-content: center; margin: .1rem 0 -.2rem; pointer-events: none; }
+.lahza-wordmark-motion { width: min(64%, 15rem); height: 100%; overflow: visible; }
+.lahza-wordmark-motion text { font-family: "Cairo", "Tajawal", sans-serif; font-size: 88px; font-weight: 900; }
+.lahza-wordmark-stroke { fill: none; stroke: rgba(255,255,255,.9); stroke-width: 1.6; stroke-linejoin: round; stroke-dasharray: 900; stroke-dashoffset: 900; animation: lahza-ink 10s cubic-bezier(.45,.05,.35,1) infinite; }
+.lahza-wordmark-fill { fill: #fff; opacity: 0; animation: lahza-fill 10s ease infinite; }
+.lahza-write-reveal { transform-box: fill-box; transform-origin: right center; transform: scaleX(0); animation: lahza-reveal 10s cubic-bezier(.45,.05,.35,1) infinite; }
+.lahza-wordmark-accents rect { fill: #ff8a3d; transform-box: fill-box; transform-origin: right center; transform: scaleX(0); animation: lahza-accent 10s cubic-bezier(.2,.9,.2,1) infinite; }
+.lahza-wordmark-accents rect + rect { animation-delay: .12s; }
+.lahza-wordmark-pen { transform: translateX(370px); opacity: 0; animation: lahza-pen 10s cubic-bezier(.45,.05,.35,1) infinite; }
+.lahza-pen-glow { fill: rgba(255,170,110,.9); }
+.lahza-pen-tip { fill: #fff; }
+@keyframes lahza-reveal { 0% { transform: scaleX(0); } 32%, 100% { transform: scaleX(1); } }
+@keyframes lahza-ink { 0% { stroke-dashoffset: 900; opacity: 1; } 34% { stroke-dashoffset: 0; opacity: 1; } 45%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes lahza-fill { 0%, 28% { opacity: 0; } 42%, 84% { opacity: .96; } 95%, 100% { opacity: 0; } }
+@keyframes lahza-accent { 0%, 34% { transform: scaleX(0); opacity: 1; } 44%, 84% { transform: scaleX(1); opacity: 1; } 95%, 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes lahza-pen { 0% { transform: translateX(370px); opacity: 0; } 3% { opacity: 1; } 32% { transform: translateX(30px); opacity: 1; } 35%, 100% { transform: translateX(30px); opacity: 0; } }
+/* The fade-out also hides the reveal mask reset, so the loop restarts cleanly. */
+.lahza-wordmark-motion > g:first-of-type { animation: lahza-word-out 10s ease infinite; }
+@keyframes lahza-word-out { 0%, 86% { opacity: 1; } 95%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .lahza-wordmark-stroke, .lahza-wordmark-pen { display: none; }
+  .lahza-wordmark-fill, .lahza-wordmark-accents rect, .lahza-write-reveal, .lahza-wordmark-motion > g:first-of-type { animation: none; opacity: .96; transform: none; }
+}
+
+/* ---------- Modern page and tap transitions ----------
+ * Pages: forward screens slide in from the reading direction (left in RTL),
+ * home fades and settles. fill-mode "backwards" leaves no transform behind
+ * once the animation ends, so sticky/fixed children keep working.
+ */
+.lahza-app-shell .screen-transition { animation: lz-page-forward .38s cubic-bezier(.22,1,.36,1) backwards !important; will-change: auto !important; }
+.lahza-app-shell .screen-transition-home { animation-name: lz-page-home !important; }
+@keyframes lz-page-forward { from { opacity: 0; transform: translate3d(-28px, 0, 0); } }
+@keyframes lz-page-home { from { opacity: 0; transform: scale(.985); } }
+
+/* Content settles in with a short stagger */
+.lahza-app-shell :is(.home-category-card, .lahza-store-row, .product-image-card, .category-card, .lahza-service-card, .admin-kpi) { animation: lz-rise .42s cubic-bezier(.22,1,.36,1) backwards; }
+.lahza-app-shell :is(.home-category-card, .lahza-store-row, .product-image-card, .category-card):nth-child(2) { animation-delay: 40ms; }
+.lahza-app-shell :is(.home-category-card, .lahza-store-row, .product-image-card, .category-card):nth-child(3) { animation-delay: 80ms; }
+.lahza-app-shell :is(.home-category-card, .lahza-store-row, .product-image-card, .category-card):nth-child(4) { animation-delay: 120ms; }
+.lahza-app-shell :is(.home-category-card, .lahza-store-row, .product-image-card, .category-card):nth-child(n+5) { animation-delay: 160ms; }
+@keyframes lz-rise { from { opacity: 0; transform: translate3d(0, 12px, 0); } }
+
+/* Tap feedback: a quick press-in on every tappable card, icon and button */
+.lahza-app-shell :is(button, a, [role="button"]) { -webkit-tap-highlight-color: transparent; transition: transform .14s cubic-bezier(.3,.7,.4,1), background-color .2s ease, color .2s ease, box-shadow .2s ease; }
+.lahza-app-shell :is(button, a, [role="button"]):not(:disabled):active { transform: scale(.96); }
+.lahza-app-shell :is(.lahza-store-row, .product-image-card, .lahza-service-card, .home-category-card):not(:disabled):active { transform: scale(.975); }
+@media (hover: hover) {
+  .lahza-app-shell :is(.lahza-store-row, .product-image-card, .lahza-service-card):hover { transform: translateY(-2px); box-shadow: 0 14px 28px -22px rgba(58,36,24,.55); }
+}
+
+/* Bottom bar: the active pill grows in and the icon gives a small pop */
+.lahza-app-shell .home-bottom-nav button.home-bottom-nav-active svg { animation: lz-nav-pop .42s cubic-bezier(.34,1.56,.64,1); }
+@keyframes lz-nav-pop { 0% { transform: scale(.7); background-color: transparent; } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+
+/* Segmented control and choice chips animate their state change */
+.lahza-segmented button, .lahza-choice { transition: background-color .25s ease, color .25s ease, box-shadow .25s ease, transform .14s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lahza-app-shell .screen-transition, .lahza-app-shell :is(.home-category-card, .lahza-store-row, .product-image-card, .category-card, .lahza-service-card, .admin-kpi), .lahza-app-shell .home-bottom-nav button.home-bottom-nav-active svg { animation: none !important; }
+  .lahza-app-shell :is(button, a, [role="button"]):active { transform: none; }
+}
+
+/* Product page fills the screen so the add button rests at the bottom edge */
+.lahza-app-shell .lahza-product-page { display: flex; min-height: calc(100dvh - 4.2rem); flex-direction: column; }
+.lahza-app-shell .lahza-product-page .lahza-sticky-cta { margin-top: auto; }

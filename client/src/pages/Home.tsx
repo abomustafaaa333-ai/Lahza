@@ -256,6 +256,36 @@ function LahzaEventCover({ event }: { event?: LahzaEventSettings }) {
   return <div className="lahza-event-cover" role="dialog" aria-label="إعلان لحظة">{event.eventLinkUrl ? <a href={event.eventLinkUrl} target="_blank" rel="noreferrer" className="lahza-event-cover-link">{image}</a> : image}<button type="button" onClick={() => setVisible(false)} className="lahza-event-cover-close" aria-label="إغلاق الإعلان">×</button></div>;
 }
 
+/**
+ * The لحظة wordmark written right-to-left behind the search area: a mask sweeps
+ * across while the outline is drawn (Arabic letters stay joined), a pen tip
+ * follows the edge, then the fill and the logo's orange speed lines appear.
+ */
+function HeaderWordmarkMotion() {
+  return (
+    <div className="lahza-wordmark-band" aria-hidden="true">
+      <svg viewBox="0 0 400 112" className="lahza-wordmark-motion">
+        <defs>
+          <clipPath id="lahza-write-clip"><rect className="lahza-write-reveal" x="30" y="0" width="340" height="112" /></clipPath>
+          <filter id="lahza-pen-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" /></filter>
+        </defs>
+        <g clipPath="url(#lahza-write-clip)">
+          <text x="200" y="84" textAnchor="middle" className="lahza-wordmark-fill">لحظة</text>
+          <text x="200" y="84" textAnchor="middle" className="lahza-wordmark-stroke">لحظة</text>
+        </g>
+        <g className="lahza-wordmark-accents">
+          <rect x="74" y="88" width="62" height="9" rx="4.5" />
+          <rect x="104" y="101" width="38" height="9" rx="4.5" />
+        </g>
+        <g className="lahza-wordmark-pen">
+          <circle cx="0" cy="56" r="9" className="lahza-pen-glow" filter="url(#lahza-pen-glow)" />
+          <circle cx="0" cy="56" r="3.5" className="lahza-pen-tip" />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; searchPlaceholder: string; city: CityKey }) {
   return (
     <header className="lahza-home-header">
@@ -263,6 +293,7 @@ function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; s
         <div className="lahza-home-location"><small>التوصيل إلى</small><strong><MapPinCheck className="h-4 w-4" /> {CITY_LABELS[city]}</strong></div>
         <a className="lahza-home-support" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><MessageCircle className="h-5 w-5" /></a>
       </div>
+      <HeaderWordmarkMotion />
       <div className="app-shell"><button type="button" className="lahza-home-search" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span></button></div>
     </header>
   );

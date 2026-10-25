@@ -2,6 +2,26 @@
 
 @theme inline {
   --font-sans: "Cairo", "Tajawal", Tahoma, Arial, ui-sans-serif, system-ui, sans-serif;
+  /* Colour tokens used by the components in components/ui. They were never
+     defined, so default buttons rendered dark text on dark backgrounds. */
+  --color-background: #ffffff;
+  --color-foreground: #3a2418;
+  --color-card: #ffffff;
+  --color-card-foreground: #3a2418;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #3a2418;
+  --color-primary: #ff742d;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f5eee8;
+  --color-secondary-foreground: #3a2418;
+  --color-muted: #f6f1ed;
+  --color-muted-foreground: #7c6252;
+  --color-accent: #e8f3f3;
+  --color-accent-foreground: #00666b;
+  --color-destructive: #c0392b;
+  --color-border: #f0e7e0;
+  --color-input: #e6d6cb;
+  --color-ring: #00666b;
 }
 
 * { box-sizing: border-box; }
