@@ -355,16 +355,16 @@
  * 10s loop: write from the right (0-32%), hold, shine across the logo (40-62%),
  * fade (84-93%), then restart.
  */
-.lahza-logo-band { position: relative; z-index: 0; display: flex; justify-content: center; margin: .15rem 0 -1.35rem; pointer-events: none; }
-.lahza-logo-plate { width: min(88%, 23rem); padding: .55rem .9rem; border-radius: 22px; background: #fff; box-shadow: 0 16px 34px -22px rgba(0,0,0,.6); }
+.lahza-logo-band { position: relative; z-index: 0; display: flex; justify-content: center; margin: .15rem 0 -.4rem; pointer-events: none; }
+.lahza-logo-plate { width: min(84%, 22rem); padding: .2rem 0 .6rem; background: none; filter: drop-shadow(0 6px 14px rgba(0,0,0,.25)); }
 .lahza-logo-art { position: relative; overflow: hidden; }
 .lahza-logo-art img { display: block; width: 100%; height: auto; animation: lz-logo-write 10s cubic-bezier(.45,.05,.35,1) infinite; }
 .lahza-logo-shine {
   position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.95) 50%, transparent 62%) no-repeat;
   background-size: 260% 100%;
-  -webkit-mask: url(/assets/lahza-primary-logo-display.png) center / 100% 100% no-repeat;
-          mask: url(/assets/lahza-primary-logo-display.png) center / 100% 100% no-repeat;
+  -webkit-mask: url(/assets/lahza-primary-logo-light.png) center / 100% 100% no-repeat;
+          mask: url(/assets/lahza-primary-logo-light.png) center / 100% 100% no-repeat;
   animation: lz-logo-shine 10s ease-in-out infinite;
 }
 .lahza-logo-pen {
