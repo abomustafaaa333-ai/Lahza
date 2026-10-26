@@ -257,32 +257,20 @@ function LahzaEventCover({ event }: { event?: LahzaEventSettings }) {
 }
 
 /**
- * The لحظة wordmark written right-to-left behind the search area: a mask sweeps
- * across while the outline is drawn (Arabic letters stay joined), a pen tip
- * follows the edge, then the fill and the logo's orange speed lines appear.
+ * The primary لحظة logo sits on a white plate behind the search bar. It is
+ * written in from the right, a glowing pen tip follows the edge, then a shine
+ * sweeps across the logo itself (the shine is masked to the logo's shape).
  */
 function HeaderWordmarkMotion() {
   return (
-    <div className="lahza-wordmark-band" aria-hidden="true">
-      <svg viewBox="0 0 400 112" className="lahza-wordmark-motion">
-        <defs>
-          <clipPath id="lahza-write-clip"><rect className="lahza-write-reveal" x="30" y="0" width="340" height="112" /></clipPath>
-          <filter id="lahza-pen-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" /></filter>
-        </defs>
-        <g clipPath="url(#lahza-write-clip)">
-          <text x="200" y="84" textAnchor="middle" className="lahza-wordmark-fill">لحظة</text>
-          <text x="200" y="84" textAnchor="middle" className="lahza-wordmark-stroke">لحظة</text>
-        </g>
-        {/* Speed lines placed as in the primary logo: under the ظ, the lower one shifted toward the ة. */}
-        <g className="lahza-wordmark-accents">
-          <rect x="162.5" y="83.3" width="40" height="12" rx="6" />
-          <rect x="152.5" y="97.4" width="33" height="11" rx="5.5" />
-        </g>
-        <g className="lahza-wordmark-pen">
-          <circle cx="0" cy="56" r="9" className="lahza-pen-glow" filter="url(#lahza-pen-glow)" />
-          <circle cx="0" cy="56" r="3.5" className="lahza-pen-tip" />
-        </g>
-      </svg>
+    <div className="lahza-logo-band" aria-hidden="true">
+      <div className="lahza-logo-plate">
+        <div className="lahza-logo-art">
+          <img src="/assets/lahza-primary-logo-display.png" alt="" />
+          <span className="lahza-logo-shine" />
+          <span className="lahza-logo-pen" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -295,7 +283,7 @@ function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; s
         <a className="lahza-home-support" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><MessageCircle className="h-5 w-5" /></a>
       </div>
       <HeaderWordmarkMotion />
-      <div className="app-shell"><button type="button" className="lahza-home-search" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span></button></div>
+      <div className="app-shell lahza-home-search-wrap"><button type="button" className="lahza-home-search" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span></button></div>
     </header>
   );
 }

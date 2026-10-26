@@ -351,32 +351,50 @@
 .lahza-app-shell .home-discover-section .home-category-row > .home-category-card > span:last-child,
 .lahza-app-shell .home-discover-section .home-category-row > .home-category-all > .home-category-all-label { display: -webkit-box !important; min-height: 2.6em; overflow: hidden !important; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 
-/* ---------- Animated لحظة wordmark (HeaderWordmarkMotion) ----------
- * 10s loop: write right→left (0–32%), fill + speed lines (32–45%),
- * hold, then fade out (85–95%) and start again.
+/* ---------- Primary logo behind the search bar (HeaderWordmarkMotion) ----------
+ * 10s loop: write from the right (0-32%), hold, shine across the logo (40-62%),
+ * fade (84-93%), then restart.
  */
-.lahza-wordmark-band { display: flex; height: 4.6rem; align-items: center; justify-content: center; margin: .1rem 0 -.2rem; pointer-events: none; }
-.lahza-wordmark-motion { width: min(64%, 15rem); height: 100%; overflow: visible; }
-.lahza-wordmark-motion text { font-family: "Cairo", "Tajawal", sans-serif; font-size: 88px; font-weight: 900; }
-.lahza-wordmark-stroke { fill: none; stroke: rgba(255,255,255,.9); stroke-width: 1.6; stroke-linejoin: round; stroke-dasharray: 900; stroke-dashoffset: 900; animation: lahza-ink 10s cubic-bezier(.45,.05,.35,1) infinite; }
-.lahza-wordmark-fill { fill: #fff; opacity: 0; animation: lahza-fill 10s ease infinite; }
-.lahza-write-reveal { transform-box: fill-box; transform-origin: right center; transform: scaleX(0); animation: lahza-reveal 10s cubic-bezier(.45,.05,.35,1) infinite; }
-.lahza-wordmark-accents rect { fill: #ff8a3d; transform-box: fill-box; transform-origin: right center; transform: scaleX(0); animation: lahza-accent 10s cubic-bezier(.2,.9,.2,1) infinite; }
-.lahza-wordmark-accents rect + rect { animation-delay: .12s; }
-.lahza-wordmark-pen { transform: translateX(370px); opacity: 0; animation: lahza-pen 10s cubic-bezier(.45,.05,.35,1) infinite; }
-.lahza-pen-glow { fill: rgba(255,170,110,.9); }
-.lahza-pen-tip { fill: #fff; }
-@keyframes lahza-reveal { 0% { transform: scaleX(0); } 32%, 100% { transform: scaleX(1); } }
-@keyframes lahza-ink { 0% { stroke-dashoffset: 900; opacity: 1; } 34% { stroke-dashoffset: 0; opacity: 1; } 45%, 100% { stroke-dashoffset: 0; opacity: 0; } }
-@keyframes lahza-fill { 0%, 28% { opacity: 0; } 42%, 84% { opacity: .96; } 95%, 100% { opacity: 0; } }
-@keyframes lahza-accent { 0%, 34% { transform: scaleX(0); opacity: 1; } 44%, 84% { transform: scaleX(1); opacity: 1; } 95%, 100% { transform: scaleX(1); opacity: 0; } }
-@keyframes lahza-pen { 0% { transform: translateX(370px); opacity: 0; } 3% { opacity: 1; } 32% { transform: translateX(30px); opacity: 1; } 35%, 100% { transform: translateX(30px); opacity: 0; } }
-/* The fade-out also hides the reveal mask reset, so the loop restarts cleanly. */
-.lahza-wordmark-motion > g:first-of-type { animation: lahza-word-out 10s ease infinite; }
-@keyframes lahza-word-out { 0%, 86% { opacity: 1; } 95%, 100% { opacity: 0; } }
+.lahza-logo-band { position: relative; z-index: 0; display: flex; justify-content: center; margin: .15rem 0 -1.35rem; pointer-events: none; }
+.lahza-logo-plate { width: min(88%, 23rem); padding: .55rem .9rem; border-radius: 22px; background: #fff; box-shadow: 0 16px 34px -22px rgba(0,0,0,.6); }
+.lahza-logo-art { position: relative; overflow: hidden; }
+.lahza-logo-art img { display: block; width: 100%; height: auto; animation: lz-logo-write 10s cubic-bezier(.45,.05,.35,1) infinite; }
+.lahza-logo-shine {
+  position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.95) 50%, transparent 62%) no-repeat;
+  background-size: 260% 100%;
+  -webkit-mask: url(/assets/lahza-primary-logo-display.png) center / 100% 100% no-repeat;
+          mask: url(/assets/lahza-primary-logo-display.png) center / 100% 100% no-repeat;
+  animation: lz-logo-shine 10s ease-in-out infinite;
+}
+.lahza-logo-pen {
+  position: absolute; top: 50%; left: 100%; width: 1.1rem; height: 1.1rem; margin: -.55rem 0 0 -.55rem; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 28%, rgba(255,140,70,.9) 45%, rgba(255,140,70,0) 70%);
+  box-shadow: 0 0 14px 4px rgba(255,140,70,.55);
+  animation: lz-logo-pen 10s cubic-bezier(.45,.05,.35,1) infinite;
+}
+@keyframes lz-logo-write {
+  0% { clip-path: inset(0 0 0 100%); opacity: 1; }
+  32%, 84% { clip-path: inset(0 0 0 0); opacity: 1; }
+  92% { clip-path: inset(0 0 0 0); opacity: 0; }
+  93%, 100% { clip-path: inset(0 0 0 100%); opacity: 0; }
+}
+@keyframes lz-logo-pen {
+  0% { left: 100%; opacity: 0; }
+  2% { opacity: 1; }
+  32% { left: 0%; opacity: 1; }
+  36%, 84% { left: 0%; opacity: 0; }
+  100% { left: 100%; opacity: 0; }
+}
+@keyframes lz-logo-shine {
+  0%, 40% { background-position: 150% 0; }
+  62%, 100% { background-position: -50% 0; }
+}
+/* Search bar overlaps the lower part of the plate */
+.lahza-home-search-wrap { position: relative; z-index: 2; }
 @media (prefers-reduced-motion: reduce) {
-  .lahza-wordmark-stroke, .lahza-wordmark-pen { display: none; }
-  .lahza-wordmark-fill, .lahza-wordmark-accents rect, .lahza-write-reveal, .lahza-wordmark-motion > g:first-of-type { animation: none; opacity: .96; transform: none; }
+  .lahza-logo-art img { animation: none; }
+  .lahza-logo-shine, .lahza-logo-pen { display: none; }
 }
 
 /* ---------- Modern page and tap transitions ----------
