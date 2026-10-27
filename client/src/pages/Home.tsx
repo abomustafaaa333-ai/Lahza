@@ -709,8 +709,7 @@ export default function Home() {
   const cartCatalogIds = cart.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
   const cartCatalogKey = cartCatalogIds.join(",");
   useEffect(() => {
-    const hasOrigin = cartCatalogIds.length > 0 || Boolean(selectedStore?.locationLat && selectedStore.locationLng);
-    if (isStaticDemo || checkoutMode !== "delivery" || !hasOrigin || customerLat === null || customerLng === null) {
+    if (isStaticDemo || checkoutMode !== "delivery" || customerLat === null || customerLng === null) {
       setDeliveryQuoteData(null);
       setDeliveryQuoteStatus("idle");
       setDeliveryFeeConfirmed(false);
@@ -722,7 +721,10 @@ export default function Home() {
     let active = true;
     void deliveryQuote.mutateAsync(cartCatalogIds.length
       ? { locationLat: customerLat, locationLng: customerLng, catalogItemIds: cartCatalogIds }
-      : { locationLat: customerLat, locationLng: customerLng, originLat: selectedStore!.locationLat! / 1_000_000, originLng: selectedStore!.locationLng! / 1_000_000 },
+      : selectedStore?.locationLat && selectedStore.locationLng
+      ? { locationLat: customerLat, locationLng: customerLng, originLat: selectedStore.locationLat / 1_000_000, originLng: selectedStore.locationLng / 1_000_000 }
+      // No store to start from: the server measures from the city centre.
+      : { locationLat: customerLat, locationLng: customerLng },
     ).then(result => {
       if (active) {
         setDeliveryQuoteData({ distanceMeters: result.distanceMeters, billableKm: result.billableKm, deliveryFeeNewSyp: result.deliveryFeeNewSyp, durationMinutes: result.durationMinutes });

@@ -487,7 +487,8 @@ async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeo
 async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
   const order = (await db.select({ id: orders.id, status: orders.status, createdAt: orders.createdAt }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   if (!order || isOrderArchived(order.createdAt) || !["pending", "confirmed", "preparing", "on_the_way"].includes(order.status)) return null;
-  if (!storeId) return null; const store = (await db.select({ id: stores.id }).from(stores).where(eq(stores.id, storeId)).limit(1))[0]; if (!store) return null; const settings = await getSettings(); const timeoutMinutes = DRIVER_DISPATCH_WINDOW_MINUTES;
+  // Products sold without a store still go out to drivers; the store only matters for pricing.
+  const settings = await getSettings(); const timeoutMinutes = DRIVER_DISPATCH_WINDOW_MINUTES;
   const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true))); const target = candidates.filter(d => !excludedDriverIds.includes(d.id));
   console.info("Driver broadcast candidate check", { orderId, orderCity, availableCount: candidates.length, targetDriverIds: target.map(d => d.id), excludedDriverIds });
   if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب متاح حالياً.` }); return null; }
@@ -1245,10 +1246,24 @@ async function getSettings() {
   return created[0]!;
 }
 
-async function getDrivingQuote(customerLat: number, customerLng: number, originLat?: number, originLng?: number, serviceKey: "manbij_store" | "jarabulus_gateway" = "manbij_store") {
+/** Jarabulus city centre; Manbij's centre is the owner-set origin in system settings. */
+const JARABULUS_CENTER = { latitude: 36.8175, longitude: 38.0114 };
+
+function cityCenter(settings: { originLatE6: number; originLngE6: number }, city: CityKey) {
+  return city === "jarabulus" ? JARABULUS_CENTER : { latitude: settings.originLatE6 / 1_000_000, longitude: settings.originLngE6 / 1_000_000 };
+}
+
+/** Where a delivery starts: the first store in the cart that saved its location, otherwise the centre of that store's city (or the order's city for products with no store). */
+function deliveryOrigin(settings: { originLatE6: number; originLngE6: number }, cartStores: Array<{ city: CityKey; locationLat: number | null; locationLng: number | null } | undefined>, orderCity: CityKey) {
+  const located = cartStores.find(store => store?.locationLat && store.locationLng);
+  if (located) return { latitude: located.locationLat! / 1_000_000, longitude: located.locationLng! / 1_000_000 };
+  return cityCenter(settings, cartStores.find(Boolean)?.city ?? orderCity);
+}
+
+async function getDrivingQuote(customerLat: number, customerLng: number, originLat?: number, originLng?: number, serviceKey: "manbij_store" | "jarabulus_gateway" = "manbij_store", city: CityKey = "manbij") {
   const settings = await getSettings();
-  const routeOriginLat = originLat ?? settings.originLatE6 / 1_000_000;
-  const routeOriginLng = originLng ?? settings.originLngE6 / 1_000_000;
+  const routeOriginLat = originLat ?? cityCenter(settings, city).latitude;
+  const routeOriginLng = originLng ?? cityCenter(settings, city).longitude;
   const route = await getRoadRoute({ latitude: routeOriginLat, longitude: routeOriginLng }, { latitude: customerLat, longitude: customerLng });
   const service = deliveryServicePricing(settings, serviceKey);
   const totalDistanceMeters = Math.round(route.distanceMeters + 2_000);
@@ -1816,15 +1831,15 @@ export const lahzaRouter = router({
     quote: publicProcedure.input(z.object({ locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180), originLat: coordinateSchema.min(-90).max(90).optional(), originLng: coordinateSchema.min(-180).max(180).optional(), catalogItemIds: z.array(z.number().int().positive()).max(30).optional() })).mutation(async ({ ctx, input }) => {
       // Price from the cart's own store, the way orders.create does, so the
       // quote never depends on which store screen the customer came from.
+      const service = ctx.city === "jarabulus" ? "jarabulus_gateway" as const : "manbij_store" as const;
       if (input.catalogItemIds?.length) {
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-        const rows = await db.select({ id: catalogItems.id, lat: stores.locationLat, lng: stores.locationLng }).from(catalogItems).innerJoin(stores, eq(catalogItems.storeId, stores.id)).where(inArray(catalogItems.id, input.catalogItemIds));
-        const store = input.catalogItemIds.map(id => rows.find(row => row.id === id)).find(row => row?.lat && row.lng);
-        if (!store?.lat || !store.lng) throw new Error("المتجر لم يحدد موقعه بعد، لذلك تعذر حساب رسوم التوصيل. تواصل مع فريق لحظة.");
-        return getDrivingQuote(input.locationLat, input.locationLng, store.lat / 1_000_000, store.lng / 1_000_000, ctx.city === "jarabulus" ? "jarabulus_gateway" : "manbij_store");
+        const rows = await db.select({ id: catalogItems.id, city: stores.city, locationLat: stores.locationLat, locationLng: stores.locationLng }).from(catalogItems).innerJoin(stores, eq(catalogItems.storeId, stores.id)).where(inArray(catalogItems.id, input.catalogItemIds));
+        const origin = deliveryOrigin(await getSettings(), input.catalogItemIds.map(id => rows.find(row => row.id === id)), ctx.city);
+        return getDrivingQuote(input.locationLat, input.locationLng, origin.latitude, origin.longitude, service, ctx.city);
       }
-      return getDrivingQuote(input.locationLat, input.locationLng, input.originLat, input.originLng);
+      return getDrivingQuote(input.locationLat, input.locationLng, input.originLat, input.originLng, service, ctx.city);
     }),
   }),
   driverAuth: router({
@@ -2709,11 +2724,10 @@ export const lahzaRouter = router({
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.jarabulusDeliveryPercent);
         totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "delivery") {
-        const deliveryStore = resolvedLines.map(line => line.catalogItemId ? productMap.get(line.catalogItemId)?.storeId : null).map(storeId => storeId ? storeById.get(storeId) : null).find((store): store is typeof productStores[number] => Boolean(store));
-        if (!deliveryStore?.locationLat || !deliveryStore.locationLng || input.locationLat === undefined || input.locationLng === undefined) {
-          throw new Error("تعذر حساب رسوم التوصيل: تأكد من تحديد موقعك وأن المتجر يملك إحداثيات صحيحة");
-        }
-        const route = await getRoadRoute({ latitude: deliveryStore.locationLat / 1_000_000, longitude: deliveryStore.locationLng / 1_000_000 }, { latitude: input.locationLat, longitude: input.locationLng });
+        if (input.locationLat === undefined || input.locationLng === undefined) throw new Error("تعذر حساب رسوم التوصيل: حدد موقعك عبر زر تحديد موقعي");
+        const cartStores = resolvedLines.map(line => line.catalogItemId ? productMap.get(line.catalogItemId)?.storeId : null).map(storeId => storeId ? storeById.get(storeId) : undefined);
+        const origin = deliveryOrigin(settings, cartStores, orderCity);
+        const route = await getRoadRoute(origin, { latitude: input.locationLat, longitude: input.locationLng });
         routeDurationSeconds = route.durationSeconds;
         deliveryDistanceMeters = Math.round(route.distanceMeters + 2_000);
         const service = fulfillmentScope === "manbij_to_jarabulus"
