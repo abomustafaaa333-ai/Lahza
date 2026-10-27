@@ -98,10 +98,10 @@ const demoGalleryImages = [
 const categoryImageByKey: Partial<Record<LahzaCategory, string>> = {
   restaurants: `${demoAssetPrefix}/assets/lahza-category-restaurants.jpg`,
   groceries: `${demoAssetPrefix}/assets/lahza-category-groceries.jpg`,
-  produce: `${demoAssetPrefix}/assets/lahza-category-groceries.jpg`,
+  produce: `${demoAssetPrefix}/assets/lahza-category-produce.jpg`,
   household: `${demoAssetPrefix}/assets/lahza-category-household.jpg`,
   pharmacy: `${demoAssetPrefix}/assets/lahza-category-pharmacy.jpg`,
-  bakery: `${demoAssetPrefix}/assets/lahza-category-bakery.jpg`,
+  bakery: `${demoAssetPrefix}/assets/lahza-offer-bakery.jpg`,
   sweets: `${demoAssetPrefix}/assets/lahza-category-bakery.jpg`,
   butcher: `${demoAssetPrefix}/assets/lahza-category-butcher.jpg`,
   gas: `${demoAssetPrefix}/assets/lahza-category-gas.jpg`,
@@ -279,10 +279,9 @@ function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; s
   return (
     <header className="lahza-home-header">
       <div className="app-shell lahza-home-header-top">
-        <div className="lahza-home-location"><small>التوصيل إلى</small><strong><MapPinCheck className="h-4 w-4" /> {CITY_LABELS[city]}</strong></div>
+        <div className="lahza-home-brand"><HeaderWordmarkMotion /><span className="lahza-home-location"><MapPinCheck className="h-3.5 w-3.5" /> التوصيل إلى <strong>{CITY_LABELS[city]}</strong></span></div>
         <a className="lahza-home-support" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><MessageCircle className="h-5 w-5" /></a>
       </div>
-      <HeaderWordmarkMotion />
       <div className="app-shell lahza-home-search-wrap"><button type="button" className="lahza-home-search" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span></button></div>
     </header>
   );
@@ -1312,11 +1311,13 @@ export default function Home() {
           <section className="app-shell pb-10 home-discover-section">
             {selectedCity === "jarabulus" ? <button type="button" className="lahza-gateway-card" onClick={() => { setGatewayMode(true); setScreen("stores"); }}><span><PackageCheck className="h-5 w-5" /></span><span><strong>اطلب من متاجر منبج</strong><small>متاجر مختارة توصل إلى جرابلس</small></span><ChevronLeft className="h-5 w-5" /></button> : null}
             <div className="global-offer-bar home-offer-gallery"><PartnerOfferGallery slides={partnerGallerySlides} onOpen={openFeaturedOffers} /></div>
-            <div className="home-section-heading"><h2 className="section-title">الأقسام</h2><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div>
+            <section className="lz-home-panel lz-home-categories">
+            <div className="home-section-heading"><h2 className="section-title">الأقسام</h2></div>
             <div className="home-category-row" dir="rtl" aria-label="أقسام لحظة">
               {homeDiscoverCategories.map(item => <button key={item.key} type="button" className="home-category-card" onClick={() => { if (!item.category) { setScreen("delivery"); return; } setSelectedStore(null); setSelectedProduct(null); setActiveCustomCategory(null); setActiveCategory(item.category); setScreen("stores"); }}><span className="home-category-emoji" aria-hidden="true">{item.category && categoryImageByKey[item.category] ? <img src={categoryImageByKey[item.category]} alt="" loading="lazy" /> : item.icon}</span><span>{item.title}</span></button>)}
               <button type="button" className="home-category-card home-category-all" onClick={() => setScreen("delivery")}><span className="home-category-all-grid" aria-hidden="true"><span /><span /><span /><span /></span><span className="home-category-all-label">الكل</span></button>
             </div>
+            </section>
             <div className="lahza-service-cards">
               <button type="button" className="lahza-service-card lahza-service-card-teal" onClick={openWosselLiService}><span><PackageCheck className="h-5 w-5" /></span><span><strong>وصّل لي</strong><small>أرسل غرضاً لأي مكان</small></span></button>
               <button type="button" className="lahza-service-card lahza-service-card-orange" onClick={openTaxiService}><span><CarFront className="h-5 w-5" /></span><span><strong>سيارة أجرة</strong><small>مشوار داخل المدينة</small></span></button>

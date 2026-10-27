@@ -2682,7 +2682,6 @@ export const lahzaRouter = router({
         throw new Error(concise ? `تعذر حفظ الطلب: ${concise}` : "تعذر حفظ الطلب في قاعدة البيانات؛ راجع سجلات الخادم للتفاصيل.");
       }
       const orderId = Number(created[0].insertId);
-      if (input.pharmacyPrescriptionUrl) await notifyPharmacyPrescriptionPricing(db, orderId, input.pharmacyPrescriptionUrl);
       await createOrderStatusNotification(db, { id: orderId, customerPhone: input.customerPhone, fulfillmentScope, preparationMinutes }, initialStatus);
       if (pointsUsed) {
         const spent = await db.update(customerPoints).set({ balance: sql`${customerPoints.balance} - 10` }).where(and(eq(customerPoints.customerPhone, input.customerPhone), gte(customerPoints.balance, 10)));
@@ -2705,6 +2704,9 @@ export const lahzaRouter = router({
           notes: line.notes ?? null,
         })));
       }
+      // The pharmacy is found through the order lines, so ask for the price only
+      // after they are saved.
+      if (input.pharmacyPrescriptionUrl) await notifyPharmacyPrescriptionPricing(db, orderId, input.pharmacyPrescriptionUrl);
       // The order is already saved at this point. Dispatch/WhatsApp is a
       // follow-up operation and must not make a successful order look failed
       // when assignment or the notification provider is temporarily unavailable.
