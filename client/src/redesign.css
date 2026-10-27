@@ -674,3 +674,17 @@
 .lahza-service-soon { filter: grayscale(1); opacity: .55; cursor: not-allowed; }
 .lahza-service-soon small { font-weight: 800; }
 .lahza-soon-badge { display: inline-flex; width: fit-content; border-radius: 999px; padding: .1rem .6rem; color: #fff !important; background: #8a8f93; }
+
+/* Compact product cards: three to a row on phones, a small square photo, name, price and a quiet add button. */
+.lahza-app-shell .product-image-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: .55rem !important; }
+@media (min-width: 640px) { .lahza-app-shell .product-image-grid { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; } }
+.lahza-app-shell .product-image-card { padding: .4rem !important; border-radius: 16px !important; box-shadow: 0 6px 16px -14px rgba(58, 36, 24, .45) !important; }
+.lahza-app-shell .product-image-wrap { aspect-ratio: 1 / 1 !important; border-radius: 12px !important; }
+.lahza-app-shell .product-image-card > strong { margin-top: .35rem !important; font-size: .74rem !important; line-height: 1.35 !important; min-height: 2.7em; -webkit-line-clamp: 2; }
+.lahza-app-shell .product-card-store { margin-top: .1rem; font-size: .6rem !important; }
+.lahza-app-shell .product-card-store svg { width: .7rem; height: .7rem; }
+.lahza-app-shell .product-card-footer { padding-top: .25rem !important; gap: .25rem !important; }
+.lahza-app-shell .product-card-price { font-size: .74rem !important; line-height: 1.2 !important; }
+.lahza-app-shell .product-card-price small { font-size: .58rem !important; }
+.lahza-app-shell .product-add-circle { width: 1.7rem !important; height: 1.7rem !important; flex: 0 0 auto; box-shadow: 0 6px 12px -8px rgba(255, 106, 43, .85) !important; }
+.lahza-app-shell .product-add-circle svg { width: .95rem; height: .95rem; }

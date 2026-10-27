@@ -15,6 +15,7 @@ import { LAHZA_APK_FILE_NAME, LAHZA_APK_URL } from "@/lib/appDownload";
 import { QRCodeSVG } from "qrcode.react";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
+import { clearCustomerSessionToken, saveCustomerSessionToken } from "@/lib/customerSession";
 import { catalogSeed, categoryMeta, storeCategories, customerDeliveryCategories, formatNewSyp, isProductFirstCategory, productFirstCategories, formatSyp, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { productUnitMinimum, productUnitStep } from "@shared/productUnits";
@@ -395,7 +396,8 @@ function CustomerAuthScreen({ onAuthenticated, onStaffLogin }: { onAuthenticated
   };
   const verifyOtp = async () => {
     try {
-      await verifyOtpCode.mutateAsync({ phone: fullPhone, code: otp });
+      const verified = await verifyOtpCode.mutateAsync({ phone: fullPhone, code: otp });
+      saveCustomerSessionToken(verified.sessionToken, remember);
     } catch (verifyError) {
       setError(verifyError instanceof Error ? verifyError.message : "رمز التحقق غير صحيح.");
       return;
@@ -654,7 +656,7 @@ export default function Home() {
   const customerOrderHistoryQuery = trpc.lahza.orders.history.useQuery({ customerPhone: customerAuth?.phone ?? "+963900000000" }, { enabled: !isStaticDemo && customerAuth?.mode === "customer" && Boolean(customerAuth.phone), retry: false });
   const customerSessionQuery = trpc.lahza.customerAccounts.session.useQuery(undefined, { enabled: !isStaticDemo && customerAuth?.mode === "customer", retry: false, staleTime: 300_000 });
   const customerLogout = trpc.lahza.customerAccounts.logout.useMutation();
-  const updateCustomerPhone = trpc.lahza.customerAccounts.updatePhone.useMutation({ onSuccess: async (_result, variables) => { await customerSessionQuery.refetch(); updateCustomerSessionPhone(variables.newPhone); toast.success("تم تحديث رقم هاتفك بنجاح"); }, onError: error => toast.error(error.message) });
+  const updateCustomerPhone = trpc.lahza.customerAccounts.updatePhone.useMutation({ onSuccess: async (result, variables) => { saveCustomerSessionToken(result.sessionToken); await customerSessionQuery.refetch(); updateCustomerSessionPhone(variables.newPhone); toast.success("تم تحديث رقم هاتفك بنجاح"); }, onError: error => toast.error(error.message) });
   const createReferralCode = trpc.lahza.customers.referral.getOrCreate.useMutation({ onSuccess: result => { setMyReferralCode(result.code); void navigator.clipboard?.writeText(result.code); toast.success(`رمز إحالتك: ${result.code}`); }, onError: error => toast.error(error.message) });
   const createMissingProductRequest = trpc.lahza.missingProducts.create.useMutation({
     onSuccess: () => {
@@ -1032,7 +1034,8 @@ export default function Home() {
   };
   const openAccount = () => setScreen("account");
   const logoutCustomer = () => {
-    if (!isStaticDemo) customerLogout.mutate();
+    if (!isStaticDemo) customerLogout.mutate(undefined, { onSettled: clearCustomerSessionToken });
+    else clearCustomerSessionToken();
     window.localStorage.removeItem(CUSTOMER_AUTH_STORAGE_KEY);
     window.localStorage.removeItem(CART_CHECKOUT_STORAGE_KEY);
     window.sessionStorage.removeItem("lahza_selected_city");

@@ -1086,7 +1086,9 @@ async function createCustomerSession(payload: CustomerSession) {
 }
 
 async function readCustomerSession(ctx: TrpcContext): Promise<CustomerSession | null> {
-  const token = parse(ctx.req.headers.cookie ?? "")[CUSTOMER_COOKIE];
+  // The app sends its stored session in a header; the cookie covers the website.
+  const header = ctx.req.headers["x-lahza-customer-session"];
+  const token = parse(ctx.req.headers.cookie ?? "")[CUSTOMER_COOKIE] || (Array.isArray(header) ? header[0] : header);
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, sessionKey());
@@ -1104,7 +1106,9 @@ async function requireCustomerPhone(ctx: TrpcContext, phone: string) {
 }
 
 async function setCustomerCookie(ctx: TrpcContext, customerPhone: string) {
-  ctx.res.cookie(CUSTOMER_COOKIE, await createCustomerSession({ customerPhone }), { ...getSessionCookieOptions(ctx.req), maxAge: CUSTOMER_SESSION_MAX_AGE_MS });
+  const token = await createCustomerSession({ customerPhone });
+  ctx.res.cookie(CUSTOMER_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: CUSTOMER_SESSION_MAX_AGE_MS });
+  return token;
 }
 
 /** The orders board and its archive show this many days; older orders stay in the database for reports. */
@@ -2324,8 +2328,7 @@ export const lahzaRouter = router({
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await consumeOtpCode(db, input.phone, input.code);
       memoryOtpVerified.set(input.phone, Date.now() + 10 * 60_000);
-      await setCustomerCookie(ctx, input.phone);
-      return { success: true };
+      return { success: true, sessionToken: await setCustomerCookie(ctx, input.phone) };
     }),
     session: publicProcedure.query(async ({ ctx }) => {
       const session = await readCustomerSession(ctx);
@@ -2395,8 +2398,7 @@ export const lahzaRouter = router({
       await db.update(customerReferrals).set({ referredPhone: input.newPhone }).where(eq(customerReferrals.referredPhone, input.currentPhone));
       await db.update(orders).set({ customerPhone: input.newPhone }).where(eq(orders.customerPhone, input.currentPhone));
       await db.update(intercityOrders).set({ customerPhone: input.newPhone }).where(eq(intercityOrders.customerPhone, input.currentPhone));
-      await setCustomerCookie(ctx, input.newPhone);
-      return { success: true };
+      return { success: true, sessionToken: await setCustomerCookie(ctx, input.newPhone) };
     }),
     list: publicProcedure.query(async ({ ctx }) => {
       await requireAdmin(ctx);
