@@ -214,7 +214,7 @@ export const systemSettings = mysqlTable("system_settings", {
   jarabulusStorePricePerKm: int("jarabulusStorePricePerKm").notNull().default(2),
   jarabulusStoreMinutesPerKm: int("jarabulusStoreMinutesPerKm").notNull().default(5),
   jarabulusGatewayPricePerKm: int("jarabulusGatewayPricePerKm").notNull().default(2),
-  jarabulusGatewayMinutesPerKm: int("jarabulusGatewayMinutesPerKm").notNull().default(15),
+  jarabulusGatewayMinutesPerKm: int("jarabulusGatewayMinutesPerKm").notNull().default(2),
   wosselLiMinutesPerKm: int("wosselLiMinutesPerKm").notNull().default(5),
   manbijDeliveryPercent: int("manbijDeliveryPercent").notNull().default(20),
   jarabulusDeliveryPercent: int("jarabulusDeliveryPercent").notNull().default(30),

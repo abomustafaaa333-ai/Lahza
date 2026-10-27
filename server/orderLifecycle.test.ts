@@ -10,9 +10,9 @@ describe("دورة حياة أرشيف الطلبات", () => {
     expect(archiveCutoff(now).toISOString()).toBe("2026-08-21T12:00:00.000Z");
   });
 
-  it("يعتبر الطلب منتهياً للحذف بعد سبعة أيام كاملة", () => {
+  it("يحتفظ بالطلب سنة كاملة قبل حذفه", () => {
     expect(isOrderExpired(new Date(now.getTime() - ORDER_DELETE_AFTER_MS), now)).toBe(true);
     expect(isOrderExpired(new Date(now.getTime() - ORDER_DELETE_AFTER_MS + 1), now)).toBe(false);
-    expect(deletionCutoff(now).toISOString()).toBe("2026-08-15T12:00:00.000Z");
+    expect(deletionCutoff(now).toISOString()).toBe("2025-08-22T12:00:00.000Z");
   });
 });
