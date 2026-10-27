@@ -20,7 +20,7 @@ import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { productUnitMinimum, productUnitStep } from "@shared/productUnits";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
 import { CITY_LABELS, CITY_KEYS, type CityKey } from "@shared/cities";
-import { ArrowLeft, ArrowRight, BadgePercent, House, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Download, Fuel, HandCoins, ImagePlus, LayoutDashboard, Loader2, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, Megaphone, ArrowRight, BadgePercent, House, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Download, Fuel, HandCoins, ImagePlus, LayoutDashboard, Loader2, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -275,7 +275,14 @@ function HeaderWordmarkMotion() {
   );
 }
 
-function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; searchPlaceholder: string; city: CityKey }) {
+/** The owner's two news lines, scrolling under the search bar. */
+function HomeTicker({ items }: { items: string[] }) {
+  if (!items.length) return null;
+  // The track holds the lines twice so the scroll can loop without a gap.
+  return <div className="app-shell lahza-home-ticker-wrap"><div className="lahza-home-ticker" role="marquee" aria-label={items.join(" · ")}><Megaphone className="lahza-home-ticker-icon h-4 w-4" aria-hidden="true" /><div className="lahza-home-ticker-window"><div className="lahza-home-ticker-track" aria-hidden="true">{[...items, ...items].map((item, index) => <span key={index}>{item}</span>)}</div></div></div></div>;
+}
+
+function Header({ onSearch, searchPlaceholder, city, ticker }: { onSearch: () => void; searchPlaceholder: string; city: CityKey; ticker: string[] }) {
   return (
     <header className="lahza-home-header">
       <div className="app-shell lahza-home-header-top">
@@ -283,6 +290,7 @@ function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; s
         <a className="lahza-home-support" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><MessageCircle className="h-5 w-5" /></a>
       </div>
       <div className="app-shell lahza-home-search-wrap"><button type="button" className="lahza-home-search" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span></button></div>
+      <HomeTicker items={ticker} />
     </header>
   );
 }
@@ -1308,7 +1316,7 @@ export default function Home() {
     <main dir="rtl" className={`lahza-app-shell lahza-screen-${screen} min-h-screen text-slate-950`} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       <div className={`pull-refresh-indicator ${pullDistance > 0 || refreshing ? "pull-refresh-indicator-visible" : ""}`} style={{ transform: `translate(-50%, ${refreshing ? 12 : Math.min(62, pullDistance * .72) - 44}px)` }} role="status" aria-live="polite"><span className={refreshing ? "pull-refresh-spinner" : ""}><ArrowLeft className="h-4 w-4 -rotate-90" /></span><small>{refreshing ? "جارٍ التحديث" : pullDistance >= 72 ? "اترك للتحديث" : "اسحب للتحديث"}</small></div>
       <div className="top-action-cluster" dir="ltr">{driverSessionQuery.data ? <button type="button" className="persistent-notifications-button" onClick={() => window.location.href = "/?driverApp=1"} aria-label="فتح لوحة المندوب"><LayoutDashboard className="h-5 w-5" /></button> : null}<PersistentCartButton onCart={openCart} cartCount={cart.length} /><button type="button" className="persistent-notifications-button" onClick={() => setNotificationsOpen(true)} aria-label="فتح الإشعارات"><BellRing className="h-5 w-5" />{unreadNotificationCount > 0 ? <b>{unreadNotificationCount}</b> : null}</button></div><LahzaEventCover event={interfaceSettingsQuery.data} />
-      {screen === "home" ? <Header onSearch={() => setSearchOpen(true)} searchPlaceholder={searchPlaceholder} city={selectedCity ?? "manbij"} /> : null}
+      {screen === "home" ? <Header onSearch={() => setSearchOpen(true)} searchPlaceholder={searchPlaceholder} city={selectedCity ?? "manbij"} ticker={[interfaceSettingsQuery.data?.tickerPrimary, interfaceSettingsQuery.data?.tickerSecondary].filter((line): line is string => Boolean(line?.trim()))} /> : null}
 
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}><DialogContent dir="rtl" className="notification-dialog"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right"><BellRing className="h-5 w-5 text-[#00666b]" /> إشعارات لحظة</DialogTitle><DialogDescription className="text-right">العروض وتحديثات حالة طلباتك في مكان واحد.</DialogDescription></DialogHeader>{unreadNotificationCount > 0 ? <button type="button" className="notification-mark-all" disabled={markAllNotificationsRead.isPending} onClick={() => markAllNotificationsRead.mutate({ deviceId, ...(customerAuth?.mode === "customer" && customerAuth.phone ? { customerPhone: customerAuth.phone } : {}) })}><CheckCircle2 className="h-4 w-4" /> تحديد الكل كمقروء</button> : null}<div className="notification-dialog-list">{(notificationsQuery.data ?? []).filter(notification => notification.unread).map(notification => <button key={`campaign-${notification.id}`} type="button" className="notification-dialog-item" onClick={() => { markNotificationRead.mutate({ deviceId, campaignId: notification.id }); if (notification.targetPath === "/offers") setScreen("offers"); setNotificationsOpen(false); }}><span className="notification-dialog-icon notification-dialog-icon-orange"><BellRing className="h-4 w-4" /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}{(orderNotificationsQuery.data ?? []).map(notification => <button key={`order-${notification.id}`} type="button" className="notification-dialog-item" onClick={() => { markOrderNotificationRead.mutate({ id: notification.id, customerPhone: orderNotificationPhone }); setNotificationsOpen(false); }}><span className="notification-dialog-icon"><PackageCheck className="h-4 w-4" /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}{!(notificationsQuery.data ?? []).some(notification => notification.unread) && !(orderNotificationsQuery.data ?? []).length ? <div className="notification-dialog-empty"><BellRing className="h-7 w-7" /><span>لا توجد إشعارات جديدة حالياً.</span></div> : null}</div></DialogContent></Dialog>
       <ServiceDirectoryDialog open={serviceDirectoryOpen} onOpenChange={setServiceDirectoryOpen} onDelivery={openDeliveryService} onWosselLi={openWosselLiService} onTaxi={openTaxiService} />
