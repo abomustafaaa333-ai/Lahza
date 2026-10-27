@@ -90,8 +90,10 @@ rm -rf "$BASE/src"
 git clone --quiet --depth 1 -b "$BRANCH" "$REPO" "$BASE/src"
 docker build -t lahza-app "$BASE/src"
 docker rm -f lahza-app >/dev/null 2>&1 || true
+# Start node directly: the server runs the migrations itself over TLS, and the
+# image's default command also runs drizzle-kit, which races it on a new DB.
 docker run -d --name lahza-app --restart always --network lahza --env-file "$ENV_FILE" \
-  -v "$BASE/certs/ca.pem:/certs/ca.pem:ro" lahza-app >/dev/null
+  -v "$BASE/certs/ca.pem:/certs/ca.pem:ro" lahza-app node dist/index.js >/dev/null
 
 log "WAHA: send webhooks straight to the app over the private network"
 INTERNAL_HOOK="http://lahza-app:3000/api/waha/webhook?token=$WEBHOOK_SECRET"
