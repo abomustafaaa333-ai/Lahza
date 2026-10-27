@@ -15,7 +15,7 @@ import { LAHZA_APK_FILE_NAME, LAHZA_APK_URL } from "@/lib/appDownload";
 import { QRCodeSVG } from "qrcode.react";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
-import { catalogSeed, categoryMeta, customerDeliveryCategories, formatNewSyp, isProductFirstCategory, productFirstCategories, formatSyp, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
+import { catalogSeed, categoryMeta, storeCategories, customerDeliveryCategories, formatNewSyp, isProductFirstCategory, productFirstCategories, formatSyp, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { productUnitMinimum, productUnitStep } from "@shared/productUnits";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
@@ -670,7 +670,9 @@ export default function Home() {
   const gatewayStoresQuery = trpc.lahza.storefront.gatewayStores.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && selectedCity === "jarabulus", retry: false });
   const productFirstCategory = !gatewayMode && !activeCustomCategory && activeCategory && isProductFirstCategory(activeCategory) ? activeCategory as (typeof productFirstCategories)[number] : null;
   const productFirstBrowsing = Boolean(productFirstCategory);
-  const categoryProductsQuery = trpc.lahza.storefront.categoryProducts.useQuery({ category: productFirstCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(productFirstCategory) && screen === "stores", retry: false, staleTime: 60_000 });
+  // Every store category is asked for products: product-first ones list all of them, the rest list only لحظة's own.
+  const productListCategory = !gatewayMode && !activeCustomCategory && activeCategory && (storeCategories as readonly string[]).includes(activeCategory) ? activeCategory as (typeof storeCategories)[number] : null;
+  const categoryProductsQuery = trpc.lahza.storefront.categoryProducts.useQuery({ category: productListCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(productListCategory) && screen === "stores", retry: false, staleTime: 60_000 });
   const categoryProducts: CategoryProduct[] = isStaticDemo
     ? staticDemoProducts.filter(product => product.category === activeCategory).map(product => ({ ...product, storeId: -1, storeName: "متجر لحظة التجريبي", storeCategory: product.category, storeOpen: true }))
     : (categoryProductsQuery.data ?? []) as CategoryProduct[];
@@ -682,7 +684,7 @@ export default function Home() {
     setScreen("productQuantity");
     window.scrollTo({ top: 0 });
   };
-  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(selectedStore), retry: false, staleTime: 60_000 });
+  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id || 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(selectedStore && selectedStore.id > 0), retry: false, staleTime: 60_000 });
   const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(sharedStoreId), retry: false, staleTime: 120_000 });
   const products = isStaticDemo ? staticDemoProducts : [];
   const supportContacts = supportContactsQuery.data ?? [];
@@ -1259,6 +1261,13 @@ export default function Home() {
     setActiveCustomCategory(null);
     setSelectedProduct(null);
     setSelectedStore({ id: result.storeId, name: result.storeName, category: result.storeCategory, imageUrl: result.storeImageUrl, storeOpen: result.storeOpen });
+    // A لحظة product has no store page, so it opens straight on its quantity screen.
+    if (!result.storeId) {
+      setSelectedProduct({ id: result.id, name: result.name, unit: result.unit, unitPrice: toLegacySyp(result.price), available: result.available });
+      setProductOrigin("category");
+      setScreen("productQuantity");
+      return;
+    }
     setScreen("store");
   };
 
@@ -1380,7 +1389,7 @@ export default function Home() {
         </>
       ) : null}
 
-      {screen === "stores" && (gatewayMode || activeCategory) ? <StoresScreen key={`${gatewayMode ? "gateway" : activeCategory}-${activeCustomCategory?.id ?? ""}`} {...(productFirstBrowsing ? { products: categoryProducts, productsLoading: categoryProductsQuery.isLoading && !isStaticDemo, onChooseProduct: openCategoryProduct } : {})} category={gatewayMode ? "other" : activeCategory!} categoryTitle={gatewayMode ? "طلبات منبج" : activeCustomCategory?.title} stores={gatewayMode ? gatewayStores : categoryStores} loading={gatewayMode ? gatewayStoresQuery.isLoading && !isStaticDemo : categoryStoresQuery.isLoading && !isStaticDemo} onBack={() => { setScreen(gatewayMode ? "home" : "delivery"); setGatewayMode(false); setActiveCategory(null); setActiveCustomCategory(null); }} onChoose={store => { if (!isStaticDemo) trackStoreVisit.mutate({ storeId: store.id, source: "direct" }); setSelectedProduct(null); setSelectedOffer(null); setSelectedStore({ ...store, id: Number(store.id) }); window.scrollTo({ top: 0, behavior: "smooth" }); setScreen("store"); }} /> : null}
+      {screen === "stores" && (gatewayMode || activeCategory) ? <StoresScreen key={`${gatewayMode ? "gateway" : activeCategory}-${activeCustomCategory?.id ?? ""}`} {...(productFirstBrowsing ? { products: categoryProducts, productsLoading: categoryProductsQuery.isLoading && !isStaticDemo, onChooseProduct: openCategoryProduct } : categoryProducts.length && !gatewayMode ? { products: categoryProducts, onChooseProduct: openCategoryProduct, initialView: "stores" as const } : {})} category={gatewayMode ? "other" : activeCategory!} categoryTitle={gatewayMode ? "طلبات منبج" : activeCustomCategory?.title} stores={gatewayMode ? gatewayStores : categoryStores} loading={gatewayMode ? gatewayStoresQuery.isLoading && !isStaticDemo : categoryStoresQuery.isLoading && !isStaticDemo} onBack={() => { setScreen(gatewayMode ? "home" : "delivery"); setGatewayMode(false); setActiveCategory(null); setActiveCustomCategory(null); }} onChoose={store => { if (!isStaticDemo) trackStoreVisit.mutate({ storeId: store.id, source: "direct" }); setSelectedProduct(null); setSelectedOffer(null); setSelectedStore({ ...store, id: Number(store.id) }); window.scrollTo({ top: 0, behavior: "smooth" }); setScreen("store"); }} /> : null}
 
       <Dialog open={missingProductOpen} onOpenChange={setMissingProductOpen}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl bg-white"><DialogHeader><DialogTitle className="text-right text-xl text-[#4a2618]">اطلب منتجاً غير موجود</DialogTitle><DialogDescription className="text-right">اكتب ما تحتاجه وسيتابع فريق لحظة إمكانية توفيره أو إضافة متجر مناسب.</DialogDescription></DialogHeader><div className="grid gap-3 rounded-2xl bg-slate-50 p-4"><p className="rounded-xl bg-white px-3 py-2 text-xs font-bold leading-6 text-slate-600">سيتم استخدام اسمك ورقم هاتفك المحفوظين في حسابك تلقائياً.</p><div><Label>اسم المنتج المطلوب</Label><Input className="mt-1 border-slate-200 bg-white shadow-sm" value={missingProductName} onChange={event => setMissingProductName(event.target.value)} placeholder="مثال: حقيبة مدرسية للصف الخامس" /></div><div><Label>تفاصيل إضافية (اختياري)</Label><Textarea className="mt-1 border-slate-200 bg-white shadow-sm" value={missingProductNotes} onChange={event => setMissingProductNotes(event.target.value)} placeholder="اللون أو المقاس أو العلامة التجارية" /></div><Button disabled={createMissingProductRequest.isPending || missingProductName.trim().length < 2 || !customerAuth?.phone || !customerAuth.name} onClick={() => { if (!customerAuth?.phone || !customerAuth.name) return; createMissingProductRequest.mutate({ customerName: customerAuth.name.trim(), customerPhone: customerAuth.phone, productName: missingProductName.trim(), notes: missingProductNotes.trim() || undefined }); }} className="mt-1 rounded-2xl bg-red-600 py-6 hover:bg-red-700">{createMissingProductRequest.isPending ? "جارٍ الإرسال..." : "إرسال الطلب"}</Button></div></DialogContent></Dialog>
       {screen === "store" && selectedStore ? <StoreProductsScreen store={selectedStore} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("stores"); setSelectedProduct(null); }} onChooseProduct={product => { setSelectedProduct(product); setProductOrigin("store"); setScreen("productQuantity"); }} onOpenOffers={() => setScreen("storeOffers")} /> : null}
@@ -1521,12 +1530,14 @@ function CustomerOrdersScreen({ orders, onBack }: { orders: CustomerHistoryOrder
   return <section className="app-shell account-screen pb-12"><PageHeading eyebrow="حسابي" title="طلباتي" detail="تابع الطلبات الجارية والمكتملة والمرفوضة من مكان واحد." onBack={onBack} />{renderGroup("الطلبات الجارية", active, "bg-blue-50 text-blue-700")}{renderGroup("الطلبات المكتملة", completed, "bg-emerald-50 text-emerald-700")}{renderGroup("الطلبات المرفوضة أو الملغاة", rejected, "bg-red-50 text-red-700")}<Dialog open={selectedOrder !== null} onOpenChange={open => { if (!open) setSelectedOrder(null); }}><DialogContent dir="rtl" className="border-teal-200 bg-teal-50 text-teal-950"><DialogHeader><DialogTitle>تفاصيل الطلب #{selectedOrder?.id}</DialogTitle><DialogDescription className="text-teal-900">{selectedOrder ? `${statusLabel(selectedOrder.status)} · ${new Date(selectedOrder.createdAt).toLocaleString("ar-SY")}` : ""}</DialogDescription></DialogHeader>{selectedOrder ? <div className="space-y-3 text-sm"><div className="rounded-xl bg-white/70 p-3"><strong>الأصناف</strong>{selectedOrder.lines.length ? selectedOrder.lines.map(line => <div key={line.id} className="mt-2 flex justify-between gap-3"><span>{line.itemName} × {line.quantity} {line.unit}</span><b>{formatSyp(line.lineTotal)}</b></div>) : <p className="mt-2 text-slate-600">لا توجد تفاصيل أصناف.</p>}</div><div className="rounded-xl bg-white/70 p-3"><p><b>العميل:</b> {selectedOrder.customerName}</p><p><b>العنوان:</b> {selectedOrder.locationText || "الموقع المحدد عبر GPS"}</p><p><b>الدفع:</b> {selectedOrder.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}</p><p><b>الإجمالي:</b> {formatSyp(selectedOrder.totalAmount)}</p>{selectedOrder.notes ? <p><b>ملاحظات:</b> {selectedOrder.notes}</p> : null}</div></div> : null}</DialogContent></Dialog></section>;
 }
 
-function StoresScreen({ category, categoryTitle, stores, loading, onBack, onChoose, products, productsLoading, onChooseProduct }: { category: LahzaCategory; categoryTitle?: string; stores: StoreOption[]; loading: boolean; onBack: () => void; onChoose: (store: StoreOption) => void; products?: CategoryProduct[]; productsLoading?: boolean; onChooseProduct?: (product: CategoryProduct) => void }) {
+function StoresScreen({ category, categoryTitle, stores, loading, onBack, onChoose, products, productsLoading, onChooseProduct, initialView }: { category: LahzaCategory; categoryTitle?: string; stores: StoreOption[]; loading: boolean; onBack: () => void; onChoose: (store: StoreOption) => void; products?: CategoryProduct[]; productsLoading?: boolean; onChooseProduct?: (product: CategoryProduct) => void; initialView?: "products" | "stores" }) {
   const meta = categoryMeta[category];
   const title = categoryTitle ?? meta.title;
   const visual = categoryImageByKey[category];
   const productFirst = Boolean(products && onChooseProduct);
-  const [view, setView] = useState<"products" | "stores">(productFirst ? "products" : "stores");
+  const [chosenView, setView] = useState<"products" | "stores">(productFirst ? initialView ?? "products" : "stores");
+  // A category with لحظة products but no stores opens on the products instead of an empty list.
+  const view = chosenView === "stores" && productFirst && !loading && !stores.length ? "products" : chosenView;
   const [need, setNeed] = useState("");
   const normalizedNeed = need.trim().toLocaleLowerCase("ar");
   const visibleProducts = (products ?? []).filter(product => !normalizedNeed || product.name.toLocaleLowerCase("ar").includes(normalizedNeed) || product.storeName.toLocaleLowerCase("ar").includes(normalizedNeed));

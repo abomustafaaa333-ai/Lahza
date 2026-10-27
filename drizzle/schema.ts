@@ -78,6 +78,8 @@ export const catalogItems = mysqlTable("catalog_items", {
   deleted: boolean("deleted").notNull().default(false),
   partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
   storeId: int("storeId").references(() => stores.id, { onDelete: "set null" }),
+  /** City of a product sold by لحظة itself (no store); store products follow their store. */
+  city: varchar("city", { length: 20 }),
   customCategoryId: int("customCategoryId").references(() => customCategories.id, { onDelete: "set null" }),
   imageUrl: varchar("imageUrl", { length: 500 }),
   imageUrls: text("imageUrls"),

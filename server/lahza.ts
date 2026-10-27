@@ -1323,6 +1323,7 @@ async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof
     ["clothingSizes", "TEXT NULL"],
     ["clothingColors", "VARCHAR(500) NULL"],
     ["clothingVariantImages", "TEXT NULL"],
+    ["city", "VARCHAR(20) NULL"],
   ]);
   if (!catalogClothingSizesSchemaPromise) {
     catalogClothingSizesSchemaPromise = (async () => {
@@ -1572,6 +1573,18 @@ export function canShowFeaturedOffer(featuredStatus: "none" | "pending" | "appro
 export function initialCustomerOrderStatus(orderType: "delivery" | "taxi" | "wossel_li", lines: Array<{ priceKnown: boolean; unitPrice: number }>) {
   return orderType === "delivery" && lines.length > 0 && lines.every(line => line.priceKnown && line.unitPrice > 0) ? "preparing" : "pending";
 }
+
+/** Products لحظة sells itself: no store, created from the admin panel (seed placeholders are excluded), priced. */
+function lahzaProductCondition(city: CityKey) {
+  return and(
+    isNull(catalogItems.storeId),
+    like(catalogItems.code, "custom-%"),
+    gt(catalogItems.unitPrice, 0),
+    city === "jarabulus" ? eq(catalogItems.city, "jarabulus") : or(isNull(catalogItems.city), eq(catalogItems.city, "manbij")),
+  );
+}
+
+const LAHZA_STORE_NAME = "لحظة";
 
 async function findStoreForCatalog(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, storeId: number | undefined, category: LahzaCategory) {
   if (!storeId) return null;
@@ -1935,6 +1948,7 @@ export const lahzaRouter = router({
         available: input.available,
         deleted: false,
         storeId: store?.id ?? null,
+        city: store ? null : ctx.city,
         customCategoryId: customCategory?.id ?? null,
         imageUrl: input.imageUrl || null,
       });
@@ -2095,10 +2109,14 @@ export const lahzaRouter = router({
         ))
         .orderBy(desc(catalogItems.available), stores.name, catalogItems.name)
         .limit(30);
-      return results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen === null ? true : effectiveStoreOpen(result.storeOpen, result.workHours) }));
+      const lahzaResults = await db.select({ id: catalogItems.id, name: catalogItems.name, unit: catalogItems.unit, unitPrice: catalogItems.unitPrice, available: catalogItems.available, category: catalogItems.category }).from(catalogItems).where(and(lahzaProductCondition(ctx.city), eq(catalogItems.deleted, false), sql`LOWER(${catalogItems.name}) LIKE LOWER(${pattern})`)).limit(20);
+      return [
+        ...lahzaResults.map(result => ({ id: result.id, name: result.name, unit: result.unit, unitPrice: result.unitPrice, available: result.available, storeId: 0, storeName: LAHZA_STORE_NAME, storeCategory: result.category, storeImageUrl: null, storeOpen: true, workHours: null, price: toNewSyp(result.unitPrice) })),
+        ...results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen === null ? true : effectiveStoreOpen(result.storeOpen, result.workHours) })),
+      ];
     }),
     /** Product-first listing for everyday categories: every visible store's products, open stores first. */
-    categoryProducts: publicProcedure.input(z.object({ category: z.enum(productFirstCategories) })).query(async ({ ctx, input }) => {
+    categoryProducts: publicProcedure.input(z.object({ category: z.enum(storeCategories) })).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCatalogItemSchema(db);
@@ -2126,7 +2144,12 @@ export const lahzaRouter = router({
         ))
         .orderBy(catalogItems.name, stores.name)
         .limit(300);
-      return rows
+      // Store-based categories (restaurants, gas...) only list لحظة's own products here; their stores have their own screen.
+      const storeRows = (productFirstCategories as readonly string[]).includes(input.category) ? rows : [];
+      const lahzaRows = await db.select().from(catalogItems).where(and(lahzaProductCondition(ctx.city), eq(catalogItems.category, input.category), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name).limit(100);
+      return [
+        ...lahzaRows.map(product => ({ ...product, storeId: 0, storeName: LAHZA_STORE_NAME, storeCategory: product.category, storeImageUrl: null, storeOpen: true })),
+        ...storeRows
         .map(row => ({
           ...row.product,
           storeId: row.storeId,
@@ -2135,7 +2158,8 @@ export const lahzaRouter = router({
           storeImageUrl: row.partnerImageUrl || row.storeImageUrl,
           storeOpen: row.partnerStoreOpen === null ? true : effectiveStoreOpen(row.partnerStoreOpen, row.workHours),
         }))
-        .sort((a, b) => Number(b.storeOpen) - Number(a.storeOpen));
+        .sort((a, b) => Number(b.storeOpen) - Number(a.storeOpen)),
+      ];
     }),
     availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -2636,7 +2660,10 @@ export const lahzaRouter = router({
       const productStoreIds = Array.from(new Set(products.flatMap(product => product.storeId ? [product.storeId] : [])));
       const productStores = productStoreIds.length ? await db.select({ id: stores.id, city: stores.city, active: stores.active, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled, locationLat: stores.locationLat, locationLng: stores.locationLng, name: stores.name }).from(stores).where(inArray(stores.id, productStoreIds)) : [];
       const storeById = new Map(productStores.map(store => [store.id, store]));
-      if (input.orderType === "delivery" && orderCity === "jarabulus" && products.some(product => !product.storeId || !isStoreVisibleInCustomerCity(storeById.get(product.storeId) ?? { city: "jarabulus", jarabulusGatewayEnabled: false }, "jarabulus"))) {
+      if (input.orderType === "delivery" && products.some(product => !product.storeId && (product.city ?? "manbij") !== orderCity)) {
+        throw new Error("بعض منتجات لحظة في سلتك تخص مدينة أخرى، حدّث السلة ثم أعد الطلب");
+      }
+      if (input.orderType === "delivery" && orderCity === "jarabulus" && products.some(product => product.storeId && !isStoreVisibleInCustomerCity(storeById.get(product.storeId) ?? { city: "jarabulus", jarabulusGatewayEnabled: false }, "jarabulus"))) {
         throw new Error("يمكن طلب منتجات متاجر منبج المعتمدة لبوابة جرابلس فقط");
       }
       const partnerIds = Array.from(new Set(products.flatMap(product => product.partnerId ? [product.partnerId] : [])));
@@ -2985,6 +3012,11 @@ export const lahzaRouter = router({
       automaticCreate: publicProcedure.input(z.object({ scope: z.enum(["all", "store"]), storeId: z.number().int().positive().nullable().optional(), discountPercent: z.number().int().min(1).max(100), startsAt: z.string().datetime().optional(), expiresAt: z.string().datetime().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); if (input.scope === "store" && !input.storeId) throw new Error("اختر المتجر المحدد للخصم"); await db.insert(automaticDiscounts).values({ scope: input.scope, storeId: input.scope === "store" ? input.storeId ?? null : null, discountPercent: input.discountPercent, active: true, startsAt: input.startsAt ? new Date(input.startsAt) : null, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null }); return { success: true }; }),
       automaticToggle: publicProcedure.input(z.object({ id: z.number().int().positive(), active: z.boolean() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); await db.update(automaticDiscounts).set({ active: input.active }).where(eq(automaticDiscounts.id, input.id)); return { success: true }; }),
       automaticRemove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); await db.delete(automaticDiscounts).where(eq(automaticDiscounts.id, input.id)); return { success: true }; }),
+    }),
+    lahzaProducts: publicProcedure.query(async ({ ctx }) => {
+      await requireAdmin(ctx);
+      const db = await ensureCatalogSeed();
+      return db.select().from(catalogItems).where(and(isNull(catalogItems.storeId), like(catalogItems.code, "custom-%"), eq(catalogItems.deleted, false), ctx.city === "jarabulus" ? eq(catalogItems.city, "jarabulus") : or(isNull(catalogItems.city), eq(catalogItems.city, "manbij")))).orderBy(catalogItems.category, catalogItems.name);
     }),
     categories: router({
       list: publicProcedure.query(async ({ ctx }) => {
