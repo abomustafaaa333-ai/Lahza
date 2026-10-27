@@ -12,12 +12,12 @@ import "./redesign.css";
 import "./admin-redesign.css";
 
 // Configure VITE_LAHZA_API_ORIGIN for mobile builds so the APK calls the
-// current MSHOST server. Keep the old origin as a compatibility fallback for
-// already configured builds.
+// current server. The fallback is the Lahza domain, which can be repointed to
+// a new host without shipping a new APK.
 const configuredApiOrigin =
   import.meta.env.VITE_LAHZA_API_ORIGIN?.trim().replace(/\/$/, "");
 const nativeApiOrigin =
-  configuredApiOrigin || "https://app-6ab5ab21.deploy.meerasolution.com";
+  configuredApiOrigin || "https://lahza-app.duckdns.org";
 const apiUrl = Capacitor.isNativePlatform()
   ? `${nativeApiOrigin}/api/trpc`
   : "/api/trpc";
