@@ -519,7 +519,7 @@
 /* ============ Login screen (lz-auth) ============ */
 .lz-auth.customer-auth-page {
   position: relative; display: flex !important; flex-direction: column; align-items: center; justify-content: flex-start !important;
-  min-height: 100dvh !important; max-height: none !important; overflow-x: hidden !important; overflow-y: auto !important; padding: 0 !important;
+  min-height: 100dvh !important; height: auto !important; max-height: none !important; overflow-x: hidden !important; overflow-y: auto !important; padding: 0 !important;
   color: var(--lz-ink) !important; background: radial-gradient(120% 55% at 50% -8%, #ffd9b8 0, rgba(255,217,184,0) 62%), linear-gradient(180deg, #ffeedb 0%, var(--lz-bg) 60%) !important;
 }
 .lz-auth.customer-auth-page::before { content: ""; position: absolute; top: -120px; right: -90px; width: 300px; height: 300px; border-radius: 50%; background: radial-gradient(circle, rgba(255,140,70,.4), transparent 68%); filter: blur(10px); pointer-events: none; animation: lz-auth-orb 14s ease-in-out infinite alternate; }
@@ -529,7 +529,9 @@
 .lz-auth > div.flex a { padding: .45rem .85rem !important; border-radius: 999px !important; background: #fff !important; color: var(--lz-orange-dark) !important; box-shadow: var(--lz-shadow) !important; border: 1px solid var(--lz-line); }
 .lz-auth .customer-auth-card {
   position: relative !important; z-index: 1; display: flex !important; flex-direction: column !important; align-items: center !important; justify-content: flex-start !important;
-  width: 100% !important; max-width: 26rem !important; min-height: 100dvh; margin: 0 auto !important; padding: 1.1rem 1.25rem calc(1.6rem + env(safe-area-inset-bottom)) !important;
+  /* index.css pins the old card to one screen height with overflow hidden,
+     which cut off the taller sign-up form. Let the card grow and scroll. */
+  width: 100% !important; max-width: 26rem !important; min-height: 100dvh; height: auto !important; overflow: visible !important; margin: 0 auto !important; padding: 1.1rem 1.25rem calc(1.6rem + env(safe-area-inset-bottom)) !important;
   background: none !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important; gap: 0 !important;
 }
 .lz-auth .customer-auth-brand {
