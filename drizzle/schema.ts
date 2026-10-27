@@ -230,6 +230,8 @@ export const systemSettings = mysqlTable("system_settings", {
   originLatE6: int("originLatE6").notNull().default(36528100),
   originLngE6: int("originLngE6").notNull().default(37954900),
   jarabulusOriginLatE6: int("jarabulusOriginLatE6").notNull().default(36817500),
+  /** وصّل لي shows as "قريباً" until the owner switches it on. */
+  wosselLiEnabled: boolean("wosselLiEnabled").notNull().default(false),
   jarabulusOriginLngE6: int("jarabulusOriginLngE6").notNull().default(38011400),
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),
   tickerSecondary: varchar("tickerSecondary", { length: 220 }).notNull().default("لحظة — منبج بين يديك"),

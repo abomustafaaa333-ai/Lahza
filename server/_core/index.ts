@@ -4,7 +4,7 @@ import compression from "compression";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../routers";
-import { autoCompleteDueOrders, removeDemoStores, ensureLahzaRuntimeSchema, handleWahaWebhook } from "../lahza";
+import { autoCompleteDueOrders, removeDemoStores, seedLahzaCatalog, attachSeedPhotos, ensureLahzaRuntimeSchema, handleWahaWebhook } from "../lahza";
 import { startDailyReadinessReminders } from "../daily-readiness-reminders";
 import { ensureScheduledPushSchema, runScheduledPushNotifications } from "../notificationDelivery";
 import { ensureDatabaseCompatibility, migrateDatabase } from "../db";
@@ -71,6 +71,7 @@ async function startServer() {
   console.log("[Database] Ensured scheduled phone notification schema");
   await ensureDatabaseCompatibility();
   void removeDemoStores().catch(error => console.warn("Unable to remove legacy demo stores", error));
+  void seedLahzaCatalog().then(attachSeedPhotos).catch(error => console.warn("Unable to add the لحظة catalog", error));
   startDailyReadinessReminders();
   const runScheduledPush = () => void runScheduledPushNotifications().catch(error => console.warn("Unable to deliver scheduled phone notifications", error));
   runScheduledPush();

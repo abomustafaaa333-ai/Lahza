@@ -669,3 +669,8 @@
 /* In RTL the track sits at the right edge; moving it right by half reveals the copy, so the loop is seamless. */
 @keyframes lahza-ticker-scroll { from { transform: translateX(0); } to { transform: translateX(50%); } }
 @media (prefers-reduced-motion: reduce) { .lahza-home-ticker-track { animation: none; } }
+
+/* A service that is not open yet: greyed out, not tappable, marked "قريباً". */
+.lahza-service-soon { filter: grayscale(1); opacity: .55; cursor: not-allowed; }
+.lahza-service-soon small { font-weight: 800; }
+.lahza-soon-badge { display: inline-flex; width: fit-content; border-radius: 999px; padding: .1rem .6rem; color: #fff !important; background: #8a8f93; }
