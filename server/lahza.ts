@@ -236,6 +236,8 @@ async function ensureJarabulusGatewaySchemaWork(db: NonNullable<Awaited<ReturnTy
   await ensureColumn("system_settings", "jarabulusStoreMinutesPerKm", "INT NOT NULL DEFAULT 5");
   await ensureColumn("system_settings", "jarabulusGatewayPricePerKm", "INT NOT NULL DEFAULT 2");
   await ensureColumn("system_settings", "jarabulusGatewayMinutesPerKm", "INT NOT NULL DEFAULT 2");
+  await ensureColumn("system_settings", "jarabulusOriginLatE6", "INT NOT NULL DEFAULT 36817500");
+  await ensureColumn("system_settings", "jarabulusOriginLngE6", "INT NOT NULL DEFAULT 38011400");
   await ensureColumn("system_settings", "wosselLiMinutesPerKm", "INT NOT NULL DEFAULT 5");
   await ensureColumn("system_settings", "driverPayMode", "ENUM('percent','fixed') NOT NULL DEFAULT 'percent'");
   await ensureColumn("system_settings", "driverFixedFee", "INT NOT NULL DEFAULT 0");
@@ -503,9 +505,9 @@ async function claimBroadcastOrder(db: NonNullable<Awaited<ReturnType<typeof get
 }
 async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, pickupLocation: string, pickupContactPhone: string, destinationText: string, destinationUrl: string, itemDescription: string) {
   const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true)));
-  const distanceFromCenter = (driver: typeof candidates[number]) => driver.locationLat === null || driver.locationLng === null ? Number.POSITIVE_INFINITY : distanceBetweenE6(36528100, 37954900, driver.locationLat, driver.locationLng);
-  const nearest = [...candidates].sort((a, b) => distanceFromCenter(a) - distanceFromCenter(b))[0];
   const settings = await getSettings();
+  const distanceFromCenter = (driver: typeof candidates[number]) => driver.locationLat === null || driver.locationLng === null ? Number.POSITIVE_INFINITY : distanceBetweenE6(settings.originLatE6, settings.originLngE6, driver.locationLat, driver.locationLng);
+  const nearest = [...candidates].sort((a, b) => distanceFromCenter(a) - distanceFromCenter(b))[0];
   const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
   if (!nearest) {
     const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts.map(contact => contact.phone)];
@@ -1246,15 +1248,16 @@ async function getSettings() {
   return created[0]!;
 }
 
-/** Jarabulus city centre; Manbij's centre is the owner-set origin in system settings. */
-const JARABULUS_CENTER = { latitude: 36.8175, longitude: 38.0114 };
+type CityCenterSettings = { originLatE6: number; originLngE6: number; jarabulusOriginLatE6?: number | null; jarabulusOriginLngE6?: number | null };
 
-function cityCenter(settings: { originLatE6: number; originLngE6: number }, city: CityKey) {
-  return city === "jarabulus" ? JARABULUS_CENTER : { latitude: settings.originLatE6 / 1_000_000, longitude: settings.originLngE6 / 1_000_000 };
+/** Each city's delivery starting point, set by the owner in the delivery settings. */
+function cityCenter(settings: CityCenterSettings, city: CityKey) {
+  if (city === "jarabulus") return { latitude: (settings.jarabulusOriginLatE6 ?? 36817500) / 1_000_000, longitude: (settings.jarabulusOriginLngE6 ?? 38011400) / 1_000_000 };
+  return { latitude: settings.originLatE6 / 1_000_000, longitude: settings.originLngE6 / 1_000_000 };
 }
 
 /** Where a delivery starts: the first store in the cart that saved its location, otherwise the centre of that store's city (or the order's city for products with no store). */
-function deliveryOrigin(settings: { originLatE6: number; originLngE6: number }, cartStores: Array<{ city: CityKey; locationLat: number | null; locationLng: number | null } | undefined>, orderCity: CityKey) {
+function deliveryOrigin(settings: CityCenterSettings, cartStores: Array<{ city: CityKey; locationLat: number | null; locationLng: number | null } | undefined>, orderCity: CityKey) {
   const located = cartStores.find(store => store?.locationLat && store.locationLng);
   if (located) return { latitude: located.locationLat! / 1_000_000, longitude: located.locationLng! / 1_000_000 };
   return cityCenter(settings, cartStores.find(Boolean)?.city ?? orderCity);
@@ -3339,14 +3342,18 @@ export const lahzaRouter = router({
           jarabulusGatewayPricePerKm: settings.jarabulusGatewayPricePerKm ?? settings.deliveryPricePerKm ?? 2,
           jarabulusGatewayMinutesPerKm: settings.jarabulusGatewayMinutesPerKm ?? 2,
           wosselLiMinutesPerKm: settings.wosselLiMinutesPerKm ?? 5,
+          manbijCenterLat: cityCenter(settings, "manbij").latitude, manbijCenterLng: cityCenter(settings, "manbij").longitude,
+          jarabulusCenterLat: cityCenter(settings, "jarabulus").latitude, jarabulusCenterLng: cityCenter(settings, "jarabulus").longitude,
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, driverPayMode: z.enum(["percent", "fixed"]).default("percent"), driverFixedFee: newSypMoneyInput.max(10_000_000).default(0), storeCommissionPercent: deliveryPercentInput.default(0), driverDispatchTimeoutMinutes: z.literal(DRIVER_DISPATCH_WINDOW_MINUTES).default(DRIVER_DISPATCH_WINDOW_MINUTES), pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, driverPayMode: z.enum(["percent", "fixed"]).default("percent"), driverFixedFee: newSypMoneyInput.max(10_000_000).default(0), storeCommissionPercent: deliveryPercentInput.default(0), driverDispatchTimeoutMinutes: z.literal(DRIVER_DISPATCH_WINDOW_MINUTES).default(DRIVER_DISPATCH_WINDOW_MINUTES), pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440), manbijCenterLat: coordinateSchema.min(-90).max(90).optional(), manbijCenterLng: coordinateSchema.min(-180).max(180).optional(), jarabulusCenterLat: coordinateSchema.min(-90).max(90).optional(), jarabulusCenterLng: coordinateSchema.min(-180).max(180).optional() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureJarabulusGatewaySchema(db);
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, driverPayMode: input.driverPayMode, driverFixedFee: input.driverFixedFee, storeCommissionPercent: input.storeCommissionPercent, driverDispatchTimeoutMinutes: DRIVER_DISPATCH_WINDOW_MINUTES, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, driverPayMode: input.driverPayMode, driverFixedFee: input.driverFixedFee, storeCommissionPercent: input.storeCommissionPercent, driverDispatchTimeoutMinutes: DRIVER_DISPATCH_WINDOW_MINUTES, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm,
+          ...(input.manbijCenterLat === undefined || input.manbijCenterLng === undefined ? {} : { originLatE6: Math.round(input.manbijCenterLat * 1_000_000), originLngE6: Math.round(input.manbijCenterLng * 1_000_000) }),
+          ...(input.jarabulusCenterLat === undefined || input.jarabulusCenterLng === undefined ? {} : { jarabulusOriginLatE6: Math.round(input.jarabulusCenterLat * 1_000_000), jarabulusOriginLngE6: Math.round(input.jarabulusCenterLng * 1_000_000) }) }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),

@@ -227,6 +227,8 @@ export const systemSettings = mysqlTable("system_settings", {
   storeCommissionPercent: int("storeCommissionPercent").notNull().default(0),
   originLatE6: int("originLatE6").notNull().default(36528100),
   originLngE6: int("originLngE6").notNull().default(37954900),
+  jarabulusOriginLatE6: int("jarabulusOriginLatE6").notNull().default(36817500),
+  jarabulusOriginLngE6: int("jarabulusOriginLngE6").notNull().default(38011400),
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),
   tickerSecondary: varchar("tickerSecondary", { length: 220 }).notNull().default("لحظة — منبج بين يديك"),
   wosselLiNotice: varchar("wosselLiNotice", { length: 500 }).notNull().default("ملاحظة هامة: خدمة وصّل لي مخصصة لتوصيل الأغراض من مكان إلى مكان، وليست خدمة شراء."),
