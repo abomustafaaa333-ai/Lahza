@@ -705,8 +705,12 @@ export default function Home() {
     setSelectedStore({ id: sharedStore.id, name: sharedStore.name, category: sharedStore.category as LahzaCategory, imageUrl: sharedStore.imageUrl, storeOpen: sharedStore.storeOpen });
     setScreen("store");
   }, [sharedStoreQuery.data, selectedStore?.id]);
+  // The quote follows the cart's products, not whichever store screen is open.
+  const cartCatalogIds = cart.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
+  const cartCatalogKey = cartCatalogIds.join(",");
   useEffect(() => {
-    if (isStaticDemo || checkoutMode !== "delivery" || !selectedStore?.locationLat || !selectedStore.locationLng || customerLat === null || customerLng === null) {
+    const hasOrigin = cartCatalogIds.length > 0 || Boolean(selectedStore?.locationLat && selectedStore.locationLng);
+    if (isStaticDemo || checkoutMode !== "delivery" || !hasOrigin || customerLat === null || customerLng === null) {
       setDeliveryQuoteData(null);
       setDeliveryQuoteStatus("idle");
       setDeliveryFeeConfirmed(false);
@@ -716,25 +720,23 @@ export default function Home() {
     setDeliveryQuoteStatus("loading");
     setDeliveryFeeConfirmed(false);
     let active = true;
-    void deliveryQuote.mutateAsync({
-      locationLat: customerLat,
-      locationLng: customerLng,
-      originLat: selectedStore.locationLat / 1_000_000,
-      originLng: selectedStore.locationLng / 1_000_000,
-    }).then(result => {
+    void deliveryQuote.mutateAsync(cartCatalogIds.length
+      ? { locationLat: customerLat, locationLng: customerLng, catalogItemIds: cartCatalogIds }
+      : { locationLat: customerLat, locationLng: customerLng, originLat: selectedStore!.locationLat! / 1_000_000, originLng: selectedStore!.locationLng! / 1_000_000 },
+    ).then(result => {
       if (active) {
         setDeliveryQuoteData({ distanceMeters: result.distanceMeters, billableKm: result.billableKm, deliveryFeeNewSyp: result.deliveryFeeNewSyp, durationMinutes: result.durationMinutes });
         setDeliveryQuoteStatus("ready");
       }
-    }).catch(() => {
+    }).catch(error => {
       if (active) {
         setDeliveryQuoteData(null);
         setDeliveryQuoteStatus("error");
-        toast.error("تعذر حساب مسافة الطريق الحقيقية. أعد تحديد الموقع للمحاولة مجدداً.");
+        toast.error(error instanceof Error && error.message.startsWith("المتجر") ? error.message : "تعذر حساب مسافة الطريق الحقيقية. أعد تحديد الموقع للمحاولة مجدداً.");
       }
     });
     return () => { active = false; };
-  }, [isStaticDemo, checkoutMode, selectedStore?.id, selectedStore?.locationLat, selectedStore?.locationLng, customerLat, customerLng]);
+  }, [isStaticDemo, checkoutMode, cartCatalogKey, selectedStore?.id, selectedStore?.locationLat, selectedStore?.locationLng, customerLat, customerLng]);
   const adminLogin = trpc.lahza.admin.login.useMutation({
     onSuccess: result => {
       utils.lahza.admin.session.setData(undefined, { role: result.role });
