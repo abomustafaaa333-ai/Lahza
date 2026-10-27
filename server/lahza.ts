@@ -264,6 +264,22 @@ async function ensureAutomaticDiscountSchema(db: NonNullable<Awaited<ReturnType<
   await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `automatic_discounts` (`id` INT NOT NULL AUTO_INCREMENT, `scope` ENUM('all','store') NOT NULL DEFAULT 'all', `storeId` INT NULL, `discountPercent` INT NOT NULL DEFAULT 0, `active` BOOLEAN NOT NULL DEFAULT TRUE, `startsAt` TIMESTAMP NULL DEFAULT NULL, `expiresAt` TIMESTAMP NULL DEFAULT NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, PRIMARY KEY (`id`), KEY `automatic_discounts_storeId_idx` (`storeId`), CONSTRAINT `automatic_discounts_storeId_stores_id_fk` FOREIGN KEY (`storeId`) REFERENCES `stores`(`id`) ON DELETE CASCADE)"));
 }
 
+/** Products as the customer was shown them: a live partner offer replaces the shelf price. */
+async function withActiveOfferPrices(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, products: typeof catalogItems.$inferSelect[]) {
+  if (!products.length) return products;
+  const now = new Date();
+  const offers = await db.select({ catalogItemId: partnerOffers.catalogItemId, storeId: partnerOffers.storeId, offerPrice: partnerOffers.offerPrice }).from(partnerOffers).where(and(inArray(partnerOffers.catalogItemId, products.map(product => product.id)), eq(partnerOffers.active, true), or(isNull(partnerOffers.expiresAt), gt(partnerOffers.expiresAt, now))));
+  return products.map(product => {
+    const prices = offers.filter(offer => offer.catalogItemId === product.id && (!offer.storeId || offer.storeId === product.storeId) && offer.offerPrice > 0 && offer.offerPrice < product.unitPrice).map(offer => offer.offerPrice);
+    return prices.length ? { ...product, unitPrice: Math.min(...prices) } : product;
+  });
+}
+
+/** A catalog line is priced by its product's own unit and name, never the ones the app sent. */
+function catalogLine<T extends { catalogItemId?: number | null; unit: string; itemName: string }>(line: T, product: typeof catalogItems.$inferSelect | undefined): T {
+  return product ? { ...line, unit: product.unit, itemName: product.name } : line;
+}
+
 async function getAutomaticDiscountForLines(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, lines: Array<{ catalogItemId?: number | null; quantity: number; unit: string }>, products: typeof catalogItems.$inferSelect[]) {
   await ensureAutomaticDiscountSchema(db);
   const now = new Date();
@@ -387,8 +403,9 @@ async function deductCompletedOrderInventory(db: NonNullable<Awaited<ReturnType<
     if (alreadyDeducted.length) continue;
     const quantity = Math.max(1, Math.ceil(Number.parseFloat(String(line.quantity)) || 0));
     const nextQuantity = Math.max(0, Number(line.stockQuantity ?? 0) - quantity);
-    await db.update(catalogItems).set({ stockQuantity: nextQuantity, available: nextQuantity > 0 }).where(eq(catalogItems.id, line.catalogItemId));
+    // Record the movement first: it is what stops a retry from deducting twice.
     await db.insert(inventoryMovements).values({ catalogItemId: line.catalogItemId, quantityDelta: -quantity, reason: "order_completed", orderId, note: `خصم تلقائي بعد اكتمال الطلب #${orderId}` });
+    await db.update(catalogItems).set({ stockQuantity: nextQuantity, available: nextQuantity > 0 }).where(eq(catalogItems.id, line.catalogItemId));
     const initial = Number(line.stockInitialQuantity ?? 0);
     const alertPercent = Math.min(100, Math.max(1, Number(line.stockAlertPercent ?? 20)));
     if (initial > 0 && nextQuantity <= Math.floor(initial * alertPercent / 100)) {
@@ -400,6 +417,18 @@ async function deductCompletedOrderInventory(db: NonNullable<Awaited<ReturnType<
       const uniqueRecipients = recipients.filter((phone, index, all) => all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
       await Promise.allSettled(uniqueRecipients.map(phone => sendWahaText(phone, { title: "تنبيه مخزون", body: `اقترب نفاد مخزون المنتج: ${line.itemName}. الرصيد الحالي ${nextQuantity} ${line.unit || "وحدة"} (حد التنبيه ${alertPercent}%).` })));
     }
+  }
+}
+
+/** Everything that follows a delivered order, whoever marked it complete: stock, points, referral and the team message. */
+async function settleCompletedOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerPhone: string) {
+  await deductCompletedOrderInventory(db, orderId);
+  await awardCustomerPoint(db, customerPhone, "order_completed", orderId);
+  await notifyOperationsOrderCompleted(db, orderId);
+  const referral = (await db.select().from(customerReferrals).where(and(eq(customerReferrals.referredOrderId, orderId), isNull(customerReferrals.completedAt))).limit(1))[0];
+  if (referral) {
+    await db.update(customerReferrals).set({ completedAt: new Date() }).where(eq(customerReferrals.id, referral.id));
+    await awardCustomerPoint(db, referral.ownerPhone, "referral_completed", undefined, referral.id);
   }
 }
 
@@ -632,8 +661,7 @@ export async function handleWahaWebhook(body: unknown) {
     await db.update(orders).set({ status: "completed", driverFee, statusChangedAt: now, statusReason: "اكتمل الطلب بأمر المندوب 10" }).where(and(eq(orders.id, activeAssignment.order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
     await db.update(drivers).set({ available: driver.readyForOrders }).where(eq(drivers.id, driver.id));
     await createOrderStatusNotification(db, activeAssignment.order, "completed");
-    await awardCustomerPoint(db, activeAssignment.order.customerPhone, "order_completed", activeAssignment.order.id);
-    await notifyOperationsOrderCompleted(db, activeAssignment.order.id);
+    await settleCompletedOrder(db, activeAssignment.order.id, activeAssignment.order.customerPhone);
     void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل.` });
     return;
   }
@@ -689,16 +717,18 @@ export async function autoCompleteDueOrders() {
   await expireUnansweredDriverAssignments(db);
   const now = new Date();
   const feeSettings = await getSettings();
-  const due = await db.select().from(orders).where(and(
+  // Only orders a driver accepted can be closed on a timer. An order nobody took
+  // is waiting on the team (they were told when dispatch expired), not delivered.
+  const due = await db.select({ order: orders, driverId: orderAssignments.driverId }).from(orders).innerJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).where(and(
     inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]),
+    inArray(orderAssignments.status, ["accepted", "picked_up"]),
     eq(orders.manualStatusOverride, false),
     lte(sql`DATE_ADD(${orders.statusChangedAt}, INTERVAL GREATEST(${orders.preparationMinutes}, 30) MINUTE)`, now),
   )).limit(100);
-  for (const order of due) {
-    const assignedDriverId = (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, order.id)).limit(1))[0]?.driverId;
-    await db.update(orders).set({ status: "completed", driverFee: assignedDriverId ? calculateDriverFee(Number(order.deliveryFee ?? 0), feeSettings) : 0, statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
+  for (const { order, driverId } of due) {
+    await db.update(orders).set({ status: "completed", driverFee: driverId ? calculateDriverFee(Number(order.deliveryFee ?? 0), feeSettings) : 0, statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
     await deductCompletedOrderInventory(db, order.id);
-    await db.update(drivers).set({ available: true }).where(eq(drivers.id, assignedDriverId ?? -1));
+    await db.update(drivers).set({ available: true }).where(eq(drivers.id, driverId ?? -1));
     // Automatic timeout may close the stale workflow, but must not tell the customer
     // that the order was delivered. Customer completion is announced only after
     // the courier explicitly sends command 10 through WhatsApp.
@@ -1230,6 +1260,7 @@ export async function removeDemoStores() {
   await db.delete(stores).where(and(isNull(stores.partnerId), inArray(stores.name, demoStoreNameList), gte(stores.sortOrder, 900)));
 }
 let catalogClothingSizesSchemaPromise: Promise<void> | null = null;
+let inventoryReasonSchemaPromise: Promise<void> | null = null;
 async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   await ensureColumns(db, "catalog_items", [
     ["imageUrl", "VARCHAR(500) NULL"],
@@ -1251,6 +1282,18 @@ async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof
     })().catch(error => { catalogClothingSizesSchemaPromise = null; throw error; });
   }
   await catalogClothingSizesSchemaPromise;
+  // Migration 0036 is missing from the drizzle journal, so new databases lack this
+  // reason and every stock deduction on a completed order failed.
+  if (!inventoryReasonSchemaPromise) {
+    inventoryReasonSchemaPromise = (async () => {
+      const [columns] = await db.execute(sql.raw("SHOW COLUMNS FROM `inventory_movements` LIKE 'reason'"));
+      const column = Array.isArray(columns) ? columns[0] as { Type?: unknown } | undefined : undefined;
+      if (column && !String(column.Type ?? "").includes("order_completed")) {
+        await db.execute(sql.raw("ALTER TABLE `inventory_movements` MODIFY COLUMN `reason` ENUM('purchase','adjustment','order_reserved','order_released','order_completed') NOT NULL"));
+      }
+    })().catch(error => { inventoryReasonSchemaPromise = null; throw error; });
+  }
+  await inventoryReasonSchemaPromise;
 }
 
 async function ensureCatalogSeed() {
@@ -1633,6 +1676,7 @@ export const lahzaRouter = router({
     markAllRead: publicProcedure.input(z.object({ deviceId: deviceIdSchema, customerPhone: internationalPhoneSchema.optional() })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      await db.insert(customerPresence).values({ deviceId: input.deviceId, lastSeen: new Date() }).onDuplicateKeyUpdate({ set: { lastSeen: new Date() } });
       const campaigns = await db.select({ id: notificationCampaigns.id }).from(notificationCampaigns).where(visibleCampaignCondition(new Date()));
       const readAt = new Date();
       if (campaigns.length) await db.insert(customerNotifications).values(campaigns.map(campaign => ({ campaignId: campaign.id, deviceId: input.deviceId, readAt }))).onDuplicateKeyUpdate({ set: { readAt } });
@@ -2323,7 +2367,7 @@ export const lahzaRouter = router({
       update: publicProcedure.input(z.object({ storeOpen: z.boolean(), preparationMinutes: z.number().int().min(0).max(1440), imageUrl: z.string().trim().url().max(500).optional().or(z.literal("")), workHours: storeHoursSchema.optional() })).mutation(async ({ ctx, input }) => {
         const { db, partner } = await requirePartner(ctx);
         await ensureProfileImageColumns(db);
-        await db.update(partners).set({ storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, imageUrl: input.imageUrl || null, workHours: input.workHours ? JSON.stringify(input.workHours) : undefined }).where(eq(partners.id, partner.id));
+        await db.update(partners).set({ storeOpen: input.storeOpen, preparationMinutes: input.preparationMinutes, ...(input.imageUrl === undefined ? {} : { imageUrl: input.imageUrl || null }), workHours: input.workHours ? JSON.stringify(input.workHours) : undefined }).where(eq(partners.id, partner.id));
         return { success: true };
       }),
       updateLocation: publicProcedure.input(z.object({ storeId: z.number().int().positive(), locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180) })).mutation(async ({ ctx, input }) => {
@@ -2463,12 +2507,12 @@ export const lahzaRouter = router({
       const db = await ensureCatalogSeed();
       const code = input.code.toUpperCase();
       const ids = input.lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
-      const products = ids.length ? await db.select().from(catalogItems).where(inArray(catalogItems.id, ids)) : [];
+      const products = ids.length ? await withActiveOfferPrices(db, await db.select().from(catalogItems).where(inArray(catalogItems.id, ids))) : [];
       const productMap = new Map(products.map(product => [product.id, product]));
       const itemsTotal = input.lines.reduce((sum, line) => {
         const product = line.catalogItemId ? productMap.get(line.catalogItemId) : undefined;
         const unitPrice = !product?.available || product.deleted ? 0 : product.unitPrice;
-        return sum + calculateLineTotal(line.quantity, unitPrice, line.unit);
+        return sum + calculateLineTotal(line.quantity, unitPrice, catalogLine(line, product).unit);
       }, 0);
       if (input.kind === "discount") {
         const discount = (await db.select().from(discountCodes).where(and(eq(discountCodes.code, code), eq(discountCodes.active, true))).limit(1))[0];
@@ -2490,12 +2534,13 @@ export const lahzaRouter = router({
     automaticDiscount: publicProcedure.input(z.object({ lines: z.array(lineInput).min(1).max(30) })).mutation(async ({ input }) => {
       const db = await ensureCatalogSeed();
       const ids = input.lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
-      const products = ids.length ? await db.select().from(catalogItems).where(inArray(catalogItems.id, ids)) : [];
-      const itemsTotal = input.lines.reduce((sum, line) => {
+      const products = ids.length ? await withActiveOfferPrices(db, await db.select().from(catalogItems).where(inArray(catalogItems.id, ids))) : [];
+      const lines = input.lines.map(line => catalogLine(line, line.catalogItemId ? products.find(item => item.id === line.catalogItemId) : undefined));
+      const itemsTotal = lines.reduce((sum, line) => {
         const product = line.catalogItemId ? products.find(item => item.id === line.catalogItemId) : undefined;
         return sum + calculateLineTotal(line.quantity, product?.unitPrice ?? 0, line.unit);
       }, 0);
-      const automatic = await getAutomaticDiscountForLines(db, input.lines, products);
+      const automatic = await getAutomaticDiscountForLines(db, lines, products);
       return { code: "AUTO", kind: "automatic" as const, percent: automatic.percent, discountAmount: Math.min(itemsTotal, automatic.discountAmount), itemsTotal };
     }),
     create: publicProcedure.input(orderInputSchema).mutation(async ({ ctx, input }) => {
@@ -2505,8 +2550,10 @@ export const lahzaRouter = router({
       if (input.orderCity && input.orderCity !== orderCity) throw new Error("المدينة المختارة للطلب غير مطابقة لواجهة التطبيق");
       if (input.orderType === "taxi" && orderCity === "jarabulus") throw new Error("خدمة سيارات الأجرة المحلية غير متاحة في بوابة جرابلس حالياً");
       const ids = input.lines.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
-      const products = ids.length ? await db.select().from(catalogItems).where(inArray(catalogItems.id, ids)) : [];
+      const products = ids.length ? await withActiveOfferPrices(db, await db.select().from(catalogItems).where(inArray(catalogItems.id, ids))) : [];
+      if (products.length !== new Set(ids).size || products.some(product => product.deleted || !product.available)) throw new Error("بعض الأصناف في سلتك لم تعد متوفرة، حدّث السلة ثم أعد الطلب");
       const productMap = new Map(products.map(product => [product.id, product]));
+      const lines = input.lines.map(line => catalogLine(line, line.catalogItemId ? productMap.get(line.catalogItemId) : undefined));
       const productStoreIds = Array.from(new Set(products.flatMap(product => product.storeId ? [product.storeId] : [])));
       const productStores = productStoreIds.length ? await db.select({ id: stores.id, city: stores.city, active: stores.active, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled, locationLat: stores.locationLat, locationLng: stores.locationLng, name: stores.name }).from(stores).where(inArray(stores.id, productStoreIds)) : [];
       const storeById = new Map(productStores.map(store => [store.id, store]));
@@ -2525,7 +2572,7 @@ export const lahzaRouter = router({
         partnerPreparationMinutes = Math.max(0, ...productPartners.map(partner => partner.preparationMinutes));
       }
       let totalAmount = 0;
-      const resolvedLines = input.lines.map(line => {
+      const resolvedLines = lines.map(line => {
         const product = line.catalogItemId ? productMap.get(line.catalogItemId) : undefined;
         const unitPrice = product?.available && !product.deleted ? product.unitPrice : 0;
         const lineTotal = calculateLineTotal(line.quantity, unitPrice, line.unit);
@@ -2533,7 +2580,7 @@ export const lahzaRouter = router({
         return { ...line, unitPrice, lineTotal, priceKnown: Boolean(product && !product.deleted && product.unitPrice > 0) };
       });
       const itemsTotal = totalAmount;
-      const automaticDiscount = await getAutomaticDiscountForLines(db, input.lines, products);
+      const automaticDiscount = await getAutomaticDiscountForLines(db, lines, products);
       let discountAmount = 0;
       let appliedDiscountCode: string | null = null;
       let appliedReferralCode: string | null = null;
@@ -2574,6 +2621,8 @@ export const lahzaRouter = router({
       }
       const finalItemsTotal = discountedItemsTotal - pointsRewardAmount;
       const initialStatus = initialCustomerOrderStatus(input.orderType, resolvedLines);
+      // A delivery waits for a driver to say yes before anyone starts preparing it.
+      const savedStatus = input.orderType === "delivery" ? "pending" as const : initialStatus;
       const minimumOrder = orderCity === "jarabulus" ? jarabulusOrderMinimum(settings) : MINIMUM_DELIVERY_ORDER_SYP;
       if (input.orderType === "delivery" && !input.pharmacyPrescriptionUrl && toNewSyp(itemsTotal) < minimumOrder) {
         throw new Error(`الحد الأدنى لمجموع الطلب هو ${formatNewSyp(minimumOrder)}`);
@@ -2634,7 +2683,7 @@ export const lahzaRouter = router({
       try {
         created = await db.insert(orders).values({
         orderType: input.orderType,
-        status: input.orderType === "delivery" ? "pending" : initialStatus,
+        status: savedStatus,
         orderCity,
         fulfillmentScope,
         intercityTripId: intercityTrip?.id ?? null,
@@ -2682,7 +2731,7 @@ export const lahzaRouter = router({
         throw new Error(concise ? `تعذر حفظ الطلب: ${concise}` : "تعذر حفظ الطلب في قاعدة البيانات؛ راجع سجلات الخادم للتفاصيل.");
       }
       const orderId = Number(created[0].insertId);
-      await createOrderStatusNotification(db, { id: orderId, customerPhone: input.customerPhone, fulfillmentScope, preparationMinutes }, initialStatus);
+      await createOrderStatusNotification(db, { id: orderId, customerPhone: input.customerPhone, fulfillmentScope, preparationMinutes }, savedStatus);
       if (pointsUsed) {
         const spent = await db.update(customerPoints).set({ balance: sql`${customerPoints.balance} - 10` }).where(and(eq(customerPoints.customerPhone, input.customerPhone), gte(customerPoints.balance, 10)));
         if (!spent[0]?.affectedRows) throw new Error("تعذر استخدام النقاط، أعد المحاولة");
@@ -2735,7 +2784,7 @@ export const lahzaRouter = router({
       await requireCustomerPhone(ctx, input.customerPhone);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
-      const customerOrders = await db.select().from(orders).where(eq(orders.customerPhone, input.customerPhone)).orderBy(desc(orders.createdAt)).limit(50);
+      const customerOrders = await db.select().from(orders).where(eq(orders.customerPhone, input.customerPhone)).orderBy(desc(orders.createdAt), desc(orders.id)).limit(50);
       const ids = customerOrders.map(order => order.id);
       const lines = ids.length ? await db.select().from(orderLines).where(inArray(orderLines.orderId, ids)) : [];
       return customerOrders.map(order => ({ ...order, lines: lines.filter(line => line.orderId === order.id) }));
@@ -2775,16 +2824,9 @@ export const lahzaRouter = router({
       await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date(), manualStatusOverride: true }).where(eq(orders.id, input.id));
       if (existing.status !== input.status) await createOrderStatusNotification(db, existing, input.status);
       if (input.status === "completed") {
-        await deductCompletedOrderInventory(db, input.id);
         const completedAssignment = (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, input.id)).limit(1))[0];
         if (completedAssignment?.driverId) await db.update(drivers).set({ available: true }).where(eq(drivers.id, completedAssignment.driverId));
-        const order = (await db.select({ customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.id)).limit(1))[0];
-        if (order) {
-          await awardCustomerPoint(db, order.customerPhone, "order_completed", input.id);
-          await notifyOperationsOrderCompleted(db, input.id);
-          const referral = (await db.select().from(customerReferrals).where(and(eq(customerReferrals.referredOrderId, input.id), isNull(customerReferrals.completedAt))).limit(1))[0];
-          if (referral) { await db.update(customerReferrals).set({ completedAt: new Date() }).where(eq(customerReferrals.id, referral.id)); await awardCustomerPoint(db, referral.ownerPhone, "referral_completed", undefined, referral.id); }
-        }
+        await settleCompletedOrder(db, input.id, existing.customerPhone);
       }
       return { success: true };
     }),
@@ -2930,7 +2972,8 @@ export const lahzaRouter = router({
         if (input.category === "other" && !customCategory) throw new Error("اختر قسماً مخصصاً نشطاً للمتجر");
         await ensureProfileImageColumns(db);
         const { id, category, restaurantType, customCategoryId: _customCategoryId, imageUrl, city: requestedCity, locationLat, locationLng, ...patch } = input;
-        await db.update(stores).set({ ...patch, imageUrl: imageUrl || null, category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null, city: requestedCity ?? ctx.city, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(and(eq(stores.id, id), eq(stores.city, ctx.city)));
+        // Fields the form leaves out keep their saved value; the short store row sends neither image nor location.
+        await db.update(stores).set({ ...patch, ...(imageUrl === undefined ? {} : { imageUrl: imageUrl || null }), category, restaurantType: category === "restaurants" ? restaurantType : "all", customCategoryId: customCategory?.id ?? null, city: requestedCity ?? ctx.city, ...(locationLat === undefined || locationLng === undefined ? {} : { locationLat: Math.round(locationLat * 1_000_000), locationLng: Math.round(locationLng * 1_000_000) }) }).where(and(eq(stores.id, id), eq(stores.city, ctx.city)));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -3037,7 +3080,8 @@ export const lahzaRouter = router({
       }),
     }),
     offers: router({
-      active: publicProcedure.query(async () => {
+      active: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await cleanExpiredOffers();
@@ -3270,7 +3314,7 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const { id, locationLat, locationLng, password, ...patch } = input;
-        await db.update(drivers).set({ ...patch, ...(password ? { passwordHash: await hashSecret(password) } : {}), active: true, locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) }).where(eq(drivers.id, id));
+        await db.update(drivers).set({ ...patch, ...(password ? { passwordHash: await hashSecret(password) } : {}), active: true, ...(locationLat === undefined || locationLng === undefined ? {} : { locationLat: Math.round(locationLat * 1_000_000), locationLng: Math.round(locationLng * 1_000_000) }) }).where(eq(drivers.id, id));
         return { success: true };
       }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
@@ -3315,6 +3359,7 @@ export const lahzaRouter = router({
         const item = await db.select({ id: catalogItems.id }).from(catalogItems).where(and(eq(catalogItems.id, input.catalogItemId), eq(catalogItems.deleted, false))).limit(1);
         if (!item[0]) throw new Error("المنتج غير موجود");
         await db.insert(inventoryMovements).values(input);
+        await db.update(catalogItems).set({ stockQuantity: sql`GREATEST(0, ${catalogItems.stockQuantity} + ${input.quantityDelta})` }).where(eq(catalogItems.id, input.catalogItemId));
         return { success: true };
       }),
     }),
@@ -3481,7 +3526,7 @@ export const lahzaRouter = router({
     }),
     staff: router({
       ownerPhone: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx, ["owner", "supervisor"]); const settings = await getSettings(); return { phone: settings.ownerPhone || DEFAULT_OWNER_PHONE }; }),
-      updateOwnerPhone: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner", "supervisor"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await db.update(systemSettings).set({ ownerPhone: input.phone }).where(eq(systemSettings.id, 1)); return { success: true }; }),
+      updateOwnerPhone: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await db.update(systemSettings).set({ ownerPhone: input.phone }).where(eq(systemSettings.id, 1)); return { success: true }; }),
       list: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner", "supervisor"]);
         const db = await getDb();
@@ -3489,7 +3534,7 @@ export const lahzaRouter = router({
         return db.select({ id: supervisors.id, username: supervisors.username, active: supervisors.active, city: supervisors.city, createdAt: supervisors.createdAt }).from(supervisors).where(eq(supervisors.city, ctx.city)).orderBy(desc(supervisors.createdAt));
       }),
       create: publicProcedure.input(z.object({ phone: internationalPhoneSchema, password: passwordSchema.default(DEFAULT_STAFF_PASSWORD), city: z.enum(CITY_KEYS) })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx, ["owner", "supervisor"]);
+        await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const exists = await db.select({ id: supervisors.id }).from(supervisors).where(eq(supervisors.username, input.phone)).limit(1);
@@ -3497,9 +3542,9 @@ export const lahzaRouter = router({
         await db.insert(supervisors).values({ username: input.phone, passwordHash: await hashSecret(input.password), active: true, city: input.city });
         return { success: true };
       }),
-      update: publicProcedure.input(z.object({ id: z.number().int().positive(), phone: internationalPhoneSchema, active: z.boolean().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner", "supervisor"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); const exists = await db.select({ id: supervisors.id }).from(supervisors).where(and(eq(supervisors.username, input.phone), sql`${supervisors.id} <> ${input.id}`)).limit(1); if (exists[0]) throw new Error("رقم الهاتف مستخدم بالفعل"); await db.update(supervisors).set({ username: input.phone, ...(input.active === undefined ? {} : { active: input.active }) }).where(eq(supervisors.id, input.id)); return { success: true }; }),
+      update: publicProcedure.input(z.object({ id: z.number().int().positive(), phone: internationalPhoneSchema, active: z.boolean().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); const exists = await db.select({ id: supervisors.id }).from(supervisors).where(and(eq(supervisors.username, input.phone), sql`${supervisors.id} <> ${input.id}`)).limit(1); if (exists[0]) throw new Error("رقم الهاتف مستخدم بالفعل"); await db.update(supervisors).set({ username: input.phone, ...(input.active === undefined ? {} : { active: input.active }) }).where(eq(supervisors.id, input.id)); return { success: true }; }),
       remove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
-        await requireAdmin(ctx, ["owner", "supervisor"]);
+        await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await db.delete(supervisors).where(eq(supervisors.id, input.id));
