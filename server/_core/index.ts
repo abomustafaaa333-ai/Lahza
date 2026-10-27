@@ -25,7 +25,7 @@ async function startServer() {
     if (origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-lahza-auth-runtime, x-lahza-city");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-lahza-auth-runtime, x-lahza-city, x-lahza-customer-session");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     }
     if (req.method === "OPTIONS") return res.sendStatus(204);

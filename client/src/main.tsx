@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { getAuthRuntimeId } from "@/lib/authRuntime";
+import { getCustomerSessionToken } from "@/lib/customerSession";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -45,6 +46,8 @@ const trpcClient = trpc.createClient({
       fetch(input, init) {
         const headers = new Headers(init?.headers);
         headers.set("x-lahza-auth-runtime", getAuthRuntimeId());
+        const customerSession = getCustomerSessionToken();
+        if (customerSession) headers.set("x-lahza-customer-session", customerSession);
         const selectedCity = window.sessionStorage.getItem(
           "lahza_selected_city"
         );
