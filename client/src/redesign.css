@@ -599,3 +599,61 @@
 .lahza-home-header::after { display: none; }
 .lahza-home-header { padding-bottom: 1.3rem; }
 .lahza-app-shell .home-bottom-nav::before { display: none !important; }
+
+/* =====================================================================
+ * Home refresh — compact header, one-row categories, white sections
+ * on a soft warm-grey page so each part reads as its own block.
+ * ===================================================================== */
+:root { --lz-page: #f6f2ec; --lz-panel: #ffffff; --lz-panel-line: #efe5d9; }
+.lahza-app-shell { background: var(--lz-page) !important; }
+
+/* ---------- Compact header ---------- */
+.lahza-home-header { padding: .65rem 0 1rem !important; border-radius: 0 0 28px 28px !important; background: linear-gradient(180deg, #ffdcbc 0%, #ffeedd 70%, #fff4ea 100%) !important; box-shadow: 0 10px 24px -22px rgba(120,60,20,.7); }
+.lahza-home-header-top { min-height: 3.2rem !important; align-items: center !important; }
+.lahza-home-brand { display: flex; min-width: 0; flex-direction: column; align-items: flex-start; gap: .15rem; }
+.lahza-home-brand .lahza-logo-band { margin: 0 !important; justify-content: flex-start; }
+.lahza-home-brand .lahza-logo-plate { width: 8.2rem; padding: 0; filter: drop-shadow(0 4px 8px rgba(120,60,20,.18)); }
+.lahza-home-brand .lahza-logo-pen { width: .7rem; height: .7rem; margin: -.35rem 0 0 -.35rem; box-shadow: 0 0 8px 2px rgba(255,106,43,.5); }
+.lahza-home-brand .lahza-home-location { display: inline-flex; align-items: center; gap: .25rem; color: var(--lz-muted); font-size: .74rem; font-weight: 600; white-space: nowrap; }
+.lahza-home-brand .lahza-home-location svg { color: var(--lz-orange-dark); }
+.lahza-home-brand .lahza-home-location strong { display: inline; color: var(--lz-ink); font-size: .78rem; font-weight: 800; }
+.lahza-home-support { width: 2.6rem !important; height: 2.6rem !important; margin-inline-start: auto; border-radius: 50% !important; }
+.lahza-home-search-wrap { margin-top: .75rem; }
+.lahza-home-search { height: 2.95rem !important; box-shadow: 0 10px 22px -16px rgba(120,60,20,.6) !important; }
+.lahza-screen-home .top-action-cluster { top: 1.2rem !important; }
+.lahza-screen-home .top-action-cluster .persistent-cart-button,
+.lahza-screen-home .top-action-cluster .persistent-notifications-button { width: 2.6rem !important; height: 2.6rem !important; min-width: 0 !important; }
+
+/* ---------- Sections as white panels ---------- */
+.lahza-app-shell .home-discover-section { padding-top: .9rem !important; }
+.lahza-app-shell .home-discover-section > * + * { margin-top: .85rem !important; }
+.lz-home-panel, .lahza-app-shell .home-showcase-block {
+  padding: .95rem .9rem 1rem; border: 1px solid var(--lz-panel-line); border-radius: 24px; background: var(--lz-panel); box-shadow: 0 10px 24px -22px rgba(120,60,20,.55);
+}
+.lahza-app-shell .lz-home-panel .home-section-heading, .lahza-app-shell .home-showcase-block .home-section-heading { margin: 0 0 .75rem !important; }
+.lahza-app-shell .home-section-heading .section-title { display: inline-flex; align-items: center; gap: .45rem; font-size: 1.05rem !important; }
+.lahza-app-shell .home-section-heading .section-title::before { content: ""; width: .3rem; height: 1.05rem; border-radius: 99px; background: linear-gradient(180deg, var(--lz-orange), #ffb07a); }
+.lahza-app-shell .home-section-heading button { padding: .3rem .7rem; border-radius: 999px; background: var(--lz-teal-soft); font-size: .74rem !important; }
+.lahza-app-shell .home-showcase-block .lahza-store-row { border-color: var(--lz-panel-line) !important; box-shadow: none !important; background: #fffaf5; }
+
+/* ---------- Categories: one scrolling row, "all" at the end ---------- */
+.lahza-app-shell .home-discover-section .lz-home-categories { padding: .95rem 0 .55rem; }
+.lahza-app-shell .lz-home-categories .home-section-heading { padding: 0 .9rem; }
+.lahza-app-shell .home-discover-section .lz-home-categories .home-category-row {
+  display: flex !important; gap: .6rem !important; overflow-x: auto !important; overflow-y: hidden !important; padding: .2rem .9rem .1rem !important;
+  scroll-snap-type: x proximity; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.lahza-app-shell .lz-home-categories .home-category-row::-webkit-scrollbar { display: none; }
+.lahza-app-shell .home-discover-section .lz-home-categories .home-category-row > .home-category-card { flex: 0 0 3.95rem !important; width: 3.95rem !important; scroll-snap-align: start; }
+.lahza-app-shell .home-discover-section .lz-home-categories .home-category-row > .home-category-card .home-category-emoji {
+  width: 3.7rem !important; height: 3.7rem !important; aspect-ratio: auto; border-radius: 50% !important; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px var(--lz-panel-line) !important;
+}
+.lahza-app-shell .home-discover-section .lz-home-categories .home-category-row > .home-category-card > span:last-child { font-size: .72rem !important; font-weight: 700 !important; line-height: 1.5 !important; white-space: nowrap !important; }
+.lahza-app-shell .lz-home-categories .home-category-all-grid { width: 3.7rem !important; height: 3.7rem !important; aspect-ratio: auto; padding: .95rem !important; border-radius: 50% !important; background: var(--lz-teal-soft) !important; box-shadow: 0 0 0 2px #fff, 0 0 0 3.5px rgba(0,102,107,.18) !important; }
+
+/* ---------- Offer slider and service shortcuts ---------- */
+.lahza-app-shell .home-offer-gallery .hero-image-frame, .lahza-app-shell .home-discover-section > .home-offer-gallery .hero-image-frame { border-radius: 24px !important; }
+.lahza-service-cards { gap: .7rem !important; }
+.lahza-service-card { border: 1px solid var(--lz-panel-line) !important; background: var(--lz-panel) !important; box-shadow: 0 10px 22px -22px rgba(120,60,20,.6); }
+.lahza-service-card-teal > span:first-child { background: var(--lz-teal) !important; }
+.lahza-service-card-orange > span:first-child { background: var(--lz-orange) !important; }
