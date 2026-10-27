@@ -215,7 +215,7 @@ function SupportContactsDialog({ open, onOpenChange, contacts }: { open: boolean
 }
 
 function CustomerAuthRequiredDialog({ open, onContinue, onCancel }: { open: boolean; onContinue: () => void; onCancel: () => void }) {
-  return <Dialog open={open} onOpenChange={value => !value && onCancel()}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-[#173d3f]"><ShoppingBasket className="h-5 w-5 text-[#ff6b2b]" /> سجّل الآن لإضافة المنتجات</DialogTitle><DialogDescription className="text-right leading-7">يمكنك التصفح كزائر، لكن إضافة المنتجات إلى السلة وإرسال الطلبات متاحة للعملاء المسجلين فقط.</DialogDescription></DialogHeader><div className="mt-4 grid gap-2"><Button type="button" onClick={onContinue} className="w-full rounded-2xl bg-[#ff6b2b] py-6 font-black text-white hover:bg-[#f4511e]">سجّل الآن <ChevronLeft className="h-5 w-5" /></Button><Button type="button" variant="outline" onClick={onCancel} className="w-full rounded-2xl py-6 font-black text-[#00666b]">متابعة التصفح</Button></div></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={value => !value && onCancel()}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl border-0 bg-white p-6 shadow-2xl"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-[#173d3f]"><ShoppingBasket className="h-5 w-5 text-[#ff6b2b]" /> سجّل الآن لتطلب من لحظة</DialogTitle><DialogDescription className="text-right leading-7">يمكنك التصفح كزائر، لكن الطلب من المتاجر ووصّل لي وسيارة الأجرة متاح للعملاء المسجلين فقط. يصلك رمز واتساب عند أول دخول فقط.</DialogDescription></DialogHeader><div className="mt-4 grid gap-2"><Button type="button" onClick={onContinue} className="w-full rounded-2xl bg-[#ff6b2b] py-6 font-black text-white hover:bg-[#f4511e]">سجّل الآن <ChevronLeft className="h-5 w-5" /></Button><Button type="button" variant="outline" onClick={onCancel} className="w-full rounded-2xl py-6 font-black text-[#00666b]">متابعة التصفح</Button></div></DialogContent></Dialog>;
 }
 
 function AboutLahzaDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -1131,6 +1131,10 @@ export default function Home() {
   };
 
   const submitCheckout = async (confirmedDeliveryFee = false) => {
+    if (!isStaticDemo && customerAuth?.mode !== "customer") {
+      setCustomerAuthRequiredOpen(true);
+      return;
+    }
     const isTaxi = checkoutMode === "taxi";
     const isWosselLi = checkoutMode === "wossel_li";
     if (checkoutMode === "delivery" && !deliveryQuoteData) {
@@ -1253,8 +1257,9 @@ export default function Home() {
   };
 
   const openDeliveryService = () => { setServiceDirectoryOpen(false); setActiveCategory(null); setActiveCustomCategory(null); setSelectedStore(null); setSelectedProduct(null); setScreen("delivery"); };
-  const openWosselLiService = () => { setServiceDirectoryOpen(false); setCheckoutMode("wossel_li"); setScreen("checkout"); };
-  const openTaxiService = () => { setServiceDirectoryOpen(false); setCheckoutMode("taxi"); setScreen("taxi"); };
+  // Guests browse freely; every service that sends an order needs a registered account.
+  const openWosselLiService = () => { setServiceDirectoryOpen(false); if (customerAuth?.mode !== "customer") { setCustomerAuthRequiredOpen(true); return; } setCheckoutMode("wossel_li"); setScreen("checkout"); };
+  const openTaxiService = () => { setServiceDirectoryOpen(false); if (customerAuth?.mode !== "customer") { setCustomerAuthRequiredOpen(true); return; } setCheckoutMode("taxi"); setScreen("taxi"); };
 
   const chooseOffer = (offer: CustomerOffer) => {
     setSelectedOffer(offer);

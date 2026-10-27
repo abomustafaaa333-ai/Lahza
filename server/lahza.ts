@@ -2172,7 +2172,8 @@ export const lahzaRouter = router({
         const rating = store ? (ratings.get(store.id) ?? { completedOrders: 0, ratingStars: 3 }) : { completedOrders: 0, ratingStars: 3 }; return partner && store?.partnerId === partner.id && partner.city === store.city ? [{ ...offer, storeId: resolvedStoreId, ...rating, partnerName: partner.name, storeName: store.name, storeCategory: store.category, productName: product?.name ?? "عرض مميز", productUnit: product?.unit ?? "قطعة", productPrice: offer.offerPrice > 0 ? offer.offerPrice : (product?.unitPrice ?? 0), originalProductPrice: product?.unitPrice ?? offer.offerPrice, productImageUrl: product?.imageUrl ?? null, storeOpen: effectiveStoreOpen(partner.storeOpen, partner.workHours) }] : [];
       });
     }),
-    createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ input }) => {
+    createOrder: publicProcedure.input(intercityOrderInput).mutation(async ({ ctx, input }) => {
+      await requireCustomerPhone(ctx, input.customerPhone);
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const trip = await db.select().from(intercityTrips).where(and(eq(intercityTrips.id, input.tripId), eq(intercityTrips.active, true))).limit(1);
@@ -2537,8 +2538,9 @@ export const lahzaRouter = router({
   }),
   orders: router({
     uploadPrescription: publicProcedure.input(z.object({ dataUrl: z.string().min(30).max(8_000_000) })).mutation(async ({ ctx, input }) => {
-      // Guests can order from a pharmacy, so this stays open but rate limited per address.
-      const key = ctx.req.ip || "unknown";
+      const session = await readCustomerSession(ctx);
+      if (!session) throw new Error("سجّل الدخول برقمك أولاً لإرسال الوصفة");
+      const key = session.customerPhone;
       assertNotLocked(prescriptionUploads, key);
       prescriptionUploads.hit(key);
       return uploadOfferImage(input.dataUrl, 0, `prescription-${randomBytes(12).toString("hex")}`);
@@ -2589,6 +2591,8 @@ export const lahzaRouter = router({
       return { code: "AUTO", kind: "automatic" as const, percent: automatic.percent, discountAmount: Math.min(itemsTotal, automatic.discountAmount), itemsTotal };
     }),
     create: publicProcedure.input(orderInputSchema).mutation(async ({ ctx, input }) => {
+      // Only a registered customer orders, and only for the number their WhatsApp code proved.
+      await requireCustomerPhone(ctx, input.customerPhone);
       const db = await ensureCatalogSeed();
       if (input.orderType === "wossel_li") await ensureWosselLiOrderTypeSchema(db);
       const orderCity = ctx.city;
@@ -2655,7 +2659,6 @@ export const lahzaRouter = router({
       let pointsRewardPercent = 0;
       let pointsRewardAmount = 0;
       if (input.usePointsReward) {
-        await requireCustomerPhone(ctx, input.customerPhone);
         if (input.orderType !== "delivery") throw new Error("مكافأة النقاط متاحة لطلبات التوصيل فقط");
         if (settings.pointsRewardPercent < 1) throw new Error("لم يحدد المالك نسبة مكافأة النقاط بعد");
         const pointBalance = (await db.select({ balance: customerPoints.balance }).from(customerPoints).where(eq(customerPoints.customerPhone, input.customerPhone)).limit(1))[0];
