@@ -14,6 +14,8 @@ import { serveStatic, setupVite } from "./vite";
 
 async function startServer() {
   const app = express();
+  // Caddy is the only way in, so its X-Forwarded-For gives the real client address.
+  app.set("trust proxy", 1);
   const server = createServer(app);
 
   // Compress JS/CSS/JSON responses for slow mobile connections.

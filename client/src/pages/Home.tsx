@@ -335,6 +335,7 @@ function CustomerAuthScreen({ onAuthenticated, onStaffLogin }: { onAuthenticated
   const requestOtp = trpc.lahza.customerAccounts.requestOtp.useMutation();
   const verifyOtpCode = trpc.lahza.customerAccounts.verifyOtp.useMutation();
   const registerAccount = trpc.lahza.customerAccounts.register.useMutation();
+  const authUtils = trpc.useUtils();
   const callingCode = getCountryCallingCode(countryCode);
   const selectedCountry = countryCallingCodes.find(country => country.code === countryCode) ?? countryCallingCodes[0];
   const normalizedPhone = phone.replace(/\D/g, "").replace(new RegExp(`^${callingCode}`), "").replace(/^0/, "");
@@ -400,7 +401,9 @@ function CustomerAuthScreen({ onAuthenticated, onStaffLogin }: { onAuthenticated
       }
     }
     if (mode === "login" && loginAccount) {
-      onAuthenticated({ mode: "customer", phone: fullPhone, name: loginAccount.name, city: loginAccount.city, remember });
+      // The account name is only shared once the WhatsApp code proved the number.
+      const account = await authUtils.lahza.customerAccounts.status.fetch({ phone: fullPhone }).catch(() => null);
+      onAuthenticated({ mode: "customer", phone: fullPhone, name: account?.name || loginAccount.name, city: loginAccount.city, remember });
       return;
     }
     onAuthenticated({ mode: "customer", phone: fullPhone, name: name.trim() || undefined, city: registerCity, remember });

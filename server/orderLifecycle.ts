@@ -3,7 +3,8 @@ import { intercityOrders, orders } from "../drizzle/schema";
 import { getDb } from "./db";
 
 export const ORDER_ARCHIVE_AFTER_MS = 24 * 60 * 60 * 1000;
-export const ORDER_DELETE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+// Orders stay a year so accounting, partner reports and customer history keep them.
+export const ORDER_DELETE_AFTER_MS = 365 * 24 * 60 * 60 * 1000;
 
 export function isOrderArchived(createdAt: Date, now = new Date()) {
   return now.getTime() - createdAt.getTime() >= ORDER_ARCHIVE_AFTER_MS;
