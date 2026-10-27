@@ -2,6 +2,8 @@ FROM node:22-bookworm-slim AS build
 
 WORKDIR /app
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+# Small VMs (1 GB RAM + swap) run out of default heap during the Vite build.
+ENV NODE_OPTIONS=--max-old-space-size=2048
 
 COPY package.json pnpm-lock.yaml ./
 RUN npm install --global pnpm@10.4.1 && pnpm install --frozen-lockfile
