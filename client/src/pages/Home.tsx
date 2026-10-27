@@ -15,12 +15,12 @@ import { LAHZA_APK_FILE_NAME, LAHZA_APK_URL } from "@/lib/appDownload";
 import { QRCodeSVG } from "qrcode.react";
 import { getDeliveryCheckoutGate, MINIMUM_DELIVERY_ORDER_NEW_SYP, remainingDeliveryAmountNewSyp } from "@/lib/deliveryCheckout";
 import { buildPartnerGallerySlides, type PartnerGallerySlide } from "@/lib/partnerGallery";
-import { catalogSeed, categoryMeta, customerDeliveryCategories, formatNewSyp, isProductFirstCategory, productFirstCategories, formatSyp, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
+import { catalogSeed, categoryMeta, storeCategories, customerDeliveryCategories, formatNewSyp, isProductFirstCategory, productFirstCategories, formatSyp, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory, type RestaurantType } from "@shared/lahza";
 import { getHomeShortcut } from "@shared/adminHomeShortcut";
 import { productUnitMinimum, productUnitStep } from "@shared/productUnits";
 import { isStoreClosedForCustomer } from "@shared/storeAvailability";
 import { CITY_LABELS, CITY_KEYS, type CityKey } from "@shared/cities";
-import { ArrowLeft, ArrowRight, BadgePercent, House, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Download, Fuel, HandCoins, ImagePlus, LayoutDashboard, Loader2, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
+import { ArrowLeft, Megaphone, ArrowRight, BadgePercent, House, BellRing, Bike, CakeSlice, CarFront, CheckCircle2, ChevronLeft, CircleHelp, ClipboardList, Clock3, CreditCard, Download, Fuel, HandCoins, ImagePlus, LayoutDashboard, Loader2, LocateFixed, LogOut, MapPinCheck, MessageCircle, Minus, PackageCheck, PackagePlus, Pencil, Phone, Pill, Plus, QrCode, Search, Share2, Shirt, ShoppingBasket, Smartphone, Sparkles, Store, Trash2, Truck, UserRound, UtensilsCrossed, Wheat, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -227,13 +227,13 @@ function SupportHelpCard({ onOpen, contactCount }: { onOpen: () => void; contact
 }
 
 
-function ServiceDirectoryDialog({ open, onOpenChange, onDelivery, onWosselLi, onTaxi }: { open: boolean; onOpenChange: (open: boolean) => void; onDelivery: () => void; onWosselLi: () => void; onTaxi: () => void }) {
+function ServiceDirectoryDialog({ open, onOpenChange, onDelivery, onWosselLi, onTaxi, wosselLiSoon }: { open: boolean; onOpenChange: (open: boolean) => void; onDelivery: () => void; onWosselLi: () => void; onTaxi: () => void; wosselLiSoon: boolean }) {
   const services = [
     { title: "توصيل الطلبات", detail: "اطلب من المطاعم والبقاليات والصيدليات والمتاجر المحلية، وسنوصّل طلبك إلى باب بيتك داخل منبج.", icon: ShoppingBasket, action: onDelivery },
-    { title: "وصّل لي", detail: "عندك غرض بدك نوصلك ياه؟ أدخل مكان الاستلام وعنوان التسليم، وسيتولى مندوب لحظة نقله بأمان.", icon: PackageCheck, action: onWosselLi },
+    { title: "وصّل لي", detail: "عندك غرض بدك نوصلك ياه؟ أدخل مكان الاستلام وعنوان التسليم، وسيتولى مندوب لحظة نقله بأمان.", icon: PackageCheck, action: onWosselLi, soon: wosselLiSoon },
     { title: "طلب سيارة أجرة", detail: "اطلب سيارة من موقعك داخل منبج، وسيأتيك المندوب ليأخذك إلى المكان الذي تريده.", icon: CarFront, action: onTaxi },
   ];
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent dir="rtl" className="service-directory-dialog w-[calc(100%-1.5rem)] max-w-lg rounded-[2rem] border-0 bg-white p-5 shadow-2xl"><DialogHeader><DialogTitle className="text-right text-2xl font-black text-[#173d3f]">استكشف خدمات لحظة</DialogTitle><DialogDescription className="text-right leading-7">اختر الخدمة المناسبة، وسننقلك مباشرة إلى القسم الخاص بها.</DialogDescription></DialogHeader><div className="service-directory-grid">{services.map(service => { const Icon = service.icon; return <button key={service.title} type="button" onClick={service.action} className="service-directory-card"><span className="service-directory-icon"><Icon className="h-7 w-7" /></span><span className="service-directory-copy"><strong>{service.title}</strong><small>{service.detail}</small><b>انتقل إلى الخدمة <ChevronLeft className="h-4 w-4" /></b></span></button>; })}</div></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent dir="rtl" className="service-directory-dialog w-[calc(100%-1.5rem)] max-w-lg rounded-[2rem] border-0 bg-white p-5 shadow-2xl"><DialogHeader><DialogTitle className="text-right text-2xl font-black text-[#173d3f]">استكشف خدمات لحظة</DialogTitle><DialogDescription className="text-right leading-7">اختر الخدمة المناسبة، وسننقلك مباشرة إلى القسم الخاص بها.</DialogDescription></DialogHeader><div className="service-directory-grid">{services.map(service => { const Icon = service.icon; const soon = "soon" in service && service.soon; return <button key={service.title} type="button" onClick={service.action} disabled={soon} aria-disabled={soon} className={`service-directory-card${soon ? " lahza-service-soon" : ""}`}><span className="service-directory-icon"><Icon className="h-7 w-7" /></span><span className="service-directory-copy"><strong>{service.title}</strong><small>{service.detail}</small>{soon ? <b className="lahza-soon-badge">قريباً</b> : <b>انتقل إلى الخدمة <ChevronLeft className="h-4 w-4" /></b>}</span></button>; })}</div></DialogContent></Dialog>;
 }
 
 function PersistentCartButton({ onCart, cartCount }: { onCart: () => void; cartCount: number }) {
@@ -275,7 +275,14 @@ function HeaderWordmarkMotion() {
   );
 }
 
-function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; searchPlaceholder: string; city: CityKey }) {
+/** The owner's two news lines, scrolling under the search bar. */
+function HomeTicker({ items }: { items: string[] }) {
+  if (!items.length) return null;
+  // The track holds the lines twice so the scroll can loop without a gap.
+  return <div className="app-shell lahza-home-ticker-wrap"><div className="lahza-home-ticker" role="marquee" aria-label={items.join(" · ")}><Megaphone className="lahza-home-ticker-icon h-4 w-4" aria-hidden="true" /><div className="lahza-home-ticker-window"><div className="lahza-home-ticker-track" aria-hidden="true">{[...items, ...items].map((item, index) => <span key={index}>{item}</span>)}</div></div></div></div>;
+}
+
+function Header({ onSearch, searchPlaceholder, city, ticker }: { onSearch: () => void; searchPlaceholder: string; city: CityKey; ticker: string[] }) {
   return (
     <header className="lahza-home-header">
       <div className="app-shell lahza-home-header-top">
@@ -283,6 +290,7 @@ function Header({ onSearch, searchPlaceholder, city }: { onSearch: () => void; s
         <a className="lahza-home-support" href={lahzaCustomerServiceWhatsAppUrl} target="_blank" rel="noreferrer" title="خدمة الزبائن عبر واتساب" aria-label="خدمة الزبائن عبر واتساب"><MessageCircle className="h-5 w-5" /></a>
       </div>
       <div className="app-shell lahza-home-search-wrap"><button type="button" className="lahza-home-search" onClick={onSearch} aria-label="البحث عن منتج"><Search className="h-5 w-5" /><span key={searchPlaceholder} className="search-placeholder-rotate">{searchPlaceholder}</span></button></div>
+      <HomeTicker items={ticker} />
     </header>
   );
 }
@@ -662,7 +670,9 @@ export default function Home() {
   const gatewayStoresQuery = trpc.lahza.storefront.gatewayStores.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && selectedCity === "jarabulus", retry: false });
   const productFirstCategory = !gatewayMode && !activeCustomCategory && activeCategory && isProductFirstCategory(activeCategory) ? activeCategory as (typeof productFirstCategories)[number] : null;
   const productFirstBrowsing = Boolean(productFirstCategory);
-  const categoryProductsQuery = trpc.lahza.storefront.categoryProducts.useQuery({ category: productFirstCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(productFirstCategory) && screen === "stores", retry: false, staleTime: 60_000 });
+  // Every store category is asked for products: product-first ones list all of them, the rest list only لحظة's own.
+  const productListCategory = !gatewayMode && !activeCustomCategory && activeCategory && (storeCategories as readonly string[]).includes(activeCategory) ? activeCategory as (typeof storeCategories)[number] : null;
+  const categoryProductsQuery = trpc.lahza.storefront.categoryProducts.useQuery({ category: productListCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(productListCategory) && screen === "stores", retry: false, staleTime: 60_000 });
   const categoryProducts: CategoryProduct[] = isStaticDemo
     ? staticDemoProducts.filter(product => product.category === activeCategory).map(product => ({ ...product, storeId: -1, storeName: "متجر لحظة التجريبي", storeCategory: product.category, storeOpen: true }))
     : (categoryProductsQuery.data ?? []) as CategoryProduct[];
@@ -674,7 +684,7 @@ export default function Home() {
     setScreen("productQuantity");
     window.scrollTo({ top: 0 });
   };
-  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(selectedStore), retry: false, staleTime: 60_000 });
+  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id || 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(selectedStore && selectedStore.id > 0), retry: false, staleTime: 60_000 });
   const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(sharedStoreId), retry: false, staleTime: 120_000 });
   const products = isStaticDemo ? staticDemoProducts : [];
   const supportContacts = supportContactsQuery.data ?? [];
@@ -697,8 +707,11 @@ export default function Home() {
     setSelectedStore({ id: sharedStore.id, name: sharedStore.name, category: sharedStore.category as LahzaCategory, imageUrl: sharedStore.imageUrl, storeOpen: sharedStore.storeOpen });
     setScreen("store");
   }, [sharedStoreQuery.data, selectedStore?.id]);
+  // The quote follows the cart's products, not whichever store screen is open.
+  const cartCatalogIds = cart.flatMap(line => line.catalogItemId ? [line.catalogItemId] : []);
+  const cartCatalogKey = cartCatalogIds.join(",");
   useEffect(() => {
-    if (isStaticDemo || checkoutMode !== "delivery" || !selectedStore?.locationLat || !selectedStore.locationLng || customerLat === null || customerLng === null) {
+    if (isStaticDemo || checkoutMode !== "delivery" || customerLat === null || customerLng === null) {
       setDeliveryQuoteData(null);
       setDeliveryQuoteStatus("idle");
       setDeliveryFeeConfirmed(false);
@@ -708,25 +721,26 @@ export default function Home() {
     setDeliveryQuoteStatus("loading");
     setDeliveryFeeConfirmed(false);
     let active = true;
-    void deliveryQuote.mutateAsync({
-      locationLat: customerLat,
-      locationLng: customerLng,
-      originLat: selectedStore.locationLat / 1_000_000,
-      originLng: selectedStore.locationLng / 1_000_000,
-    }).then(result => {
+    void deliveryQuote.mutateAsync(cartCatalogIds.length
+      ? { locationLat: customerLat, locationLng: customerLng, catalogItemIds: cartCatalogIds }
+      : selectedStore?.locationLat && selectedStore.locationLng
+      ? { locationLat: customerLat, locationLng: customerLng, originLat: selectedStore.locationLat / 1_000_000, originLng: selectedStore.locationLng / 1_000_000 }
+      // No store to start from: the server measures from the city centre.
+      : { locationLat: customerLat, locationLng: customerLng },
+    ).then(result => {
       if (active) {
         setDeliveryQuoteData({ distanceMeters: result.distanceMeters, billableKm: result.billableKm, deliveryFeeNewSyp: result.deliveryFeeNewSyp, durationMinutes: result.durationMinutes });
         setDeliveryQuoteStatus("ready");
       }
-    }).catch(() => {
+    }).catch(error => {
       if (active) {
         setDeliveryQuoteData(null);
         setDeliveryQuoteStatus("error");
-        toast.error("تعذر حساب مسافة الطريق الحقيقية. أعد تحديد الموقع للمحاولة مجدداً.");
+        toast.error(error instanceof Error && error.message.startsWith("المتجر") ? error.message : "تعذر حساب مسافة الطريق الحقيقية. أعد تحديد الموقع للمحاولة مجدداً.");
       }
     });
     return () => { active = false; };
-  }, [isStaticDemo, checkoutMode, selectedStore?.id, selectedStore?.locationLat, selectedStore?.locationLng, customerLat, customerLng]);
+  }, [isStaticDemo, checkoutMode, cartCatalogKey, selectedStore?.id, selectedStore?.locationLat, selectedStore?.locationLng, customerLat, customerLng]);
   const adminLogin = trpc.lahza.admin.login.useMutation({
     onSuccess: result => {
       utils.lahza.admin.session.setData(undefined, { role: result.role });
@@ -1247,6 +1261,13 @@ export default function Home() {
     setActiveCustomCategory(null);
     setSelectedProduct(null);
     setSelectedStore({ id: result.storeId, name: result.storeName, category: result.storeCategory, imageUrl: result.storeImageUrl, storeOpen: result.storeOpen });
+    // A لحظة product has no store page, so it opens straight on its quantity screen.
+    if (!result.storeId) {
+      setSelectedProduct({ id: result.id, name: result.name, unit: result.unit, unitPrice: toLegacySyp(result.price), available: result.available });
+      setProductOrigin("category");
+      setScreen("productQuantity");
+      return;
+    }
     setScreen("store");
   };
 
@@ -1258,7 +1279,9 @@ export default function Home() {
 
   const openDeliveryService = () => { setServiceDirectoryOpen(false); setActiveCategory(null); setActiveCustomCategory(null); setSelectedStore(null); setSelectedProduct(null); setScreen("delivery"); };
   // Guests browse freely; every service that sends an order needs a registered account.
-  const openWosselLiService = () => { setServiceDirectoryOpen(false); if (customerAuth?.mode !== "customer") { setCustomerAuthRequiredOpen(true); return; } setCheckoutMode("wossel_li"); setScreen("checkout"); };
+  // وصّل لي keeps all its screens; the owner switches it on from the delivery settings.
+  const wosselLiEnabled = isStaticDemo || interfaceSettingsQuery.data?.wosselLiEnabled === true;
+  const openWosselLiService = () => { setServiceDirectoryOpen(false); if (!wosselLiEnabled) { toast.info("خدمة وصّل لي قريباً"); return; } if (customerAuth?.mode !== "customer") { setCustomerAuthRequiredOpen(true); return; } setCheckoutMode("wossel_li"); setScreen("checkout"); };
   const openTaxiService = () => { setServiceDirectoryOpen(false); if (customerAuth?.mode !== "customer") { setCustomerAuthRequiredOpen(true); return; } setCheckoutMode("taxi"); setScreen("taxi"); };
 
   const chooseOffer = (offer: CustomerOffer) => {
@@ -1308,10 +1331,10 @@ export default function Home() {
     <main dir="rtl" className={`lahza-app-shell lahza-screen-${screen} min-h-screen text-slate-950`} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       <div className={`pull-refresh-indicator ${pullDistance > 0 || refreshing ? "pull-refresh-indicator-visible" : ""}`} style={{ transform: `translate(-50%, ${refreshing ? 12 : Math.min(62, pullDistance * .72) - 44}px)` }} role="status" aria-live="polite"><span className={refreshing ? "pull-refresh-spinner" : ""}><ArrowLeft className="h-4 w-4 -rotate-90" /></span><small>{refreshing ? "جارٍ التحديث" : pullDistance >= 72 ? "اترك للتحديث" : "اسحب للتحديث"}</small></div>
       <div className="top-action-cluster" dir="ltr">{driverSessionQuery.data ? <button type="button" className="persistent-notifications-button" onClick={() => window.location.href = "/?driverApp=1"} aria-label="فتح لوحة المندوب"><LayoutDashboard className="h-5 w-5" /></button> : null}<PersistentCartButton onCart={openCart} cartCount={cart.length} /><button type="button" className="persistent-notifications-button" onClick={() => setNotificationsOpen(true)} aria-label="فتح الإشعارات"><BellRing className="h-5 w-5" />{unreadNotificationCount > 0 ? <b>{unreadNotificationCount}</b> : null}</button></div><LahzaEventCover event={interfaceSettingsQuery.data} />
-      {screen === "home" ? <Header onSearch={() => setSearchOpen(true)} searchPlaceholder={searchPlaceholder} city={selectedCity ?? "manbij"} /> : null}
+      {screen === "home" ? <Header onSearch={() => setSearchOpen(true)} searchPlaceholder={searchPlaceholder} city={selectedCity ?? "manbij"} ticker={[interfaceSettingsQuery.data?.tickerPrimary, interfaceSettingsQuery.data?.tickerSecondary].filter((line): line is string => Boolean(line?.trim()))} /> : null}
 
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}><DialogContent dir="rtl" className="notification-dialog"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right"><BellRing className="h-5 w-5 text-[#00666b]" /> إشعارات لحظة</DialogTitle><DialogDescription className="text-right">العروض وتحديثات حالة طلباتك في مكان واحد.</DialogDescription></DialogHeader>{unreadNotificationCount > 0 ? <button type="button" className="notification-mark-all" disabled={markAllNotificationsRead.isPending} onClick={() => markAllNotificationsRead.mutate({ deviceId, ...(customerAuth?.mode === "customer" && customerAuth.phone ? { customerPhone: customerAuth.phone } : {}) })}><CheckCircle2 className="h-4 w-4" /> تحديد الكل كمقروء</button> : null}<div className="notification-dialog-list">{(notificationsQuery.data ?? []).filter(notification => notification.unread).map(notification => <button key={`campaign-${notification.id}`} type="button" className="notification-dialog-item" onClick={() => { markNotificationRead.mutate({ deviceId, campaignId: notification.id }); if (notification.targetPath === "/offers") setScreen("offers"); setNotificationsOpen(false); }}><span className="notification-dialog-icon notification-dialog-icon-orange"><BellRing className="h-4 w-4" /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}{(orderNotificationsQuery.data ?? []).map(notification => <button key={`order-${notification.id}`} type="button" className="notification-dialog-item" onClick={() => { markOrderNotificationRead.mutate({ id: notification.id, customerPhone: orderNotificationPhone }); setNotificationsOpen(false); }}><span className="notification-dialog-icon"><PackageCheck className="h-4 w-4" /></span><span><strong>{notification.title}</strong><small>{notification.body}</small></span></button>)}{!(notificationsQuery.data ?? []).some(notification => notification.unread) && !(orderNotificationsQuery.data ?? []).length ? <div className="notification-dialog-empty"><BellRing className="h-7 w-7" /><span>لا توجد إشعارات جديدة حالياً.</span></div> : null}</div></DialogContent></Dialog>
-      <ServiceDirectoryDialog open={serviceDirectoryOpen} onOpenChange={setServiceDirectoryOpen} onDelivery={openDeliveryService} onWosselLi={openWosselLiService} onTaxi={openTaxiService} />
+      <ServiceDirectoryDialog open={serviceDirectoryOpen} onOpenChange={setServiceDirectoryOpen} onDelivery={openDeliveryService} onWosselLi={openWosselLiService} onTaxi={openTaxiService} wosselLiSoon={!wosselLiEnabled} />
       <Dialog open={Boolean(selectedGalleryOffer)} onOpenChange={open => !open && setSelectedGalleryOffer(null)}><DialogContent showCloseButton={false} dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl">{selectedGalleryOffer ? <><DialogClose aria-label="إغلاق العرض" className="absolute right-4 top-4 z-10 grid h-12 w-12 place-items-center rounded-full border border-white/70 bg-slate-950/50 text-white shadow-lg backdrop-blur-sm transition hover:scale-105 hover:bg-slate-950/70 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2"><X className="h-7 w-7" strokeWidth={3} /><span className="sr-only">إغلاق العرض</span></DialogClose>{selectedGalleryOffer.imageUrl ? <img src={selectedGalleryOffer.imageUrl} alt={`عرض ${selectedGalleryOffer.name}`} className="max-h-[52vh] w-full object-cover" /> : <div className="grid h-52 place-items-center bg-gradient-to-br from-red-600 to-orange-500 text-white"><BadgePercent className="h-14 w-14" /></div>}<div className="p-6"><DialogHeader><DialogTitle className="text-right text-xl text-[#4a2618]">{selectedGalleryOffer.name}</DialogTitle><DialogDescription className="text-right text-sm font-bold text-red-600">{selectedGalleryOffer.partnerName}</DialogDescription></DialogHeader><p className="mt-4 text-sm leading-7 text-slate-600">انتقل إلى قسم العروض لرؤية تفاصيل العرض والطلب من المتجر.</p><Button onClick={openFeaturedOffers} className="mt-5 w-full rounded-2xl bg-red-600 py-6 text-base hover:bg-red-700"><ShoppingBasket className="h-5 w-5" /> اطلبه الآن</Button></div></> : null}</DialogContent></Dialog>
 
       <Dialog open={searchOpen} onOpenChange={open => { setSearchOpen(open); if (!open) setSearchText(""); }}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-lg rounded-3xl bg-white p-5"><DialogHeader><DialogTitle className="flex items-center gap-2 text-right text-xl text-[#4a2618]"><Search className="h-5 w-5 text-red-600" /> البحث عن منتج</DialogTitle><DialogDescription className="text-right">اكتب اسم المنتج أو المتجر، وستظهر لك الأسعار وحالة التوفر.</DialogDescription></DialogHeader><div className="mt-3"><Label htmlFor="product-search">اسم المنتج أو المتجر</Label><Input id="product-search" autoFocus value={searchText} onChange={event => setSearchText(event.target.value)} placeholder="مثال: فروج، عدس، حلويات..." className="mt-2 h-12 border-slate-200 bg-white text-base shadow-sm" /></div><div className="mt-4 max-h-[52vh] space-y-2 overflow-y-auto pr-1">{normalizedSearchText.length < 2 ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">اكتب حرفين على الأقل لبدء البحث.</div> : productSearchQuery.isLoading ? <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">جارٍ البحث عن المنتجات...</div> : productSearchQuery.data?.length ? productSearchQuery.data.map(result => <button key={result.id} type="button" onClick={() => openSearchResult(result as ProductSearchResult)} className="w-full rounded-2xl border border-slate-100 bg-white p-4 text-right shadow-sm transition hover:border-rose-200 hover:bg-rose-50 active:scale-[0.99]"><span className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate text-base text-[#4a2618]">{result.name}</strong><small className="mt-1 block truncate text-xs font-bold text-slate-500">من متجر: {result.storeName}</small></span><span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${result.available ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{result.available ? "متاح" : "غير متاح"}</span></span><span className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><strong className="text-red-600">{result.price > 0 ? `سعر تقديري: ${formatNewSyp(result.price)}` : "السعر عند التأكيد"}</strong><small className={result.storeOpen ? "text-slate-500" : "font-bold text-amber-700"}>{result.storeOpen ? "فتح صفحة المتجر" : "المتجر مغلق حالياً"}</small></span></button>) : <div className="rounded-2xl bg-slate-50 p-5 text-center text-sm text-slate-500">لم نجد منتجات أو متاجر مطابقة. يمكنك استخدام «لم تجد ما تريد؟» لطلب المنتج من الإدارة.</div>}</div></DialogContent></Dialog>
@@ -1334,10 +1357,10 @@ export default function Home() {
             </div>
             </section>
             <div className="lahza-service-cards">
-              <button type="button" className="lahza-service-card lahza-service-card-teal" onClick={openWosselLiService}><span><PackageCheck className="h-5 w-5" /></span><span><strong>وصّل لي</strong><small>أرسل غرضاً لأي مكان</small></span></button>
+              <button type="button" className={`lahza-service-card lahza-service-card-teal${wosselLiEnabled ? "" : " lahza-service-soon"}`} onClick={openWosselLiService} disabled={!wosselLiEnabled} aria-disabled={!wosselLiEnabled}><span><PackageCheck className="h-5 w-5" /></span><span><strong>وصّل لي</strong><small>{wosselLiEnabled ? "أرسل غرضاً لأي مكان" : "قريباً"}</small></span></button>
               <button type="button" className="lahza-service-card lahza-service-card-orange" onClick={openTaxiService}><span><CarFront className="h-5 w-5" /></span><span><strong>سيارة أجرة</strong><small>مشوار داخل المدينة</small></span></button>
             </div>
-            {interfaceSettingsQuery.data?.wosselLiNotice ? <p className="lahza-home-notice" role="note"><CircleHelp className="h-4 w-4" />{interfaceSettingsQuery.data.wosselLiNotice}</p> : null}
+            {wosselLiEnabled && interfaceSettingsQuery.data?.wosselLiNotice ? <p className="lahza-home-notice" role="note"><CircleHelp className="h-4 w-4" />{interfaceSettingsQuery.data.wosselLiNotice}</p> : null}
             <section className="home-showcase-block"><div className="home-section-heading"><h2 className="section-title">متاجر مميزة</h2><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div><div className="lahza-store-list">{featuredStoreCards.length ? featuredStoreCards.map(store => <button key={`${store.id}-${store.name}`} type="button" className="lahza-store-row" onClick={() => { setActiveCategory(store.category); setActiveCustomCategory(null); setSelectedProduct(null); setSelectedOffer(null); setSelectedStore({ id: Number(store.id), name: store.name, category: store.category, storeOpen: store.storeOpen }); setScreen("store"); window.scrollTo({ top: 0, behavior: "smooth" }); }}><img src={categoryImageByKey[store.category]} alt="" loading="lazy" /><span className="lahza-store-row-copy"><strong>{store.name}</strong><small>{store.note}</small><b>لديه عروض</b></span>{store.storeOpen === false ? <span className="lahza-status-chip lahza-status-closed">مغلق</span> : <span className="lahza-status-chip">مفتوح</span>}</button>) : <div className="home-featured-empty">لا توجد متاجر لديها عروض مميزة حالياً</div>}</div></section>
             {homePopularProducts.length ? <section className="home-showcase-block"><div className="home-section-heading"><div><p className="section-eyebrow">مختارة من الكتالوج</p><h2 className="section-title">الأكثر طلباً</h2></div><button type="button" onClick={() => setScreen("delivery")}>عرض الكل <ChevronLeft className="h-4 w-4" /></button></div><div className="home-popular-grid">{homePopularProducts.map(product => <button key={`${product.catalogItemId ?? product.name}-${product.category}`} type="button" className="home-popular-product" onClick={() => { setActiveCategory(product.category); setActiveCustomCategory(null); setSelectedStore(null); setScreen("stores"); }}><img src={product.imageUrl || categoryImageByKey[product.category]} alt="" loading="lazy" /><span className="home-product-favorite"><Sparkles className="h-3.5 w-3.5" /></span><span className="home-product-plus"><Plus className="h-4 w-4" /></span><strong>{product.name}</strong></button>)}</div></section> : null}
             {homeShortcut ? <div className="mt-5 space-y-2"><button type="button" onClick={() => setLocation(homeShortcut.path)} className="flex w-full items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-right text-[#4a2618] shadow-sm transition hover:bg-rose-100 active:scale-[0.98]" aria-label={`فتح ${homeShortcut.label}`}><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#63301b] text-white">{homeShortcut.path === "/partner/store" ? <Store className="h-5 w-5" /> : <LayoutDashboard className="h-5 w-5" />}</span><span className="flex min-w-0 flex-1 flex-col gap-1"><strong className="text-sm font-black">{homeShortcut.label}</strong><small className="text-xs font-medium text-slate-600">{homeShortcut.description}</small></span><ChevronLeft className="h-5 w-5 text-[#63301b]" /></button><button type="button" onClick={() => homeAccountKind === "partner" ? partnerHomeLogout.mutate() : adminHomeLogout.mutate()} disabled={partnerHomeLogout.isPending || adminHomeLogout.isPending} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed"><LogOut className="h-4 w-4" />{partnerHomeLogout.isPending || adminHomeLogout.isPending ? "جارٍ تسجيل الخروج..." : "تسجيل الخروج"}</button></div> : null}
@@ -1368,7 +1391,7 @@ export default function Home() {
         </>
       ) : null}
 
-      {screen === "stores" && (gatewayMode || activeCategory) ? <StoresScreen key={`${gatewayMode ? "gateway" : activeCategory}-${activeCustomCategory?.id ?? ""}`} {...(productFirstBrowsing ? { products: categoryProducts, productsLoading: categoryProductsQuery.isLoading && !isStaticDemo, onChooseProduct: openCategoryProduct } : {})} category={gatewayMode ? "other" : activeCategory!} categoryTitle={gatewayMode ? "طلبات منبج" : activeCustomCategory?.title} stores={gatewayMode ? gatewayStores : categoryStores} loading={gatewayMode ? gatewayStoresQuery.isLoading && !isStaticDemo : categoryStoresQuery.isLoading && !isStaticDemo} onBack={() => { setScreen(gatewayMode ? "home" : "delivery"); setGatewayMode(false); setActiveCategory(null); setActiveCustomCategory(null); }} onChoose={store => { if (!isStaticDemo) trackStoreVisit.mutate({ storeId: store.id, source: "direct" }); setSelectedProduct(null); setSelectedOffer(null); setSelectedStore({ ...store, id: Number(store.id) }); window.scrollTo({ top: 0, behavior: "smooth" }); setScreen("store"); }} /> : null}
+      {screen === "stores" && (gatewayMode || activeCategory) ? <StoresScreen key={`${gatewayMode ? "gateway" : activeCategory}-${activeCustomCategory?.id ?? ""}`} {...(productFirstBrowsing ? { products: categoryProducts, productsLoading: categoryProductsQuery.isLoading && !isStaticDemo, onChooseProduct: openCategoryProduct } : categoryProducts.length && !gatewayMode ? { products: categoryProducts, onChooseProduct: openCategoryProduct, initialView: "stores" as const } : {})} category={gatewayMode ? "other" : activeCategory!} categoryTitle={gatewayMode ? "طلبات منبج" : activeCustomCategory?.title} stores={gatewayMode ? gatewayStores : categoryStores} loading={gatewayMode ? gatewayStoresQuery.isLoading && !isStaticDemo : categoryStoresQuery.isLoading && !isStaticDemo} onBack={() => { setScreen(gatewayMode ? "home" : "delivery"); setGatewayMode(false); setActiveCategory(null); setActiveCustomCategory(null); }} onChoose={store => { if (!isStaticDemo) trackStoreVisit.mutate({ storeId: store.id, source: "direct" }); setSelectedProduct(null); setSelectedOffer(null); setSelectedStore({ ...store, id: Number(store.id) }); window.scrollTo({ top: 0, behavior: "smooth" }); setScreen("store"); }} /> : null}
 
       <Dialog open={missingProductOpen} onOpenChange={setMissingProductOpen}><DialogContent dir="rtl" className="w-[calc(100%-1.5rem)] max-w-md rounded-3xl bg-white"><DialogHeader><DialogTitle className="text-right text-xl text-[#4a2618]">اطلب منتجاً غير موجود</DialogTitle><DialogDescription className="text-right">اكتب ما تحتاجه وسيتابع فريق لحظة إمكانية توفيره أو إضافة متجر مناسب.</DialogDescription></DialogHeader><div className="grid gap-3 rounded-2xl bg-slate-50 p-4"><p className="rounded-xl bg-white px-3 py-2 text-xs font-bold leading-6 text-slate-600">سيتم استخدام اسمك ورقم هاتفك المحفوظين في حسابك تلقائياً.</p><div><Label>اسم المنتج المطلوب</Label><Input className="mt-1 border-slate-200 bg-white shadow-sm" value={missingProductName} onChange={event => setMissingProductName(event.target.value)} placeholder="مثال: حقيبة مدرسية للصف الخامس" /></div><div><Label>تفاصيل إضافية (اختياري)</Label><Textarea className="mt-1 border-slate-200 bg-white shadow-sm" value={missingProductNotes} onChange={event => setMissingProductNotes(event.target.value)} placeholder="اللون أو المقاس أو العلامة التجارية" /></div><Button disabled={createMissingProductRequest.isPending || missingProductName.trim().length < 2 || !customerAuth?.phone || !customerAuth.name} onClick={() => { if (!customerAuth?.phone || !customerAuth.name) return; createMissingProductRequest.mutate({ customerName: customerAuth.name.trim(), customerPhone: customerAuth.phone, productName: missingProductName.trim(), notes: missingProductNotes.trim() || undefined }); }} className="mt-1 rounded-2xl bg-red-600 py-6 hover:bg-red-700">{createMissingProductRequest.isPending ? "جارٍ الإرسال..." : "إرسال الطلب"}</Button></div></DialogContent></Dialog>
       {screen === "store" && selectedStore ? <StoreProductsScreen store={selectedStore} products={selectedStoreProducts} loading={storeProductsQuery.isLoading && !isStaticDemo} onBack={() => { setScreen("stores"); setSelectedProduct(null); }} onChooseProduct={product => { setSelectedProduct(product); setProductOrigin("store"); setScreen("productQuantity"); }} onOpenOffers={() => setScreen("storeOffers")} /> : null}
@@ -1509,12 +1532,14 @@ function CustomerOrdersScreen({ orders, onBack }: { orders: CustomerHistoryOrder
   return <section className="app-shell account-screen pb-12"><PageHeading eyebrow="حسابي" title="طلباتي" detail="تابع الطلبات الجارية والمكتملة والمرفوضة من مكان واحد." onBack={onBack} />{renderGroup("الطلبات الجارية", active, "bg-blue-50 text-blue-700")}{renderGroup("الطلبات المكتملة", completed, "bg-emerald-50 text-emerald-700")}{renderGroup("الطلبات المرفوضة أو الملغاة", rejected, "bg-red-50 text-red-700")}<Dialog open={selectedOrder !== null} onOpenChange={open => { if (!open) setSelectedOrder(null); }}><DialogContent dir="rtl" className="border-teal-200 bg-teal-50 text-teal-950"><DialogHeader><DialogTitle>تفاصيل الطلب #{selectedOrder?.id}</DialogTitle><DialogDescription className="text-teal-900">{selectedOrder ? `${statusLabel(selectedOrder.status)} · ${new Date(selectedOrder.createdAt).toLocaleString("ar-SY")}` : ""}</DialogDescription></DialogHeader>{selectedOrder ? <div className="space-y-3 text-sm"><div className="rounded-xl bg-white/70 p-3"><strong>الأصناف</strong>{selectedOrder.lines.length ? selectedOrder.lines.map(line => <div key={line.id} className="mt-2 flex justify-between gap-3"><span>{line.itemName} × {line.quantity} {line.unit}</span><b>{formatSyp(line.lineTotal)}</b></div>) : <p className="mt-2 text-slate-600">لا توجد تفاصيل أصناف.</p>}</div><div className="rounded-xl bg-white/70 p-3"><p><b>العميل:</b> {selectedOrder.customerName}</p><p><b>العنوان:</b> {selectedOrder.locationText || "الموقع المحدد عبر GPS"}</p><p><b>الدفع:</b> {selectedOrder.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً عند الاستلام"}</p><p><b>الإجمالي:</b> {formatSyp(selectedOrder.totalAmount)}</p>{selectedOrder.notes ? <p><b>ملاحظات:</b> {selectedOrder.notes}</p> : null}</div></div> : null}</DialogContent></Dialog></section>;
 }
 
-function StoresScreen({ category, categoryTitle, stores, loading, onBack, onChoose, products, productsLoading, onChooseProduct }: { category: LahzaCategory; categoryTitle?: string; stores: StoreOption[]; loading: boolean; onBack: () => void; onChoose: (store: StoreOption) => void; products?: CategoryProduct[]; productsLoading?: boolean; onChooseProduct?: (product: CategoryProduct) => void }) {
+function StoresScreen({ category, categoryTitle, stores, loading, onBack, onChoose, products, productsLoading, onChooseProduct, initialView }: { category: LahzaCategory; categoryTitle?: string; stores: StoreOption[]; loading: boolean; onBack: () => void; onChoose: (store: StoreOption) => void; products?: CategoryProduct[]; productsLoading?: boolean; onChooseProduct?: (product: CategoryProduct) => void; initialView?: "products" | "stores" }) {
   const meta = categoryMeta[category];
   const title = categoryTitle ?? meta.title;
   const visual = categoryImageByKey[category];
   const productFirst = Boolean(products && onChooseProduct);
-  const [view, setView] = useState<"products" | "stores">(productFirst ? "products" : "stores");
+  const [chosenView, setView] = useState<"products" | "stores">(productFirst ? initialView ?? "products" : "stores");
+  // A category with لحظة products but no stores opens on the products instead of an empty list.
+  const view = chosenView === "stores" && productFirst && !loading && !stores.length ? "products" : chosenView;
   const [need, setNeed] = useState("");
   const normalizedNeed = need.trim().toLocaleLowerCase("ar");
   const visibleProducts = (products ?? []).filter(product => !normalizedNeed || product.name.toLocaleLowerCase("ar").includes(normalizedNeed) || product.storeName.toLocaleLowerCase("ar").includes(normalizedNeed));

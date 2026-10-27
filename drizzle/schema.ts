@@ -78,6 +78,8 @@ export const catalogItems = mysqlTable("catalog_items", {
   deleted: boolean("deleted").notNull().default(false),
   partnerId: int("partnerId").references(() => partners.id, { onDelete: "set null" }),
   storeId: int("storeId").references(() => stores.id, { onDelete: "set null" }),
+  /** City of a product sold by لحظة itself (no store); store products follow their store. */
+  city: varchar("city", { length: 20 }),
   customCategoryId: int("customCategoryId").references(() => customCategories.id, { onDelete: "set null" }),
   imageUrl: varchar("imageUrl", { length: 500 }),
   imageUrls: text("imageUrls"),
@@ -227,6 +229,10 @@ export const systemSettings = mysqlTable("system_settings", {
   storeCommissionPercent: int("storeCommissionPercent").notNull().default(0),
   originLatE6: int("originLatE6").notNull().default(36528100),
   originLngE6: int("originLngE6").notNull().default(37954900),
+  jarabulusOriginLatE6: int("jarabulusOriginLatE6").notNull().default(36817500),
+  /** وصّل لي shows as "قريباً" until the owner switches it on. */
+  wosselLiEnabled: boolean("wosselLiEnabled").notNull().default(false),
+  jarabulusOriginLngE6: int("jarabulusOriginLngE6").notNull().default(38011400),
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),
   tickerSecondary: varchar("tickerSecondary", { length: 220 }).notNull().default("لحظة — منبج بين يديك"),
   wosselLiNotice: varchar("wosselLiNotice", { length: 500 }).notNull().default("ملاحظة هامة: خدمة وصّل لي مخصصة لتوصيل الأغراض من مكان إلى مكان، وليست خدمة شراء."),

@@ -13,6 +13,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { getRoadRoute } from "./maps";
 import { cleanExpiredOffers } from "./expiredOffers";
 import { cleanExpiredOrders, isOrderArchived } from "./orderLifecycle";
+import { LAHZA_SEED_PHOTOS, LAHZA_SEED_PRODUCTS, SEED_BAKERIES, SEED_BREAD } from "./lahzaCatalogSeed";
 import { deleteOfferImage, uploadOfferImage } from "./offerMedia";
 import { publicProcedure, router } from "./_core/trpc";
 import type { TrpcContext } from "./_core/context";
@@ -236,6 +237,9 @@ async function ensureJarabulusGatewaySchemaWork(db: NonNullable<Awaited<ReturnTy
   await ensureColumn("system_settings", "jarabulusStoreMinutesPerKm", "INT NOT NULL DEFAULT 5");
   await ensureColumn("system_settings", "jarabulusGatewayPricePerKm", "INT NOT NULL DEFAULT 2");
   await ensureColumn("system_settings", "jarabulusGatewayMinutesPerKm", "INT NOT NULL DEFAULT 2");
+  await ensureColumn("system_settings", "jarabulusOriginLatE6", "INT NOT NULL DEFAULT 36817500");
+  await ensureColumn("system_settings", "wosselLiEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+  await ensureColumn("system_settings", "jarabulusOriginLngE6", "INT NOT NULL DEFAULT 38011400");
   await ensureColumn("system_settings", "wosselLiMinutesPerKm", "INT NOT NULL DEFAULT 5");
   await ensureColumn("system_settings", "driverPayMode", "ENUM('percent','fixed') NOT NULL DEFAULT 'percent'");
   await ensureColumn("system_settings", "driverFixedFee", "INT NOT NULL DEFAULT 0");
@@ -487,7 +491,8 @@ async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeo
 async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
   const order = (await db.select({ id: orders.id, status: orders.status, createdAt: orders.createdAt }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   if (!order || isOrderArchived(order.createdAt) || !["pending", "confirmed", "preparing", "on_the_way"].includes(order.status)) return null;
-  if (!storeId) return null; const store = (await db.select({ id: stores.id }).from(stores).where(eq(stores.id, storeId)).limit(1))[0]; if (!store) return null; const settings = await getSettings(); const timeoutMinutes = DRIVER_DISPATCH_WINDOW_MINUTES;
+  // Products sold without a store still go out to drivers; the store only matters for pricing.
+  const settings = await getSettings(); const timeoutMinutes = DRIVER_DISPATCH_WINDOW_MINUTES;
   const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true))); const target = candidates.filter(d => !excludedDriverIds.includes(d.id));
   console.info("Driver broadcast candidate check", { orderId, orderCity, availableCount: candidates.length, targetDriverIds: target.map(d => d.id), excludedDriverIds });
   if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب متاح حالياً.` }); return null; }
@@ -502,9 +507,9 @@ async function claimBroadcastOrder(db: NonNullable<Awaited<ReturnType<typeof get
 }
 async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, pickupLocation: string, pickupContactPhone: string, destinationText: string, destinationUrl: string, itemDescription: string) {
   const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true)));
-  const distanceFromCenter = (driver: typeof candidates[number]) => driver.locationLat === null || driver.locationLng === null ? Number.POSITIVE_INFINITY : distanceBetweenE6(36528100, 37954900, driver.locationLat, driver.locationLng);
-  const nearest = [...candidates].sort((a, b) => distanceFromCenter(a) - distanceFromCenter(b))[0];
   const settings = await getSettings();
+  const distanceFromCenter = (driver: typeof candidates[number]) => driver.locationLat === null || driver.locationLng === null ? Number.POSITIVE_INFINITY : distanceBetweenE6(settings.originLatE6, settings.originLngE6, driver.locationLat, driver.locationLng);
+  const nearest = [...candidates].sort((a, b) => distanceFromCenter(a) - distanceFromCenter(b))[0];
   const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
   if (!nearest) {
     const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts.map(contact => contact.phone)];
@@ -1245,12 +1250,27 @@ async function getSettings() {
   return created[0]!;
 }
 
-async function getDrivingQuote(customerLat: number, customerLng: number, originLat?: number, originLng?: number) {
+type CityCenterSettings = { originLatE6: number; originLngE6: number; jarabulusOriginLatE6?: number | null; jarabulusOriginLngE6?: number | null };
+
+/** Each city's delivery starting point, set by the owner in the delivery settings. */
+function cityCenter(settings: CityCenterSettings, city: CityKey) {
+  if (city === "jarabulus") return { latitude: (settings.jarabulusOriginLatE6 ?? 36817500) / 1_000_000, longitude: (settings.jarabulusOriginLngE6 ?? 38011400) / 1_000_000 };
+  return { latitude: settings.originLatE6 / 1_000_000, longitude: settings.originLngE6 / 1_000_000 };
+}
+
+/** Where a delivery starts: the first store in the cart that saved its location, otherwise the centre of that store's city (or the order's city for products with no store). */
+function deliveryOrigin(settings: CityCenterSettings, cartStores: Array<{ city: CityKey; locationLat: number | null; locationLng: number | null } | undefined>, orderCity: CityKey) {
+  const located = cartStores.find(store => store?.locationLat && store.locationLng);
+  if (located) return { latitude: located.locationLat! / 1_000_000, longitude: located.locationLng! / 1_000_000 };
+  return cityCenter(settings, cartStores.find(Boolean)?.city ?? orderCity);
+}
+
+async function getDrivingQuote(customerLat: number, customerLng: number, originLat?: number, originLng?: number, serviceKey: "manbij_store" | "jarabulus_gateway" = "manbij_store", city: CityKey = "manbij") {
   const settings = await getSettings();
-  const routeOriginLat = originLat ?? settings.originLatE6 / 1_000_000;
-  const routeOriginLng = originLng ?? settings.originLngE6 / 1_000_000;
+  const routeOriginLat = originLat ?? cityCenter(settings, city).latitude;
+  const routeOriginLng = originLng ?? cityCenter(settings, city).longitude;
   const route = await getRoadRoute({ latitude: routeOriginLat, longitude: routeOriginLng }, { latitude: customerLat, longitude: customerLng });
-  const service = deliveryServicePricing(settings, "manbij_store");
+  const service = deliveryServicePricing(settings, serviceKey);
   const totalDistanceMeters = Math.round(route.distanceMeters + 2_000);
   const pricing = calculateDistanceBasedDeliveryFee(totalDistanceMeters, service.pricePerKm);
   return {
@@ -1283,6 +1303,59 @@ const demoStoreNames: Record<(typeof customerDeliveryCategories)[number], string
   gas: ["غاز الحارة", "بيت الدفء", "أسطوانة بلس", "غاز الأمان", "خدمة الغاز"],
 };
 const demoStoreNameList = Object.values(demoStoreNames).flat();
+/** Product photos are served by this server, so stored links stay valid in the app and the admin forms. */
+const MEDIA_ORIGIN = (process.env.PUBLIC_APP_ORIGIN ?? "https://lahza-app.duckdns.org").replace(/\/$/, "");
+const seedPhotoUrl = (slug: string) => LAHZA_SEED_PHOTOS.has(slug) ? `${MEDIA_ORIGIN}/media/products/${slug}.jpg` : null;
+const SEED_STOCK = { stockQuantity: 500, stockInitialQuantity: 500, stockAlertPercent: 10 };
+
+/**
+ * Adds لحظة's own Manbij products and the two bakeries once. Rows the owner
+ * later edits or deletes are left alone: the run is recorded and never repeats.
+ */
+export async function seedLahzaCatalog() {
+  const db = await getDb();
+  if (!db) return;
+  await ensureCatalogItemSchema(db);
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `auth_defaults_migrations` (`id` VARCHAR(80) NOT NULL PRIMARY KEY)"));
+  const [applied] = await db.execute(sql.raw("SELECT `id` FROM `auth_defaults_migrations` WHERE `id` = 'lahza_catalog_v1' LIMIT 1"));
+  if (Array.isArray(applied) && applied.length) return;
+  for (const product of LAHZA_SEED_PRODUCTS) {
+    const code = `custom-seed-${product.slug}`;
+    const existing = await db.select({ id: catalogItems.id }).from(catalogItems).where(eq(catalogItems.code, code)).limit(1);
+    if (existing[0]) continue;
+    await db.insert(catalogItems).values({ code, name: product.name, category: product.category, unit: product.unit, unitPrice: toLegacySyp(product.price), ...SEED_STOCK, available: true, deleted: false, city: "manbij", imageUrl: seedPhotoUrl(product.slug) });
+  }
+  for (const bakeryName of SEED_BAKERIES) {
+    let store = (await db.select({ id: stores.id }).from(stores).where(and(eq(stores.name, bakeryName), eq(stores.city, "manbij"))).limit(1))[0];
+    if (!store) {
+      // No saved location: deliveries start from the Manbij starting point until the owner sets one.
+      const inserted = await db.insert(stores).values({ name: bakeryName, category: "bakery", restaurantType: "all", active: true, sortOrder: 0, city: "manbij" });
+      store = { id: Number(inserted[0].insertId) };
+    }
+    const code = `seed-bread-${store.id}`;
+    const existing = await db.select({ id: catalogItems.id }).from(catalogItems).where(eq(catalogItems.code, code)).limit(1);
+    if (!existing[0]) await db.insert(catalogItems).values({ code, name: SEED_BREAD.name, category: "bakery", unit: SEED_BREAD.unit, unitPrice: toLegacySyp(SEED_BREAD.price), ...SEED_STOCK, available: true, deleted: false, storeId: store.id, imageUrl: seedPhotoUrl(SEED_BREAD.slug) });
+  }
+  await db.execute(sql.raw("INSERT INTO `auth_defaults_migrations` (`id`) VALUES ('lahza_catalog_v1')"));
+  console.info("Seeded لحظة catalog", { products: LAHZA_SEED_PRODUCTS.length, bakeries: SEED_BAKERIES.length });
+}
+
+/** Gives seeded products the photos added after them; an image the owner set is never replaced. */
+export async function attachSeedPhotos() {
+  const db = await getDb();
+  if (!db || !LAHZA_SEED_PHOTOS.size) return;
+  const marker = `lahza_catalog_photos_${LAHZA_SEED_PHOTOS.size}`;
+  await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `auth_defaults_migrations` (`id` VARCHAR(80) NOT NULL PRIMARY KEY)"));
+  const [applied] = await db.execute(sql`SELECT \`id\` FROM \`auth_defaults_migrations\` WHERE \`id\` = ${marker} LIMIT 1`);
+  if (Array.isArray(applied) && applied.length) return;
+  for (const slug of Array.from(LAHZA_SEED_PHOTOS)) {
+    const url = seedPhotoUrl(slug);
+    if (slug === SEED_BREAD.slug) await db.update(catalogItems).set({ imageUrl: url }).where(and(like(catalogItems.code, "seed-bread-%"), isNull(catalogItems.imageUrl)));
+    else await db.update(catalogItems).set({ imageUrl: url }).where(and(eq(catalogItems.code, `custom-seed-${slug}`), isNull(catalogItems.imageUrl)));
+  }
+  await db.execute(sql`INSERT INTO \`auth_defaults_migrations\` (\`id\`) VALUES (${marker})`);
+}
+
 export async function removeDemoStores() {
   const db = await getDb();
   if (!db) return;
@@ -1305,6 +1378,7 @@ async function ensureCatalogItemSchema(db: NonNullable<Awaited<ReturnType<typeof
     ["clothingSizes", "TEXT NULL"],
     ["clothingColors", "VARCHAR(500) NULL"],
     ["clothingVariantImages", "TEXT NULL"],
+    ["city", "VARCHAR(20) NULL"],
   ]);
   if (!catalogClothingSizesSchemaPromise) {
     catalogClothingSizesSchemaPromise = (async () => {
@@ -1555,6 +1629,18 @@ export function initialCustomerOrderStatus(orderType: "delivery" | "taxi" | "wos
   return orderType === "delivery" && lines.length > 0 && lines.every(line => line.priceKnown && line.unitPrice > 0) ? "preparing" : "pending";
 }
 
+/** Products لحظة sells itself: no store, created from the admin panel (seed placeholders are excluded), priced. */
+function lahzaProductCondition(city: CityKey) {
+  return and(
+    isNull(catalogItems.storeId),
+    like(catalogItems.code, "custom-%"),
+    gt(catalogItems.unitPrice, 0),
+    city === "jarabulus" ? eq(catalogItems.city, "jarabulus") : or(isNull(catalogItems.city), eq(catalogItems.city, "manbij")),
+  );
+}
+
+const LAHZA_STORE_NAME = "لحظة";
+
 async function findStoreForCatalog(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, storeId: number | undefined, category: LahzaCategory) {
   if (!storeId) return null;
   const found = await db.select().from(stores).where(eq(stores.id, storeId)).limit(1);
@@ -1645,7 +1731,7 @@ export const lahzaRouter = router({
       const ticker = readTickerSettings(settings);
       // The stored defaults promise a contest prize, so until the owner writes
       // their own text the customer sees a plain greeting instead.
-      return { ...ticker, ...readEventSettings(settings), tickerPrimary: ticker.tickerPrimary === DEFAULT_TICKER_PRIMARY ? "لم يفوتك أي جديد" : ticker.tickerPrimary, tickerSecondary: ticker.tickerSecondary === DEFAULT_TICKER_SECONDARY ? `اهلا بكم في مدينة ${cityLabel}` : ticker.tickerSecondary };
+      return { ...ticker, ...readEventSettings(settings), wosselLiEnabled: Boolean(settings.wosselLiEnabled), tickerPrimary: ticker.tickerPrimary === DEFAULT_TICKER_PRIMARY ? "لم يفوتك أي جديد" : ticker.tickerPrimary, tickerSecondary: ticker.tickerSecondary === DEFAULT_TICKER_SECONDARY ? `اهلا بكم في مدينة ${cityLabel}` : ticker.tickerSecondary };
     }),
   }),
   deliveryFees: router({
@@ -1813,7 +1899,19 @@ export const lahzaRouter = router({
     }),
   }),
   delivery: router({
-    quote: publicProcedure.input(z.object({ locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180), originLat: coordinateSchema.min(-90).max(90).optional(), originLng: coordinateSchema.min(-180).max(180).optional() })).mutation(async ({ input }) => getDrivingQuote(input.locationLat, input.locationLng, input.originLat, input.originLng)),
+    quote: publicProcedure.input(z.object({ locationLat: coordinateSchema.min(-90).max(90), locationLng: coordinateSchema.min(-180).max(180), originLat: coordinateSchema.min(-90).max(90).optional(), originLng: coordinateSchema.min(-180).max(180).optional(), catalogItemIds: z.array(z.number().int().positive()).max(30).optional() })).mutation(async ({ ctx, input }) => {
+      // Price from the cart's own store, the way orders.create does, so the
+      // quote never depends on which store screen the customer came from.
+      const service = ctx.city === "jarabulus" ? "jarabulus_gateway" as const : "manbij_store" as const;
+      if (input.catalogItemIds?.length) {
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const rows = await db.select({ id: catalogItems.id, city: stores.city, locationLat: stores.locationLat, locationLng: stores.locationLng }).from(catalogItems).innerJoin(stores, eq(catalogItems.storeId, stores.id)).where(inArray(catalogItems.id, input.catalogItemIds));
+        const origin = deliveryOrigin(await getSettings(), input.catalogItemIds.map(id => rows.find(row => row.id === id)), ctx.city);
+        return getDrivingQuote(input.locationLat, input.locationLng, origin.latitude, origin.longitude, service, ctx.city);
+      }
+      return getDrivingQuote(input.locationLat, input.locationLng, input.originLat, input.originLng, service, ctx.city);
+    }),
   }),
   driverAuth: router({
     session: publicProcedure.query(async ({ ctx }) => {
@@ -1905,6 +2003,7 @@ export const lahzaRouter = router({
         available: input.available,
         deleted: false,
         storeId: store?.id ?? null,
+        city: store ? null : ctx.city,
         customCategoryId: customCategory?.id ?? null,
         imageUrl: input.imageUrl || null,
       });
@@ -2065,10 +2164,14 @@ export const lahzaRouter = router({
         ))
         .orderBy(desc(catalogItems.available), stores.name, catalogItems.name)
         .limit(30);
-      return results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen === null ? true : effectiveStoreOpen(result.storeOpen, result.workHours) }));
+      const lahzaResults = await db.select({ id: catalogItems.id, name: catalogItems.name, unit: catalogItems.unit, unitPrice: catalogItems.unitPrice, available: catalogItems.available, category: catalogItems.category }).from(catalogItems).where(and(lahzaProductCondition(ctx.city), eq(catalogItems.deleted, false), sql`LOWER(${catalogItems.name}) LIKE LOWER(${pattern})`)).limit(20);
+      return [
+        ...lahzaResults.map(result => ({ id: result.id, name: result.name, unit: result.unit, unitPrice: result.unitPrice, available: result.available, storeId: 0, storeName: LAHZA_STORE_NAME, storeCategory: result.category, storeImageUrl: null, storeOpen: true, workHours: null, price: toNewSyp(result.unitPrice) })),
+        ...results.map(result => ({ ...result, price: toNewSyp(result.unitPrice), storeOpen: result.storeOpen === null ? true : effectiveStoreOpen(result.storeOpen, result.workHours) })),
+      ];
     }),
     /** Product-first listing for everyday categories: every visible store's products, open stores first. */
-    categoryProducts: publicProcedure.input(z.object({ category: z.enum(productFirstCategories) })).query(async ({ ctx, input }) => {
+    categoryProducts: publicProcedure.input(z.object({ category: z.enum(storeCategories) })).query(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       await ensureCatalogItemSchema(db);
@@ -2096,7 +2199,12 @@ export const lahzaRouter = router({
         ))
         .orderBy(catalogItems.name, stores.name)
         .limit(300);
-      return rows
+      // Store-based categories (restaurants, gas...) only list لحظة's own products here; their stores have their own screen.
+      const storeRows = (productFirstCategories as readonly string[]).includes(input.category) ? rows : [];
+      const lahzaRows = await db.select().from(catalogItems).where(and(lahzaProductCondition(ctx.city), eq(catalogItems.category, input.category), eq(catalogItems.deleted, false), eq(catalogItems.available, true))).orderBy(catalogItems.name).limit(100);
+      return [
+        ...lahzaRows.map(product => ({ ...product, storeId: 0, storeName: LAHZA_STORE_NAME, storeCategory: product.category, storeImageUrl: null, storeOpen: true })),
+        ...storeRows
         .map(row => ({
           ...row.product,
           storeId: row.storeId,
@@ -2105,7 +2213,8 @@ export const lahzaRouter = router({
           storeImageUrl: row.partnerImageUrl || row.storeImageUrl,
           storeOpen: row.partnerStoreOpen === null ? true : effectiveStoreOpen(row.partnerStoreOpen, row.workHours),
         }))
-        .sort((a, b) => Number(b.storeOpen) - Number(a.storeOpen));
+        .sort((a, b) => Number(b.storeOpen) - Number(a.storeOpen)),
+      ];
     }),
     availability: publicProcedure.input(z.object({ storeId: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
@@ -2594,7 +2703,10 @@ export const lahzaRouter = router({
       // Only a registered customer orders, and only for the number their WhatsApp code proved.
       await requireCustomerPhone(ctx, input.customerPhone);
       const db = await ensureCatalogSeed();
-      if (input.orderType === "wossel_li") await ensureWosselLiOrderTypeSchema(db);
+      if (input.orderType === "wossel_li") {
+        if (!(await getSettings()).wosselLiEnabled) throw new Error("خدمة وصّل لي غير متاحة حالياً، وستتوفر قريباً");
+        await ensureWosselLiOrderTypeSchema(db);
+      }
       const orderCity = ctx.city;
       if (input.orderCity && input.orderCity !== orderCity) throw new Error("المدينة المختارة للطلب غير مطابقة لواجهة التطبيق");
       if (input.orderType === "taxi" && orderCity === "jarabulus") throw new Error("خدمة سيارات الأجرة المحلية غير متاحة في بوابة جرابلس حالياً");
@@ -2606,7 +2718,10 @@ export const lahzaRouter = router({
       const productStoreIds = Array.from(new Set(products.flatMap(product => product.storeId ? [product.storeId] : [])));
       const productStores = productStoreIds.length ? await db.select({ id: stores.id, city: stores.city, active: stores.active, jarabulusGatewayEnabled: stores.jarabulusGatewayEnabled, locationLat: stores.locationLat, locationLng: stores.locationLng, name: stores.name }).from(stores).where(inArray(stores.id, productStoreIds)) : [];
       const storeById = new Map(productStores.map(store => [store.id, store]));
-      if (input.orderType === "delivery" && orderCity === "jarabulus" && products.some(product => !product.storeId || !isStoreVisibleInCustomerCity(storeById.get(product.storeId) ?? { city: "jarabulus", jarabulusGatewayEnabled: false }, "jarabulus"))) {
+      if (input.orderType === "delivery" && products.some(product => !product.storeId && (product.city ?? "manbij") !== orderCity)) {
+        throw new Error("بعض منتجات لحظة في سلتك تخص مدينة أخرى، حدّث السلة ثم أعد الطلب");
+      }
+      if (input.orderType === "delivery" && orderCity === "jarabulus" && products.some(product => product.storeId && !isStoreVisibleInCustomerCity(storeById.get(product.storeId) ?? { city: "jarabulus", jarabulusGatewayEnabled: false }, "jarabulus"))) {
         throw new Error("يمكن طلب منتجات متاجر منبج المعتمدة لبوابة جرابلس فقط");
       }
       const partnerIds = Array.from(new Set(products.flatMap(product => product.partnerId ? [product.partnerId] : [])));
@@ -2697,11 +2812,10 @@ export const lahzaRouter = router({
         deliveryFee = calculatePercentageDeliveryFee(itemsTotal, settings.jarabulusDeliveryPercent);
         totalAmount = finalItemsTotal + deliveryFee;
       } else if (input.orderType === "delivery") {
-        const deliveryStore = resolvedLines.map(line => line.catalogItemId ? productMap.get(line.catalogItemId)?.storeId : null).map(storeId => storeId ? storeById.get(storeId) : null).find((store): store is typeof productStores[number] => Boolean(store));
-        if (!deliveryStore?.locationLat || !deliveryStore.locationLng || input.locationLat === undefined || input.locationLng === undefined) {
-          throw new Error("تعذر حساب رسوم التوصيل: تأكد من تحديد موقعك وأن المتجر يملك إحداثيات صحيحة");
-        }
-        const route = await getRoadRoute({ latitude: deliveryStore.locationLat / 1_000_000, longitude: deliveryStore.locationLng / 1_000_000 }, { latitude: input.locationLat, longitude: input.locationLng });
+        if (input.locationLat === undefined || input.locationLng === undefined) throw new Error("تعذر حساب رسوم التوصيل: حدد موقعك عبر زر تحديد موقعي");
+        const cartStores = resolvedLines.map(line => line.catalogItemId ? productMap.get(line.catalogItemId)?.storeId : null).map(storeId => storeId ? storeById.get(storeId) : undefined);
+        const origin = deliveryOrigin(settings, cartStores, orderCity);
+        const route = await getRoadRoute(origin, { latitude: input.locationLat, longitude: input.locationLng });
         routeDurationSeconds = route.durationSeconds;
         deliveryDistanceMeters = Math.round(route.distanceMeters + 2_000);
         const service = fulfillmentScope === "manbij_to_jarabulus"
@@ -2956,6 +3070,11 @@ export const lahzaRouter = router({
       automaticCreate: publicProcedure.input(z.object({ scope: z.enum(["all", "store"]), storeId: z.number().int().positive().nullable().optional(), discountPercent: z.number().int().min(1).max(100), startsAt: z.string().datetime().optional(), expiresAt: z.string().datetime().optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); if (input.scope === "store" && !input.storeId) throw new Error("اختر المتجر المحدد للخصم"); await db.insert(automaticDiscounts).values({ scope: input.scope, storeId: input.scope === "store" ? input.storeId ?? null : null, discountPercent: input.discountPercent, active: true, startsAt: input.startsAt ? new Date(input.startsAt) : null, expiresAt: input.expiresAt ? new Date(input.expiresAt) : null }); return { success: true }; }),
       automaticToggle: publicProcedure.input(z.object({ id: z.number().int().positive(), active: z.boolean() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); await db.update(automaticDiscounts).set({ active: input.active }).where(eq(automaticDiscounts.id, input.id)); return { success: true }; }),
       automaticRemove: publicProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureAutomaticDiscountSchema(db); await db.delete(automaticDiscounts).where(eq(automaticDiscounts.id, input.id)); return { success: true }; }),
+    }),
+    lahzaProducts: publicProcedure.query(async ({ ctx }) => {
+      await requireAdmin(ctx);
+      const db = await ensureCatalogSeed();
+      return db.select().from(catalogItems).where(and(isNull(catalogItems.storeId), like(catalogItems.code, "custom-%"), eq(catalogItems.deleted, false), ctx.city === "jarabulus" ? eq(catalogItems.city, "jarabulus") : or(isNull(catalogItems.city), eq(catalogItems.city, "manbij")))).orderBy(catalogItems.category, catalogItems.name);
     }),
     categories: router({
       list: publicProcedure.query(async ({ ctx }) => {
@@ -3313,14 +3432,20 @@ export const lahzaRouter = router({
           jarabulusGatewayPricePerKm: settings.jarabulusGatewayPricePerKm ?? settings.deliveryPricePerKm ?? 2,
           jarabulusGatewayMinutesPerKm: settings.jarabulusGatewayMinutesPerKm ?? 2,
           wosselLiMinutesPerKm: settings.wosselLiMinutesPerKm ?? 5,
+          manbijCenterLat: cityCenter(settings, "manbij").latitude, manbijCenterLng: cityCenter(settings, "manbij").longitude,
+          jarabulusCenterLat: cityCenter(settings, "jarabulus").latitude, jarabulusCenterLng: cityCenter(settings, "jarabulus").longitude,
+          wosselLiEnabled: Boolean(settings.wosselLiEnabled),
         };
       }),
-      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, driverPayMode: z.enum(["percent", "fixed"]).default("percent"), driverFixedFee: newSypMoneyInput.max(10_000_000).default(0), storeCommissionPercent: deliveryPercentInput.default(0), driverDispatchTimeoutMinutes: z.literal(DRIVER_DISPATCH_WINDOW_MINUTES).default(DRIVER_DISPATCH_WINDOW_MINUTES), pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440) })).mutation(async ({ ctx, input }) => {
+      update: publicProcedure.input(z.object({ manbijPercent: deliveryPercentInput, jarabulusPercent: deliveryPercentInput, jarabulusMinimumOrder: newSypMoneyInput.min(1).max(10_000_000).optional().default(500), jarabulusPreparationMinutes: z.number().int().min(0).max(1440).optional().default(120), pointsRewardPercent: deliveryPercentInput, driverPercent: deliveryPercentInput, driverPayMode: z.enum(["percent", "fixed"]).default("percent"), driverFixedFee: newSypMoneyInput.max(10_000_000).default(0), storeCommissionPercent: deliveryPercentInput.default(0), driverDispatchTimeoutMinutes: z.literal(DRIVER_DISPATCH_WINDOW_MINUTES).default(DRIVER_DISPATCH_WINDOW_MINUTES), pricePerKm: newSypMoneyInput.min(1).max(10_000_000), wosselLiPricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), manbijStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusStorePricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusStoreMinutesPerKm: z.number().int().min(0).max(1440), jarabulusGatewayPricePerKm: newSypMoneyInput.min(1).max(10_000_000), jarabulusGatewayMinutesPerKm: z.number().int().min(0).max(1440), wosselLiMinutesPerKm: z.number().int().min(0).max(1440), manbijCenterLat: coordinateSchema.min(-90).max(90).optional(), manbijCenterLng: coordinateSchema.min(-180).max(180).optional(), jarabulusCenterLat: coordinateSchema.min(-90).max(90).optional(), jarabulusCenterLng: coordinateSchema.min(-180).max(180).optional(), wosselLiEnabled: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         await ensureJarabulusGatewaySchema(db);
-        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, driverPayMode: input.driverPayMode, driverFixedFee: input.driverFixedFee, storeCommissionPercent: input.storeCommissionPercent, driverDispatchTimeoutMinutes: DRIVER_DISPATCH_WINDOW_MINUTES, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm }).where(eq(systemSettings.id, 1));
+        await db.update(systemSettings).set({ manbijDeliveryPercent: input.manbijPercent, jarabulusDeliveryPercent: input.jarabulusPercent, jarabulusMinimumOrder: input.jarabulusMinimumOrder, jarabulusPreparationMinutes: input.jarabulusPreparationMinutes, pointsRewardPercent: input.pointsRewardPercent, driverDeliveryPercent: input.driverPercent, driverPayMode: input.driverPayMode, driverFixedFee: input.driverFixedFee, storeCommissionPercent: input.storeCommissionPercent, driverDispatchTimeoutMinutes: DRIVER_DISPATCH_WINDOW_MINUTES, deliveryPricePerKm: input.pricePerKm, wosselLiPricePerKm: input.wosselLiPricePerKm, manbijStorePricePerKm: input.manbijStorePricePerKm, manbijStoreMinutesPerKm: input.manbijStoreMinutesPerKm, jarabulusStorePricePerKm: input.jarabulusStorePricePerKm, jarabulusStoreMinutesPerKm: input.jarabulusStoreMinutesPerKm, jarabulusGatewayPricePerKm: input.jarabulusGatewayPricePerKm, jarabulusGatewayMinutesPerKm: input.jarabulusGatewayMinutesPerKm, wosselLiMinutesPerKm: input.wosselLiMinutesPerKm,
+          ...(input.wosselLiEnabled === undefined ? {} : { wosselLiEnabled: input.wosselLiEnabled }),
+          ...(input.manbijCenterLat === undefined || input.manbijCenterLng === undefined ? {} : { originLatE6: Math.round(input.manbijCenterLat * 1_000_000), originLngE6: Math.round(input.manbijCenterLng * 1_000_000) }),
+          ...(input.jarabulusCenterLat === undefined || input.jarabulusCenterLng === undefined ? {} : { jarabulusOriginLatE6: Math.round(input.jarabulusCenterLat * 1_000_000), jarabulusOriginLngE6: Math.round(input.jarabulusCenterLng * 1_000_000) }) }).where(eq(systemSettings.id, 1));
         return { success: true };
       }),
     }),

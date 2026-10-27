@@ -657,3 +657,20 @@
 .lahza-service-card { border: 1px solid var(--lz-panel-line) !important; background: var(--lz-panel) !important; box-shadow: 0 10px 22px -22px rgba(120,60,20,.6); }
 .lahza-service-card-teal > span:first-child { background: var(--lz-teal) !important; }
 .lahza-service-card-orange > span:first-child { background: var(--lz-orange) !important; }
+
+/* Home news ticker: the owner's two lines scroll under the search bar. */
+.lahza-home-ticker-wrap { margin-top: .65rem; }
+.lahza-home-ticker { display: flex; align-items: center; gap: .5rem; overflow: hidden; border-radius: 999px; padding: .42rem .75rem; color: #fff; background: #00666b; box-shadow: 0 .35rem .9rem rgba(0, 102, 107, .18); }
+.lahza-home-ticker-icon { flex: 0 0 auto; color: #ffb27d; }
+.lahza-home-ticker-window { flex: 1 1 auto; min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+.lahza-home-ticker-track { display: flex; width: max-content; animation: lahza-ticker-scroll 22s linear infinite; }
+.lahza-home-ticker-track span { flex: 0 0 auto; padding-inline: 1.4rem; font-size: .82rem; font-weight: 700; white-space: nowrap; }
+.lahza-home-ticker-track span::before { content: "•"; margin-inline-end: 1.4rem; color: #ffb27d; }
+/* In RTL the track sits at the right edge; moving it right by half reveals the copy, so the loop is seamless. */
+@keyframes lahza-ticker-scroll { from { transform: translateX(0); } to { transform: translateX(50%); } }
+@media (prefers-reduced-motion: reduce) { .lahza-home-ticker-track { animation: none; } }
+
+/* A service that is not open yet: greyed out, not tappable, marked "قريباً". */
+.lahza-service-soon { filter: grayscale(1); opacity: .55; cursor: not-allowed; }
+.lahza-service-soon small { font-weight: 800; }
+.lahza-soon-badge { display: inline-flex; width: fit-content; border-radius: 999px; padding: .1rem .6rem; color: #fff !important; background: #8a8f93; }
