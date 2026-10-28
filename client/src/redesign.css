@@ -711,3 +711,8 @@
 .lahza-app-shell .product-image-card > strong { min-height: 0 !important; }
 .lahza-app-shell .product-card-store { margin-top: auto !important; padding-top: .3rem; }
 .lahza-app-shell .product-card-footer { margin-top: .25rem !important; padding-top: 0 !important; }
+
+/* Delivery quote shown before moving to the order review */
+.delivery-quote-summary { display: flex; justify-content: space-between; gap: .75rem; margin: 0 0 .25rem; padding: .8rem 1rem; border-radius: 1.1rem; background: #fff4ec; color: #63301b; font-size: .8rem; font-weight: 700; }
+.delivery-quote-summary b { margin-inline-start: .3rem; font-weight: 900; color: #e95e2a; }
+.primary-full-button:disabled { opacity: .75; cursor: progress; }
