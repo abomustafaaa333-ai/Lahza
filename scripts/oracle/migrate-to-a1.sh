@@ -72,13 +72,15 @@ create() {
     for attempt in $(seq 1 600); do
       [ -z "${NEW_ID:-}" ] || break
       fd=${fds[$((attempt % 3))]}
-      if id=$(oci compute instance launch --no-retry -c "$comp" --availability-domain "$ad" --fault-domain "$fd" --subnet-id "$subnet" \
+      if oci compute instance launch --no-retry -c "$comp" --availability-domain "$ad" --fault-domain "$fd" --subnet-id "$subnet" \
           --shape VM.Standard.A1.Flex --shape-config "{\"ocpus\":$ocpus,\"memoryInGBs\":$mem}" \
           --image-id "$image" --assign-public-ip true --display-name lahza-a1 --boot-volume-size-in-gbs 50 \
           --ssh-authorized-keys-file "$STATE_DIR/key.pub" --wait-for-state RUNNING \
-          --query 'data.id' --raw-output 2>"$STATE_DIR/launch.err"); then
-        save NEW_ID "$id"; NEW_ID=$id; break
+          --query 'data.id' --raw-output >"$STATE_DIR/launch.out" 2>"$STATE_DIR/launch.err"; then
+        id=$(grep -o 'ocid1\.instance[^ "]*' "$STATE_DIR/launch.out" | tail -1)
+        if [ -n "$id" ]; then save NEW_ID "$id"; NEW_ID=$id; break; fi
       fi
+      cat "$STATE_DIR/launch.out" >> "$STATE_DIR/launch.err" 2>/dev/null || true
       # A launch that went through despite an error must not be repeated.
       found=$(oci compute instance list -c "$comp" --display-name lahza-a1 --all \
         --query 'data[?"lifecycle-state"!=`TERMINATED` && "lifecycle-state"!=`TERMINATING`] | [0].id' --raw-output 2>/dev/null || true)
@@ -86,12 +88,18 @@ create() {
         oci compute instance get --instance-id "$found" --wait-for-state RUNNING >/dev/null
         save NEW_ID "$found"; NEW_ID=$found; break
       fi
-      if grep -Eqi 'TooManyRequests|"status": 429' "$STATE_DIR/launch.err"; then
-        log "Attempt $attempt ($fd): Oracle says too many requests, waiting $((wait * 2))s"; sleep $((wait * 2))
+      if grep -Eqi 'LimitExceeded|QuotaExceeded' "$STATE_DIR/launch.err"; then
+        cat "$STATE_DIR/launch.err" >&2; die "the account's A1 limit is used up (another A1 VM, or more than 4 OCPU / 24 GB requested)"
+      elif grep -Eqi 'NotAuthorized|InvalidParameter|"status": 400' "$STATE_DIR/launch.err"; then
+        cat "$STATE_DIR/launch.err" >&2; die "Oracle rejected the request"
+      elif grep -Eqi 'TooManyRequests|"status": 429' "$STATE_DIR/launch.err"; then
+        log "Attempt $attempt ($fd): Oracle says too many requests, waiting $((wait * 3))s"; sleep $((wait * 3))
       elif grep -Eqi 'capacity|"status": 500|InternalError' "$STATE_DIR/launch.err"; then
         log "Attempt $attempt ($fd): no free A1 slot yet, retrying in ${wait}s (you can leave this running)"; sleep "$wait"
       else
-        cat "$STATE_DIR/launch.err" >&2; die "could not create the VM"
+        # Timeouts and dropped connections leave little or no message; they are worth another try too.
+        log "Attempt $attempt ($fd): $(grep -m1 -Ei 'message|error' "$STATE_DIR/launch.err" | tr -s ' ' | cut -c1-120 || echo 'no answer from Oracle'), retrying in ${wait}s"
+        sleep "$wait"
       fi
     done
     [ -n "${NEW_ID:-}" ] || die "still no A1 slot after many tries; run create again later, or with a smaller size: create <old-ip> 2 12"
