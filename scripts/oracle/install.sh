@@ -85,10 +85,15 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
-log "App: downloading branch $BRANCH and building (this takes 15-40 minutes on a small VM)"
-rm -rf "$BASE/src"
-git clone --quiet --depth 1 -b "$BRANCH" "$REPO" "$BASE/src"
-docker build -t lahza-app "$BASE/src"
+# migrate-to-a1.sh builds the image before the move, so the cutover skips it.
+if [ "${LAHZA_SKIP_BUILD:-}" = 1 ] && docker image inspect lahza-app >/dev/null 2>&1; then
+  log "App: using the image that is already built"
+else
+  log "App: downloading branch $BRANCH and building (this takes 15-40 minutes on a small VM)"
+  rm -rf "$BASE/src"
+  git clone --quiet --depth 1 -b "$BRANCH" "$REPO" "$BASE/src"
+  docker build -t lahza-app "$BASE/src"
+fi
 docker rm -f lahza-app >/dev/null 2>&1 || true
 # Start node directly: the server runs the migrations itself over TLS, and the
 # image's default command also runs drizzle-kit, which races it on a new DB.
