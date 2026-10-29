@@ -4,6 +4,7 @@
 # OCI CLI login. Each step is short; the long build runs detached on the new VM.
 #
 #   bash migrate-to-a1.sh create <old-ip> [ocpus] [memory-gb]   new VM + start the build there
+#                          (RETRY_SECONDS=20 bash ... sets the wait between A1 attempts; default 30)
 #   bash migrate-to-a1.sh status                                  progress of that build
 #   bash migrate-to-a1.sh move <domain>                           stop old app, copy data, start new
 #   bash migrate-to-a1.sh dns <duckdns-subdomain>                 point DuckDNS at the new VM (asks for the token)
@@ -65,18 +66,30 @@ create() {
       save NEW_ID "$id"; NEW_ID=$id
     fi
     [ -n "${NEW_ID:-}" ] || log "Creating VM.Standard.A1.Flex ($ocpus OCPU, $mem GB). This takes 2-5 minutes; keep this window open. If Oracle has no free A1 capacity right now, it retries every minute"
-    for attempt in $(seq 1 120); do
+    # --no-retry returns each attempt at once (the CLI otherwise retries for minutes);
+    # the fault domain rotates so every pool in the region gets tried.
+    local wait=${RETRY_SECONDS:-30} fds=(FAULT-DOMAIN-1 FAULT-DOMAIN-2 FAULT-DOMAIN-3) fd found
+    for attempt in $(seq 1 600); do
       [ -z "${NEW_ID:-}" ] || break
-      if id=$(oci compute instance launch -c "$comp" --availability-domain "$ad" --subnet-id "$subnet" \
+      fd=${fds[$((attempt % 3))]}
+      if id=$(oci compute instance launch --no-retry -c "$comp" --availability-domain "$ad" --fault-domain "$fd" --subnet-id "$subnet" \
           --shape VM.Standard.A1.Flex --shape-config "{\"ocpus\":$ocpus,\"memoryInGBs\":$mem}" \
           --image-id "$image" --assign-public-ip true --display-name lahza-a1 --boot-volume-size-in-gbs 50 \
           --ssh-authorized-keys-file "$STATE_DIR/key.pub" --wait-for-state RUNNING \
           --query 'data.id' --raw-output 2>"$STATE_DIR/launch.err"); then
         save NEW_ID "$id"; NEW_ID=$id; break
       fi
-      # Busy A1 pools answer "Out of host capacity" or 429/500; both clear up on their own.
-      if grep -Eqi 'capacity|TooManyRequests|"status": (429|500)|InternalError' "$STATE_DIR/launch.err"; then
-        log "Attempt $attempt: Oracle has no free A1 slot right now, retrying in 90s (you can leave this running)"; sleep 90
+      # A launch that went through despite an error must not be repeated.
+      found=$(oci compute instance list -c "$comp" --display-name lahza-a1 --all \
+        --query 'data[?"lifecycle-state"!=`TERMINATED` && "lifecycle-state"!=`TERMINATING`] | [0].id' --raw-output 2>/dev/null || true)
+      if [ -n "$found" ] && [ "$found" != null ]; then
+        oci compute instance get --instance-id "$found" --wait-for-state RUNNING >/dev/null
+        save NEW_ID "$found"; NEW_ID=$found; break
+      fi
+      if grep -Eqi 'TooManyRequests|"status": 429' "$STATE_DIR/launch.err"; then
+        log "Attempt $attempt ($fd): Oracle says too many requests, waiting $((wait * 2))s"; sleep $((wait * 2))
+      elif grep -Eqi 'capacity|"status": 500|InternalError' "$STATE_DIR/launch.err"; then
+        log "Attempt $attempt ($fd): no free A1 slot yet, retrying in ${wait}s (you can leave this running)"; sleep "$wait"
       else
         cat "$STATE_DIR/launch.err" >&2; die "could not create the VM"
       fi
@@ -204,5 +217,5 @@ retire() {
 cmd=${1:-}; shift || true
 case "$cmd" in
   create|status|move|dns|check|rollback|retire) "$cmd" "$@" ;;
-  *) sed -n '2,13p' "$0"; exit 1 ;;
+  *) sed -n '2,14p' "$0"; exit 1 ;;
 esac
