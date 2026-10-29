@@ -11,6 +11,7 @@
 #   bash migrate-to-a1.sh rollback                                restart the app on the old VM
 #   bash migrate-to-a1.sh retire                                  delete the old VM once the new one is fine
 set -euo pipefail
+trap 'echo "ERROR: stopped at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 STATE_DIR="$HOME/lahza-migrate"
 STATE="$STATE_DIR/state"
@@ -55,8 +56,17 @@ create() {
     [ -n "$image" ] && [ "$image" != null ] || die "no Ubuntu 24.04 ARM image found"
     ssh-keygen -y -f "$KEY" > "$STATE_DIR/key.pub"
 
-    log "Creating VM.Standard.A1.Flex ($ocpus OCPU, $mem GB). If Oracle has no free A1 capacity right now, this retries every minute"
+    # A run that was interrupted may already have created the VM; never make a second one.
+    id=$(oci compute instance list -c "$comp" --display-name lahza-a1 --all \
+      --query 'data[?"lifecycle-state"!=`TERMINATED` && "lifecycle-state"!=`TERMINATING`] | [0].id' --raw-output 2>/dev/null || true)
+    if [ -n "$id" ] && [ "$id" != null ]; then
+      log "Found the A1 VM from an earlier run; waiting until it is running"
+      oci compute instance get --instance-id "$id" --wait-for-state RUNNING >/dev/null
+      save NEW_ID "$id"; NEW_ID=$id
+    fi
+    [ -n "${NEW_ID:-}" ] || log "Creating VM.Standard.A1.Flex ($ocpus OCPU, $mem GB). This takes 2-5 minutes; keep this window open. If Oracle has no free A1 capacity right now, it retries every minute"
     for attempt in $(seq 1 60); do
+      [ -z "${NEW_ID:-}" ] || break
       if id=$(oci compute instance launch -c "$comp" --availability-domain "$ad" --subnet-id "$subnet" \
           --shape VM.Standard.A1.Flex --shape-config "{\"ocpus\":$ocpus,\"memoryInGBs\":$mem}" \
           --image-id "$image" --assign-public-ip true --display-name lahza-a1 --boot-volume-size-in-gbs 50 \
