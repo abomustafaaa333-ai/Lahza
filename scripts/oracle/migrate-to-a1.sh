@@ -5,6 +5,8 @@
 #
 #   bash migrate-to-a1.sh create <old-ip> [ocpus] [memory-gb]   new VM + start the build there
 #                          (RETRY_SECONDS=20 bash ... sets the wait between A1 attempts; default 30)
+#   bash migrate-to-a1.sh hunt <old-ip> <whatsapp> [ocpus] [gb]  keep trying on the old VM, even with Cloud Shell closed
+#   bash migrate-to-a1.sh hunt-status | hunt-stop                 follow or stop that search
 #   bash migrate-to-a1.sh status                                  progress of that build
 #   bash migrate-to-a1.sh move <domain>                           stop old app, copy data, start new
 #   bash migrate-to-a1.sh dns <duckdns-subdomain>                 point DuckDNS at the new VM (asks for the token)
@@ -28,34 +30,38 @@ KEY=$(ls "$HOME"/ssh-key-*.key 2>/dev/null | head -1)
 SSH_OPTS=(-i "$KEY" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ConnectTimeout=15)
 on() { local ip=$1; shift; ssh "${SSH_OPTS[@]}" "ubuntu@$ip" "$@"; }
 
+# Sets comp, ad, subnet and image from the old VM, and writes the SSH public key.
+discover() {
+  local old_ip=$1 c=$OCI_TENANCY id ip
+  comp=""; ad=""; subnet=""; image=""
+  log "Finding the old VM ($old_ip) to reuse its network"
+  for id in $(oci compute instance list -c "$c" --all --lifecycle-state RUNNING --query 'data[].id' --raw-output | tr -d '[],"'); do
+    ip=$(oci compute instance list-vnics --instance-id "$id" --query 'data[0]."public-ip"' --raw-output 2>/dev/null || true)
+    if [ "$ip" = "$old_ip" ]; then
+      subnet=$(oci compute instance list-vnics --instance-id "$id" --query 'data[0]."subnet-id"' --raw-output)
+      ad=$(oci compute instance get --instance-id "$id" --query 'data."availability-domain"' --raw-output)
+      comp=$(oci compute instance get --instance-id "$id" --query 'data."compartment-id"' --raw-output)
+      save OLD_ID "$id"
+      break
+    fi
+  done
+  [ -n "$subnet" ] || die "no running VM has the public IP $old_ip"
+  image=$(oci compute image list -c "$c" --operating-system "Canonical Ubuntu" --operating-system-version "24.04" \
+    --shape VM.Standard.A1.Flex --sort-by TIMECREATED --sort-order DESC --all \
+    --query "data[?!contains(\"display-name\", 'Minimal')] | [0].id" --raw-output)
+  [ -n "$image" ] && [ "$image" != null ] || die "no Ubuntu 24.04 ARM image found"
+  ssh-keygen -y -f "$KEY" > "$STATE_DIR/key.pub"
+}
+
 create() {
   local old_ip=${1:?usage: create <old-ip> [ocpus] [memory-gb]} ocpus=${2:-4} mem=${3:-24}
-  local c=$OCI_TENANCY id ip=""
+  local id
   save OLD_IP "$old_ip"
 
   if [ -n "${NEW_ID:-}" ] && [ "$(oci compute instance get --instance-id "$NEW_ID" --query 'data."lifecycle-state"' --raw-output 2>/dev/null)" = RUNNING ]; then
     log "The A1 VM already exists"
   else
-    log "Finding the old VM ($old_ip) to reuse its network"
-    local subnet="" ad="" comp=""
-    for id in $(oci compute instance list -c "$c" --all --lifecycle-state RUNNING --query 'data[].id' --raw-output | tr -d '[],"'); do
-      ip=$(oci compute instance list-vnics --instance-id "$id" --query 'data[0]."public-ip"' --raw-output 2>/dev/null || true)
-      if [ "$ip" = "$old_ip" ]; then
-        subnet=$(oci compute instance list-vnics --instance-id "$id" --query 'data[0]."subnet-id"' --raw-output)
-        ad=$(oci compute instance get --instance-id "$id" --query 'data."availability-domain"' --raw-output)
-        comp=$(oci compute instance get --instance-id "$id" --query 'data."compartment-id"' --raw-output)
-        save OLD_ID "$id"
-        break
-      fi
-    done
-    [ -n "$subnet" ] || die "no running VM has the public IP $old_ip"
-
-    local image
-    image=$(oci compute image list -c "$c" --operating-system "Canonical Ubuntu" --operating-system-version "24.04" \
-      --shape VM.Standard.A1.Flex --sort-by TIMECREATED --sort-order DESC --all \
-      --query "data[?!contains(\"display-name\", 'Minimal')] | [0].id" --raw-output)
-    [ -n "$image" ] && [ "$image" != null ] || die "no Ubuntu 24.04 ARM image found"
-    ssh-keygen -y -f "$KEY" > "$STATE_DIR/key.pub"
+    discover "$old_ip"
 
     # A run that was interrupted may already have created the VM; never make a second one.
     id=$(oci compute instance list -c "$comp" --display-name lahza-a1 --all \
@@ -213,17 +219,88 @@ rollback() {
   log "The old VM serves again. If DuckDNS already points at the new VM, set it back to $OLD_IP"
 }
 
+# Installs a1-hunter.sh on the old VM as a service: it keeps trying for the A1 VM
+# with its own API key and messages the owner on WhatsApp when the VM exists.
+hunt() {
+  local old_ip=${1:?usage: hunt <old-ip> <whatsapp-number e.g. 963997311078> [ocpus] [memory-gb]}
+  local notify=${2:?usage: hunt <old-ip> <whatsapp-number> [ocpus] [memory-gb]} ocpus=${3:-2} mem=${4:-12} fp tmp
+  notify=${notify//[^0-9]/}
+  [[ "$notify" =~ ^[0-9]{9,15}$ ]] || die "the WhatsApp number needs the country code, digits only, e.g. 963997311078"
+  [ -n "${OCI_CS_USER_OCID:-}" ] || die "run this in OCI Cloud Shell"
+  save OLD_IP "$old_ip"; OLD_IP=$old_ip
+  discover "$old_ip"
+
+  if [ -z "${API_FP:-}" ] || [ ! -f "$STATE_DIR/api.pem" ]; then
+    log "Creating an API key for the old VM (it lets the VM ask Oracle for the A1 VM on its own)"
+    openssl genrsa -out "$STATE_DIR/api.pem" 2048 2>/dev/null && chmod 600 "$STATE_DIR/api.pem"
+    openssl rsa -in "$STATE_DIR/api.pem" -pubout -out "$STATE_DIR/api_pub.pem" 2>/dev/null
+    fp=$(oci iam user api-key upload --user-id "$OCI_CS_USER_OCID" --key-file "$STATE_DIR/api_pub.pem" --query 'data.fingerprint' --raw-output)
+    save API_FP "$fp"; API_FP=$fp
+  fi
+
+  log "Installing the Oracle CLI on the old VM (2-4 minutes)"
+  on "$OLD_IP" 'sudo bash -s' <<'SETUP'
+set -e
+export DEBIAN_FRONTEND=noninteractive
+[ -x /opt/oci-cli/bin/oci ] || { apt-get update -q >/dev/null && apt-get install -y -q python3-venv >/dev/null && python3 -m venv /opt/oci-cli && /opt/oci-cli/bin/pip install -q oci-cli; }
+mkdir -p /root/.oci /opt/lahza && chmod 700 /root/.oci
+SETUP
+  tmp=$(mktemp -d)
+  printf '[DEFAULT]\nuser=%s\nfingerprint=%s\ntenancy=%s\nregion=%s\nkey_file=/root/.oci/api.pem\n' \
+    "$OCI_CS_USER_OCID" "$API_FP" "$OCI_TENANCY" "${OCI_REGION:-eu-madrid-1}" > "$tmp/config"
+  printf 'COMP=%s\nAD=%s\nSUBNET=%s\nIMAGE=%s\nOCPUS=%s\nMEM=%s\nNOTIFY=%s\nOLD_IP=%s\n' \
+    "$comp" "$ad" "$subnet" "$image" "$ocpus" "$mem" "$notify" "$OLD_IP" > "$tmp/env"
+  printf '[Unit]\nDescription=Lahza: wait for the Always Free A1 VM\nAfter=network-online.target docker.service\n[Service]\nExecStart=/usr/local/bin/lahza-a1-hunt\nRestart=on-failure\nRestartSec=60\nStandardOutput=append:/var/log/lahza-hunt.log\nStandardError=append:/var/log/lahza-hunt.log\n[Install]\nWantedBy=multi-user.target\n' > "$tmp/service"
+  curl -fsSL "https://raw.githubusercontent.com/abomustafaaa333-ai/Lahza/main/scripts/oracle/a1-hunter.sh" -o "$tmp/hunter"
+  on "$OLD_IP" "sudo tee /root/.oci/config >/dev/null" < "$tmp/config"
+  on "$OLD_IP" "sudo tee /root/.oci/api.pem >/dev/null" < "$STATE_DIR/api.pem"
+  on "$OLD_IP" "sudo tee /etc/lahza-hunt.env >/dev/null" < "$tmp/env"
+  on "$OLD_IP" "sudo tee /etc/lahza-hunt.pub >/dev/null" < "$STATE_DIR/key.pub"
+  on "$OLD_IP" "sudo tee /usr/local/bin/lahza-a1-hunt >/dev/null" < "$tmp/hunter"
+  on "$OLD_IP" "sudo tee /etc/systemd/system/lahza-a1-hunt.service >/dev/null" < "$tmp/service"
+  rm -rf "$tmp"
+  on "$OLD_IP" 'sudo chmod 600 /root/.oci/config /root/.oci/api.pem /etc/lahza-hunt.env && sudo chmod 755 /usr/local/bin/lahza-a1-hunt'
+
+  log "Checking that the old VM can reach Oracle with that key"
+  local probe='sudo OCI_CLI_CONFIG_FILE=/root/.oci/config OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True /opt/oci-cli/bin/oci iam region list >/dev/null'
+  for _ in $(seq 1 12); do
+    on "$OLD_IP" "$probe 2>&1" && break
+    sleep 10   # a new API key can take a minute to work
+  done
+  on "$OLD_IP" "$probe" || die "the old VM cannot log in to Oracle with the new key"
+  on "$OLD_IP" 'sudo systemctl daemon-reload && sudo systemctl enable lahza-a1-hunt >/dev/null 2>&1 && sudo systemctl restart lahza-a1-hunt'
+  log "The search now runs on the old VM, even with Cloud Shell closed."
+  log "A WhatsApp message goes to +$notify now, and again when the A1 VM exists."
+  log "Progress: bash $0 hunt-status    Stop: bash $0 hunt-stop"
+}
+
+hunt_status() {
+  [ -n "${OLD_IP:-}" ] || die "run hunt first"
+  on "$OLD_IP" 'systemctl is-active lahza-a1-hunt; sudo tail -n 8 /var/log/lahza-hunt.log; sudo cat /opt/lahza/hunt.done 2>/dev/null' || true
+}
+
+hunt_stop() {
+  [ -n "${OLD_IP:-}" ] || die "run hunt first"
+  on "$OLD_IP" 'sudo systemctl disable --now lahza-a1-hunt' && log "The search is stopped"
+}
+
 retire() {
   [ -n "${OLD_ID:-}" ] || die "run create first"
   log "This deletes the old VM ($OLD_IP) and its disk for good."
   read -rp "Type DELETE to continue: " answer
   [ "$answer" = DELETE ] || die "cancelled"
   oci compute instance terminate --instance-id "$OLD_ID" --preserve-boot-volume false --force
+  if [ -n "${API_FP:-}" ]; then
+    oci iam user api-key delete --user-id "$OCI_CS_USER_OCID" --fingerprint "$API_FP" --force && log "Removed the old VM's API key"
+    rm -f "$STATE_DIR/api.pem" "$STATE_DIR/api_pub.pem"
+  fi
   log "The old VM is being deleted"
 }
 
 cmd=${1:-}; shift || true
 case "$cmd" in
-  create|status|move|dns|check|rollback|retire) "$cmd" "$@" ;;
-  *) sed -n '2,14p' "$0"; exit 1 ;;
+  create|status|move|dns|check|rollback|retire|hunt) "$cmd" "$@" ;;
+  hunt-status) hunt_status ;;
+  hunt-stop) hunt_stop ;;
+  *) sed -n '2,16p' "$0"; exit 1 ;;
 esac
