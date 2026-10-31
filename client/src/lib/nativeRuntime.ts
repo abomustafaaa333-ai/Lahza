@@ -1,5 +1,6 @@
 export type NativeLahzaBridge = {
   getVersionCode?: () => number | string;
+  getInstaller?: () => string;
   openExternal?: (url: string) => void;
 };
 

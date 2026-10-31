@@ -1105,6 +1105,12 @@ async function requireCustomerPhone(ctx: TrpcContext, phone: string) {
   return session;
 }
 
+/** REVIEW_PHONE (+963…) and REVIEW_OTP (6 digits) give app-store reviewers a login without WhatsApp. */
+function reviewLogin() {
+  const phone = process.env.REVIEW_PHONE?.trim(); const code = process.env.REVIEW_OTP?.trim();
+  return phone && code && /^\d{6}$/.test(code) ? { phone, code } : null;
+}
+
 async function setCustomerCookie(ctx: TrpcContext, customerPhone: string) {
   const token = await createCustomerSession({ customerPhone });
   ctx.res.cookie(CUSTOMER_COOKIE, token, { ...getSessionCookieOptions(ctx.req), maxAge: CUSTOMER_SESSION_MAX_AGE_MS });
@@ -2312,6 +2318,12 @@ export const lahzaRouter = router({
       console.info("Customer OTP request started", { phone: maskPhone(input.phone) });
       // OTP tables are provisioned in the production database. Avoid running DDL
       // on every public request because MySQL metadata locks can stall the API.
+      // Store reviewers (Google Play) cannot receive WhatsApp: their one review number gets a fixed code instead.
+      const review = reviewLogin();
+      if (review && input.phone === review.phone) {
+        memoryOtpCodes.set(input.phone, { codeHash: await hashSecret(review.code), expiresAt: Date.now() + 5 * 60_000, attempts: 0 });
+        return { success: true, expiresInSeconds: 300 };
+      }
       const code = String(Math.floor(100000 + Math.random() * 900000));
       const codeHash = await hashSecret(code);
       memoryOtpCodes.set(input.phone, { codeHash, expiresAt: Date.now() + 5 * 60_000, attempts: 0 });
@@ -2338,6 +2350,23 @@ export const lahzaRouter = router({
       ctx.res.clearCookie(CUSTOMER_COOKIE, getSessionCookieOptions(ctx.req));
       return { success: true };
     }),
+    /** Removes the signed-in customer's account and personal data; order records stay for accounting until the yearly cleanup. */
+    deleteMyAccount: publicProcedure.mutation(async ({ ctx }) => {
+      const session = await readCustomerSession(ctx);
+      if (!session) throw new Error("سجّل الدخول أولاً لحذف حسابك");
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const phone = session.customerPhone;
+      await db.delete(customerAccounts).where(eq(customerAccounts.phone, phone));
+      await db.delete(customerProfiles).where(eq(customerProfiles.phone, phone));
+      await db.delete(customerPoints).where(eq(customerPoints.customerPhone, phone));
+      await db.delete(pointTransactions).where(eq(pointTransactions.customerPhone, phone));
+      await db.delete(customerReferrals).where(eq(customerReferrals.ownerPhone, phone));
+      await db.delete(pushTokens).where(eq(pushTokens.customerPhone, phone));
+      ctx.res.clearCookie(CUSTOMER_COOKIE, getSessionCookieOptions(ctx.req));
+      console.info("Customer account deleted", { phone: maskPhone(phone) });
+      return { success: true };
+    }),
     register: publicProcedure.input(z.object({ phone: internationalPhoneSchema, name: z.string().trim().min(2).max(80), city: z.enum(["منبج", "جرابلس"]) })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
@@ -2346,7 +2375,7 @@ export const lahzaRouter = router({
         memoryOtpVerified.delete(input.phone);
         const existing = (await db.select().from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
         if (!existing) {
-          await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, city: input.city, status: "pending" });
+          await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, city: input.city, status: reviewLogin()?.phone === input.phone ? "approved" : "pending" });
           return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
         }
         if (existing.status !== "approved" && (existing.name !== input.name || existing.city !== input.city)) await db.update(customerAccounts).set({ name: input.name, city: input.city }).where(eq(customerAccounts.id, existing.id));
@@ -2360,7 +2389,7 @@ export const lahzaRouter = router({
       await db.execute(sql`DELETE FROM \`customer_otp_verified\` WHERE \`phone\` = ${input.phone}`);
       const existing = (await db.select().from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
       if (!existing) {
-        await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, city: input.city, status: "pending" });
+        await db.insert(customerAccounts).values({ phone: input.phone, name: input.name, city: input.city, status: reviewLogin()?.phone === input.phone ? "approved" : "pending" });
         return { status: "pending" as const, message: "حسابك بانتظار التحقق من فريق لحظة" };
       }
       if (existing.status !== "approved" && (existing.name !== input.name || existing.city !== input.city)) await db.update(customerAccounts).set({ name: input.name, city: input.city }).where(eq(customerAccounts.id, existing.id));
