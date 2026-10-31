@@ -10,17 +10,11 @@ import App from "./App";
 import "./index.css";
 import "./admin-layout-fix.css";
 import "./redesign.css";
+import { serverOrigin } from "./lib/serverOrigin";
 import "./admin-redesign.css";
 
-// Configure VITE_LAHZA_API_ORIGIN for mobile builds so the APK calls the
-// current server. The fallback is the Lahza domain, which can be repointed to
-// a new host without shipping a new APK.
-const configuredApiOrigin =
-  import.meta.env.VITE_LAHZA_API_ORIGIN?.trim().replace(/\/$/, "");
-const nativeApiOrigin =
-  configuredApiOrigin || "https://lahza-app.duckdns.org";
 const apiUrl = Capacitor.isNativePlatform()
-  ? `${nativeApiOrigin}/api/trpc`
+  ? `${serverOrigin()}/api/trpc`
   : "/api/trpc";
 
 const queryClient = new QueryClient({

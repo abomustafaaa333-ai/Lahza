@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Download, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { serverOrigin } from "@/lib/serverOrigin";
 
 type UpdatePayload = {
   versionCode: number;
@@ -26,10 +27,18 @@ export function shouldOfferUpdate(installedVersionCode: number, payload: UpdateP
   );
 }
 
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.lahza.app";
+
+/** Google Play installs must be updated through Google Play, never from a downloaded APK. */
+export function updateTarget(installer: string | undefined, downloadUrl: string, origin: string) {
+  return installer === "com.android.vending" ? PLAY_STORE_URL : new URL(downloadUrl, origin).toString();
+}
+
 declare global {
   interface Window {
     LahzaApp?: {
       getVersionCode?: () => number | string;
+      getInstaller?: () => string;
       openExternal?: (url: string) => void;
     };
   }
@@ -43,7 +52,7 @@ export function AppUpdateNotice() {
     if (!Number.isFinite(nativeVersion) || nativeVersion <= 0) return;
 
     let active = true;
-    fetch("/app-update.json", { cache: "no-store" })
+    fetch(`${serverOrigin()}/app-update.json`, { cache: "no-store" })
       .then(response => response.ok ? response.json() : null)
       .then((payload: UpdatePayload | null) => {
         if (!active || !payload) return;
@@ -56,7 +65,7 @@ export function AppUpdateNotice() {
 
   const openDownload = () => {
     if (!update) return;
-    const downloadUrl = new URL(update.downloadUrl, window.location.origin).toString();
+    const downloadUrl = updateTarget(window.LahzaApp?.getInstaller?.(), update.downloadUrl, serverOrigin());
     if (window.LahzaApp?.openExternal) window.LahzaApp.openExternal(downloadUrl);
     else window.location.assign(downloadUrl);
   };
