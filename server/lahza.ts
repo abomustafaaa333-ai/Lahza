@@ -5,7 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { automaticDiscounts, catalogItems, contestCampaigns, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, driverDispatchResponses, driverDispatchRounds, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
-import { awardReferralOffer, getReferralOffer, listWinners, rankReferrers, referralCounts, resetReferralOfferAward, updateReferralOffer } from "./referralOffer";
+import { awardReferralOffer, contestParticipants, getReferralOffer, listWinners, rankParticipants, resetReferralOfferAward, updateReferralOffer } from "./referralOffer";
 import { createTopup, listTopups, listTransactions, moveWallet, moveWalletToPhone, payFromWallet, rechargeReopenedOrder, refundOrderWallet, reviewTopup, walletBalance, walletBalances } from "./wallet";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, productFirstCategories, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
@@ -1803,18 +1803,25 @@ export const lahzaRouter = router({
     }),
   }),
   launchOffer: router({
-    /** The offer as customers see it, with their own progress when signed in. */
+    /** The contest as customers see it, with their own progress when signed in. */
     mine: publicProcedure.query(async ({ ctx }) => {
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const offer = await getReferralOffer(db);
       if (!offer.enabled) return null;
       const session = await readCustomerSession(ctx);
-      const counts = await referralCounts(db, offer);
-      const mine = session ? counts.find(row => row.phone === session.customerPhone)?.referrals ?? 0 : 0;
-      const rank = session ? rankReferrers(counts, offer).find(row => row.phone === session.customerPhone)?.rank ?? null : null;
+      const participants = await contestParticipants(db, offer);
+      const ranked = rankParticipants(participants, offer);
+      const me = session ? participants.find(row => row.phone === session.customerPhone) : undefined;
       const won = session && offer.awardedAt ? (await listWinners(db)).find(row => row.phone === session.customerPhone) ?? null : null;
-      return { title: offer.title, startsAt: offer.startsAt, endsAt: offer.endsAt, winnersCount: offer.winnersCount, minReferrals: offer.minReferrals, rewardAmount: offer.rewardAmount, awarded: Boolean(offer.awardedAt), mine, rank, won: won ? { rank: won.rank, amount: won.amount } : null };
+      return {
+        title: offer.title, startsAt: offer.startsAt, endsAt: offer.endsAt, winnersCount: offer.winnersCount,
+        minPersonalOrders: offer.minPersonalOrders, minReferrals: offer.minReferrals, prizeText: offer.prizeText, rewardAmount: offer.rewardAmount,
+        awarded: Boolean(offer.awardedAt), seatsTaken: ranked.length,
+        personalOrders: me?.personalOrders ?? 0, referrals: me?.referrals ?? 0,
+        rank: session ? ranked.find(row => row.phone === session.customerPhone)?.rank ?? null : null,
+        won: won ? { rank: won.rank, amount: won.amount } : null,
+      };
     }),
   }),
   wallet: router({
@@ -3794,13 +3801,16 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const offer = await getReferralOffer(db);
-        const counts = (await referralCounts(db, offer)).sort((a, b) => b.referrals - a.referrals || new Date(a.lastAt).getTime() - new Date(b.lastAt).getTime()).slice(0, 30);
+        const participants = await contestParticipants(db, offer);
+        const ranks = new Map(rankParticipants(participants, offer).map(row => [row.phone, row.rank]));
+        const top = participants
+          .sort((a, b) => (a.qualifiedAt ? 0 : 1) - (b.qualifiedAt ? 0 : 1) || (a.qualifiedAt?.getTime() ?? 0) - (b.qualifiedAt?.getTime() ?? 0) || (b.referrals + b.personalOrders) - (a.referrals + a.personalOrders))
+          .slice(0, 40);
         const winners = await listWinners(db);
-        const phones = Array.from(new Set([...counts.map(row => row.phone), ...winners.map(row => row.phone)]));
+        const phones = Array.from(new Set([...top.map(row => row.phone), ...winners.map(row => row.phone)]));
         const names = phones.length ? await db.select({ phone: customerAccounts.phone, name: customerAccounts.name }).from(customerAccounts).where(inArray(customerAccounts.phone, phones)) : [];
         const nameOf = (phone: string) => names.find(entry => entry.phone === phone)?.name ?? "";
-        const ranked = new Map(rankReferrers(counts, offer).map(row => [row.phone, row.rank]));
-        return { offer, leaderboard: counts.map(row => ({ ...row, name: nameOf(row.phone), rank: ranked.get(row.phone) ?? null })), winners: winners.map(row => ({ ...row, name: nameOf(row.phone) })) };
+        return { offer, leaderboard: top.map(row => ({ ...row, name: nameOf(row.phone), rank: ranks.get(row.phone) ?? null })), winners: winners.map(row => ({ ...row, name: nameOf(row.phone) })) };
       }),
       update: publicProcedure.input(z.object({
         enabled: z.boolean(),
@@ -3808,13 +3818,16 @@ export const lahzaRouter = router({
         startsAt: z.string().datetime().nullable(),
         endsAt: z.string().datetime().nullable(),
         winnersCount: z.number().int().min(1).max(500),
-        minReferrals: z.number().int().min(1).max(1000),
+        minPersonalOrders: z.number().int().min(0).max(1000),
+        minReferrals: z.number().int().min(0).max(1000),
+        prizeText: z.string().trim().max(1000),
         rewardAmount: newSypMoneyInput,
       })).mutation(async ({ ctx, input }) => {
         await requireAdmin(ctx, ["owner"]);
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         if (input.startsAt && input.endsAt && new Date(input.endsAt) <= new Date(input.startsAt)) throw new Error("تاريخ النهاية يجب أن يكون بعد البداية");
+        if (!input.minPersonalOrders && !input.minReferrals) throw new Error("حدّد شرطاً واحداً على الأقل");
         await updateReferralOffer(db, { ...input, startsAt: input.startsAt ? new Date(input.startsAt) : null, endsAt: input.endsAt ? new Date(input.endsAt) : null, rewardAmount: toLegacySyp(input.rewardAmount) });
         return { success: true };
       }),
@@ -3823,7 +3836,7 @@ export const lahzaRouter = router({
         const db = await getDb();
         if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
         const { offer, winners } = await awardReferralOffer(db, reviewerName(session));
-        await Promise.allSettled(winners.map(async winner => sendWahaText(winner.phone, { title: offer.title, body: `مبروك! 🎉 فزت بالمركز ${winner.rank} في ${offer.title} بعد أن طلب ${winner.referrals} من أصدقائك برمزك.\nأُضيف ${formatSyp(offer.rewardAmount)} إلى رصيدك في لحظة.\nرصيدك الآن: ${formatSyp(await walletBalance(db, winner.phone))}` })));
+        await Promise.allSettled(winners.map(async winner => sendWahaText(winner.phone, { title: offer.title, body: `مبروك! 🎉 فزت بالمركز ${winner.rank} في ${offer.title}.${offer.prizeText ? `\nجائزتك: ${offer.prizeText}` : ""}${offer.rewardAmount > 0 ? `\nأُضيف ${formatSyp(offer.rewardAmount)} إلى رصيدك في لحظة، ورصيدك الآن ${formatSyp(await walletBalance(db, winner.phone))}.` : ""}${offer.prizeText ? "\nسيتواصل معك فريق لحظة لتسليم الجائزة." : ""}` })));
         return { success: true, winners: winners.length };
       }),
       /** For running the offer again with new dates or rules. Rewards already paid stay in customers' balances. */

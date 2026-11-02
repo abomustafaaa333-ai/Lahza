@@ -129,23 +129,32 @@ export function CheckoutPaymentExtras({ payment, balance, useWallet, setUseWalle
 
 export type { WalletSummary };
 
-export type LaunchOffer = { title: string; startsAt: string | Date | null; endsAt: string | Date | null; winnersCount: number; minReferrals: number; rewardAmount: number; awarded: boolean; mine: number; rank: number | null; won: { rank: number; amount: number } | null };
+export type LaunchOffer = { title: string; startsAt: string | Date | null; endsAt: string | Date | null; winnersCount: number; minPersonalOrders: number; minReferrals: number; prizeText: string; rewardAmount: number; awarded: boolean; seatsTaken: number; personalOrders: number; referrals: number; rank: number | null; won: { rank: number; amount: number } | null };
 
 const dayLabel = (value: string | Date | null) => value ? new Date(value).toLocaleDateString("ar-SY", { day: "numeric", month: "long" }) : "";
 
-/** The launch referral offer and how close this customer is to it. */
+function Progress({ label, done, goal }: { label: string; done: number; goal: number }) {
+  if (!goal) return null;
+  return <div className="contest-progress"><div className="account-progress-labels"><span>{label}</span><span>{Math.min(done, goal)} / {goal}</span></div><div className="account-progress"><span style={{ width: `${Math.min(100, Math.round(done / goal * 100))}%` }} /></div></div>;
+}
+
+/** The contest and this customer's progress toward both targets. */
 export function LaunchOfferCard({ offer }: { offer: LaunchOffer | null | undefined }) {
   if (!offer) return null;
   const ended = offer.endsAt ? new Date(offer.endsAt).getTime() < Date.now() : false;
-  const progress = Math.min(100, Math.round((offer.mine / Math.max(1, offer.minReferrals)) * 100));
-  const left = Math.max(0, offer.minReferrals - offer.mine);
+  const notStarted = offer.startsAt ? new Date(offer.startsAt).getTime() > Date.now() : false;
+  const full = offer.seatsTaken >= offer.winnersCount;
+  const rules = [offer.minPersonalOrders ? `${offer.minPersonalOrders} طلبات شخصية أو أكثر` : "", offer.minReferrals ? `${offer.minReferrals} طلبات من أصدقائك برمز إحالتك` : ""].filter(Boolean).join(" و");
   return <section className="account-card launch-offer-card">
-    <div className="account-card-heading"><div><p>🎁 {offer.title}</p><h2>اربح {formatSyp(offer.rewardAmount)} رصيد</h2></div></div>
-    <p className="account-card-note">أكثر {offer.winnersCount} أشخاص يطلب من خلال رمز إحالتهم {offer.minReferrals} أصدقاء أو أكثر (وتكتمل طلباتهم) يربحون {formatSyp(offer.rewardAmount)} في رصيد لحظة{offer.endsAt ? `. ينتهي العرض ${dayLabel(offer.endsAt)}` : ""}.</p>
-    {offer.won ? <p className="launch-offer-won">مبروك! فزت بالمركز {offer.won.rank} وأُضيف {formatSyp(offer.won.amount)} إلى رصيدك 🎉</p> : <>
-      <div className="account-progress"><span style={{ width: `${progress}%` }} /></div>
-      <div className="account-progress-labels"><span>أصدقاؤك المحسوبون: {offer.mine}</span><span>{left ? `تحتاج ${left} للدخول في المنافسة` : offer.rank ? `ترتيبك الآن: ${offer.rank} من ${offer.winnersCount}` : "حققت الشرط، ادعُ المزيد لتدخل العشرة الأوائل"}</span></div>
-      {ended && !offer.awarded ? <p className="account-card-note">انتهى العرض، وتُعلن النتائج قريباً.</p> : null}
-    </>}
+    <div className="account-card-heading"><div><p>🏆 {offer.title}</p><h2>أول {offer.winnersCount} يفوزون</h2></div></div>
+    <p className="account-card-note">حقق خلال المسابقة {rules}{offer.startsAt || offer.endsAt ? ` (${offer.startsAt ? `من ${dayLabel(offer.startsAt)} ` : ""}${offer.endsAt ? `حتى ${dayLabel(offer.endsAt)}` : ""})` : ""}.</p>
+    {offer.prizeText || offer.rewardAmount ? <p className="contest-prize">🎁 {offer.prizeText}{offer.prizeText && offer.rewardAmount ? " · " : ""}{offer.rewardAmount ? `${formatSyp(offer.rewardAmount)} رصيد لكل فائز` : ""}</p> : null}
+    {offer.won ? <p className="launch-offer-won">مبروك! فزت بالمركز {offer.won.rank} 🎉</p>
+      : offer.rank ? <p className="launch-offer-won">حققت الشروط! مركزك {offer.rank} من {offer.winnersCount}، وسيعتمد فريق لحظة الفائزين.</p>
+      : <>
+        <Progress label="طلباتك المكتملة" done={offer.personalOrders} goal={offer.minPersonalOrders} />
+        <Progress label="طلبات أصدقائك برمزك" done={offer.referrals} goal={offer.minReferrals} />
+        <p className="account-card-note">{notStarted ? "لم تبدأ المسابقة بعد." : ended || offer.awarded ? "انتهت المسابقة." : full ? `اكتمل عدد الفائزين (${offer.winnersCount}).` : `بقي ${offer.winnersCount - offer.seatsTaken} مراكز من ${offer.winnersCount}.`}</p>
+      </>}
   </section>;
 }

@@ -749,3 +749,5 @@
 .launch-offer-card { border-color: #ffd2b5; background: linear-gradient(160deg, #fff4ea, #ffffff 60%); }
 .launch-offer-card .account-card-heading h2 { color: #e9480f; }
 .launch-offer-won { margin: 0; border-radius: .8rem; padding: .6rem .75rem; color: #15803d; background: #ecfdf3; font-size: .72rem; font-weight: 900; }
+.contest-prize { margin: 0; border-radius: .8rem; padding: .55rem .75rem; color: #9a3412; background: #ffedd5; font-size: .7rem; font-weight: 900; line-height: 1.7; }
+.contest-progress { display: grid; gap: .3rem; }

@@ -139,46 +139,53 @@ function AdminDashboard({ tabs: available, onOpen }: { tabs: typeof tabs; onOpen
   </div>;
 }
 
-/** The launch referral offer: rules the owner can change, the live ranking, and paying the winners once. */
+/** The Lahza contest: rules the owner can change, live progress, and confirming the winners once. */
 function LaunchOfferPanel() {
   const utils = trpc.useUtils();
   const query = trpc.lahza.admin.launchOffer.get.useQuery();
-  const [form, setForm] = useState<{ enabled: boolean; title: string; startsAt: string; endsAt: string; winnersCount: string; minReferrals: string; rewardAmount: string } | null>(null);
+  type Form = { enabled: boolean; title: string; startsAt: string; days: string; endsAt: string; winnersCount: string; minPersonalOrders: string; minReferrals: string; prizeText: string; rewardAmount: string };
+  const [form, setForm] = useState<Form | null>(null);
   const refresh = () => { void utils.lahza.admin.launchOffer.invalidate(); void utils.lahza.launchOffer.invalidate(); };
-  const save = trpc.lahza.admin.launchOffer.update.useMutation({ onSuccess: () => { toast.success("تم حفظ العرض"); setForm(null); refresh(); }, onError: error => toast.error(error.message) });
-  const award = trpc.lahza.admin.launchOffer.award.useMutation({ onSuccess: result => { toast.success(`أُضيفت الجوائز لـ ${result.winners} فائزين وأُبلغوا على واتساب`); refresh(); }, onError: error => toast.error(error.message) });
-  const reset = trpc.lahza.admin.launchOffer.reset.useMutation({ onSuccess: () => { toast.success("يمكنك الآن تشغيل العرض من جديد"); refresh(); }, onError: error => toast.error(error.message) });
+  const save = trpc.lahza.admin.launchOffer.update.useMutation({ onSuccess: () => { toast.success("تم حفظ إعدادات المسابقة"); setForm(null); refresh(); }, onError: error => toast.error(error.message) });
+  const award = trpc.lahza.admin.launchOffer.award.useMutation({ onSuccess: result => { toast.success(`اعتُمد ${result.winners} فائزين وأُبلغوا على واتساب`); refresh(); }, onError: error => toast.error(error.message) });
+  const reset = trpc.lahza.admin.launchOffer.reset.useMutation({ onSuccess: () => { toast.success("يمكنك الآن إطلاق مسابقة جديدة"); refresh(); }, onError: error => toast.error(error.message) });
   const data = query.data;
   if (!data) return null;
   const { offer } = data;
   const local = (value: string | Date | null) => { if (!value) return ""; const date = new Date(value); return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); };
-  const value = form ?? { enabled: offer.enabled, title: offer.title, startsAt: local(offer.startsAt), endsAt: local(offer.endsAt), winnersCount: String(offer.winnersCount), minReferrals: String(offer.minReferrals), rewardAmount: String(toNewSyp(offer.rewardAmount)) };
-  const set = (patch: Partial<typeof value>) => setForm({ ...value, ...patch });
-  const submit = () => save.mutate({ enabled: value.enabled, title: value.title.trim() || "عرض الإطلاق", startsAt: value.startsAt ? new Date(value.startsAt).toISOString() : null, endsAt: value.endsAt ? new Date(value.endsAt).toISOString() : null, winnersCount: Number(value.winnersCount) || 10, minReferrals: Number(value.minReferrals) || 3, rewardAmount: Number(value.rewardAmount) || 0 });
+  const daysBetween = (start: string, end: string) => start && end ? String(Math.max(1, Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000))) : "";
+  const value: Form = form ?? { enabled: offer.enabled, title: offer.title, startsAt: local(offer.startsAt), endsAt: local(offer.endsAt), days: daysBetween(local(offer.startsAt), local(offer.endsAt)), winnersCount: String(offer.winnersCount), minPersonalOrders: String(offer.minPersonalOrders), minReferrals: String(offer.minReferrals), prizeText: offer.prizeText, rewardAmount: offer.rewardAmount ? String(toNewSyp(offer.rewardAmount)) : "" };
+  const set = (patch: Partial<Form>) => setForm({ ...value, ...patch });
+  // The duration and the end date stay in step: changing one recalculates the other.
+  const endFromDays = (start: string, days: string) => start && Number(days) > 0 ? local(new Date(new Date(start).getTime() + Number(days) * 86_400_000)) : value.endsAt;
+  const submit = () => save.mutate({ enabled: value.enabled, title: value.title.trim() || "مسابقة لحظة", startsAt: value.startsAt ? new Date(value.startsAt).toISOString() : null, endsAt: value.endsAt ? new Date(value.endsAt).toISOString() : null, winnersCount: Number(value.winnersCount) || 5, minPersonalOrders: Number(value.minPersonalOrders) || 0, minReferrals: Number(value.minReferrals) || 0, prizeText: value.prizeText.trim(), rewardAmount: Number(value.rewardAmount) || 0 });
+  const qualified = data.leaderboard.filter(row => row.rank).length;
   const ended = offer.endsAt ? new Date(offer.endsAt).getTime() < Date.now() : false;
-  const qualifying = data.leaderboard.filter(row => row.rank).length;
   const confirmAward = () => {
-    const warning = ended ? "" : "\nتنبيه: العرض لم ينتهِ بعد، والترتيب قد يتغير.";
-    if (window.confirm(`سيُضاف ${formatSyp(offer.rewardAmount)} لرصيد ${qualifying} فائزين ويُبلَّغون على واتساب. لا يمكن التراجع.${warning}`)) award.mutate();
+    const pay = offer.rewardAmount ? `\nسيُضاف ${formatSyp(offer.rewardAmount)} لرصيد كل فائز.` : "";
+    if (window.confirm(`اعتماد ${qualified} فائزين وإبلاغهم على واتساب؟${pay}\nلا يمكن التراجع.`)) award.mutate();
   };
-  return <section className="admin-section"><div className="admin-section-heading"><div><p>مسابقة فعّالة</p><h2>🎁 {offer.title}: أفضل المُحيلين</h2></div><Button variant="outline" size="sm" onClick={refresh}><RefreshCw className="h-3.5 w-3.5" /> تحديث</Button></div>
-    <p className="text-sm leading-7 text-slate-500">يُحسب للعميل كل صديق مختلف طلب برمز إحالته واكتمل طلبه خلال مدة العرض. أكثر العملاء أصدقاءً، ممن بلغوا الحد الأدنى، يربحون الجائزة في رصيدهم عندما تضغط «توزيع الجوائز».</p>
+  return <section className="admin-section"><div className="admin-section-heading"><div><p>مسابقة فعّالة</p><h2>🏆 {offer.title}</h2></div><Button variant="outline" size="sm" onClick={refresh}><RefreshCw className="h-3.5 w-3.5" /> تحديث</Button></div>
+    <p className="text-sm leading-7 text-slate-500">يفوز أول العملاء الذين يحققون خلال مدة المسابقة الشرطين معاً: عدد من طلباتهم الشخصية المكتملة، وعدد من أصدقائهم أكملوا طلباً برمز إحالتهم. كل الإعدادات قابلة للتعديل.</p>
     <div className="mt-3 grid gap-3 sm:grid-cols-3">
-      <label className="flex items-center gap-2 text-sm font-black text-[#4a2618] sm:col-span-3"><input type="checkbox" checked={value.enabled} onChange={event => set({ enabled: event.target.checked })} /> العرض ظاهر للعملاء</label>
-      <div className="grid gap-1 sm:col-span-3"><Label>اسم العرض</Label><Input value={value.title} onChange={event => set({ title: event.target.value })} /></div>
-      <div className="grid gap-1"><Label>يبدأ</Label><Input type="datetime-local" value={value.startsAt} onChange={event => set({ startsAt: event.target.value })} /></div>
-      <div className="grid gap-1"><Label>ينتهي</Label><Input type="datetime-local" value={value.endsAt} onChange={event => set({ endsAt: event.target.value })} /></div>
-      <div className="grid gap-1"><Label>قيمة الجائزة لكل فائز (ل.س)</Label><Input dir="ltr" inputMode="numeric" value={value.rewardAmount} onChange={event => set({ rewardAmount: event.target.value.replace(/\D/g, "") })} /></div>
-      <div className="grid gap-1"><Label>عدد الفائزين</Label><Input dir="ltr" inputMode="numeric" value={value.winnersCount} onChange={event => set({ winnersCount: event.target.value.replace(/\D/g, "") })} /></div>
-      <div className="grid gap-1"><Label>الحد الأدنى من الأصدقاء</Label><Input dir="ltr" inputMode="numeric" value={value.minReferrals} onChange={event => set({ minReferrals: event.target.value.replace(/\D/g, "") })} /></div>
+      <label className="flex items-center gap-2 text-sm font-black text-[#4a2618] sm:col-span-3"><input type="checkbox" checked={value.enabled} onChange={event => set({ enabled: event.target.checked })} /> المسابقة ظاهرة للعملاء</label>
+      <div className="grid gap-1 sm:col-span-3"><Label>اسم المسابقة</Label><Input value={value.title} onChange={event => set({ title: event.target.value })} /></div>
+      <div className="grid gap-1"><Label>تبدأ</Label><Input type="datetime-local" value={value.startsAt} onChange={event => set({ startsAt: event.target.value, endsAt: endFromDays(event.target.value, value.days) })} /></div>
+      <div className="grid gap-1"><Label>المدة (أيام)</Label><Input dir="ltr" inputMode="numeric" placeholder="15" value={value.days} onChange={event => { const days = event.target.value.replace(/\D/g, ""); set({ days, endsAt: endFromDays(value.startsAt, days) }); }} /></div>
+      <div className="grid gap-1"><Label>تنتهي</Label><Input type="datetime-local" value={value.endsAt} onChange={event => set({ endsAt: event.target.value, days: daysBetween(value.startsAt, event.target.value) })} /></div>
+      <div className="grid gap-1"><Label>عدد الفائزين (الأوائل)</Label><Input dir="ltr" inputMode="numeric" value={value.winnersCount} onChange={event => set({ winnersCount: event.target.value.replace(/\D/g, "") })} /></div>
+      <div className="grid gap-1"><Label>الطلبات الشخصية المطلوبة</Label><Input dir="ltr" inputMode="numeric" value={value.minPersonalOrders} onChange={event => set({ minPersonalOrders: event.target.value.replace(/\D/g, "") })} /></div>
+      <div className="grid gap-1"><Label>طلبات الأصدقاء برمز الإحالة</Label><Input dir="ltr" inputMode="numeric" value={value.minReferrals} onChange={event => set({ minReferrals: event.target.value.replace(/\D/g, "") })} /></div>
+      <div className="grid gap-1 sm:col-span-2"><Label>الجوائز (تظهر للعملاء)</Label><textarea className="min-h-20 rounded-xl border border-slate-200 p-3 text-sm" placeholder="مثال: المركز الأول هاتف ذكي، المراكز 2–5 قسائم بقيمة 500 ل.س" value={value.prizeText} onChange={event => set({ prizeText: event.target.value })} /></div>
+      <div className="grid gap-1"><Label>رصيد يُضاف لكل فائز (اختياري، ل.س)</Label><Input dir="ltr" inputMode="numeric" placeholder="0" value={value.rewardAmount} onChange={event => set({ rewardAmount: event.target.value.replace(/\D/g, "") })} /></div>
     </div>
-    <Button disabled={save.isPending} onClick={submit} className="mt-3 rounded-xl bg-[#63301b] text-white hover:bg-[#4a2618]">{save.isPending ? "جارٍ الحفظ..." : "حفظ العرض"}</Button>
+    <Button disabled={save.isPending} onClick={submit} className="mt-3 rounded-xl bg-[#63301b] text-white hover:bg-[#4a2618]">{save.isPending ? "جارٍ الحفظ..." : "حفظ إعدادات المسابقة"}</Button>
 
-    <h3 className="mt-6 text-base font-black text-[#4a2618]">الترتيب الحالي {ended ? "(انتهى العرض)" : ""}</h3>
-    {data.leaderboard.length ? <div className="mt-2 overflow-x-auto rounded-2xl border border-slate-100"><table className="w-full min-w-[480px] text-right text-sm"><thead className="bg-[#eefafa] text-[#00666b]"><tr><th className="px-4 py-3 font-black">المركز</th><th className="px-4 py-3 font-black">العميل</th><th className="px-4 py-3 font-black">الرقم</th><th className="px-4 py-3 font-black">الأصدقاء</th></tr></thead><tbody className="divide-y divide-slate-100 bg-white">{data.leaderboard.map(row => <tr key={row.phone} className={row.rank ? "bg-amber-50/50" : ""}><td className="px-4 py-3 font-black">{row.rank ? `🏆 ${row.rank}` : "—"}</td><td className="px-4 py-3 font-bold">{row.name || "—"}</td><td className="px-4 py-3" dir="ltr">{row.phone}</td><td className="px-4 py-3 font-black text-[#00666b]">{row.referrals}</td></tr>)}</tbody></table></div> : <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-500">لم يكتمل أي طلب برمز إحالة خلال مدة العرض بعد.</p>}
+    <h3 className="mt-6 text-base font-black text-[#4a2618]">المتسابقون {ended ? "(انتهت المسابقة)" : ""} · حقق الشروط {qualified} من {offer.winnersCount}</h3>
+    {data.leaderboard.length ? <div className="mt-2 overflow-x-auto rounded-2xl border border-slate-100"><table className="w-full min-w-[620px] text-right text-sm"><thead className="bg-[#eefafa] text-[#00666b]"><tr><th className="px-4 py-3 font-black">المركز</th><th className="px-4 py-3 font-black">العميل</th><th className="px-4 py-3 font-black">الرقم</th><th className="px-4 py-3 font-black">طلباته</th><th className="px-4 py-3 font-black">طلبات أصدقائه</th><th className="px-4 py-3 font-black">حقق الشروط</th></tr></thead><tbody className="divide-y divide-slate-100 bg-white">{data.leaderboard.map(row => <tr key={row.phone} className={row.rank ? "bg-amber-50/50" : ""}><td className="px-4 py-3 font-black">{row.rank ? `🏆 ${row.rank}` : "—"}</td><td className="px-4 py-3 font-bold">{row.name || "—"}</td><td className="px-4 py-3" dir="ltr">{row.phone}</td><td className="px-4 py-3">{row.personalOrders} / {offer.minPersonalOrders}</td><td className="px-4 py-3">{row.referrals} / {offer.minReferrals}</td><td className="px-4 py-3 text-xs">{row.qualifiedAt ? new Date(row.qualifiedAt).toLocaleString("ar-SY") : "لم يكمل بعد"}</td></tr>)}</tbody></table></div> : <p className="mt-2 rounded-2xl bg-slate-50 p-4 text-center text-sm text-slate-500">لا يوجد نشاط داخل مدة المسابقة بعد.</p>}
 
-    {offer.awardedAt ? <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4"><strong className="text-emerald-700">وُزّعت الجوائز في {new Date(offer.awardedAt).toLocaleString("ar-SY")}</strong><ul className="mt-2 grid gap-1 text-sm">{data.winners.map(row => <li key={row.phone}>🏆 {row.rank} · {row.name || row.phone} · {row.referrals} أصدقاء · {formatSyp(row.amount)}</li>)}</ul><Button variant="outline" size="sm" disabled={reset.isPending} onClick={() => { if (window.confirm("تشغيل العرض من جديد؟ الجوائز المدفوعة تبقى في أرصدة العملاء.")) reset.mutate(); }} className="mt-3">تشغيل العرض من جديد</Button></div>
-      : <Button disabled={award.isPending || !qualifying || !offer.rewardAmount} onClick={confirmAward} className="mt-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">{award.isPending ? "جارٍ التوزيع..." : `توزيع الجوائز على ${qualifying} فائزين`}</Button>}
+    {offer.awardedAt ? <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4"><strong className="text-emerald-700">اعتُمد الفائزون في {new Date(offer.awardedAt).toLocaleString("ar-SY")}</strong><ul className="mt-2 grid gap-1 text-sm">{data.winners.map(row => <li key={row.phone}>🏆 {row.rank} · {row.name || row.phone} <span dir="ltr">{row.phone}</span> · {row.personalOrders} طلبات · {row.referrals} أصدقاء{row.amount ? ` · ${formatSyp(row.amount)}` : ""}</li>)}</ul><Button variant="outline" size="sm" disabled={reset.isPending} onClick={() => { if (window.confirm("إطلاق مسابقة جديدة؟ عدّل التواريخ والشروط بعدها. الجوائز المدفوعة تبقى كما هي.")) reset.mutate(); }} className="mt-3">إطلاق مسابقة جديدة</Button></div>
+      : <Button disabled={award.isPending || !qualified} onClick={confirmAward} className="mt-4 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700">{award.isPending ? "جارٍ الاعتماد..." : `اعتماد الفائزين (${qualified}) وإبلاغهم`}</Button>}
   </section>;
 }
 
