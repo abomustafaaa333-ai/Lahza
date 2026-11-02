@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import type { getDb } from "./db";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
-export type WalletKind = "topup" | "order_payment" | "refund" | "adjustment";
+export type WalletKind = "topup" | "order_payment" | "refund" | "adjustment" | "reward";
 
 let walletSchemaPromise: Promise<void> | null = null;
 
@@ -10,7 +10,8 @@ let walletSchemaPromise: Promise<void> | null = null;
 export function ensureWalletSchema(db: Db) {
   walletSchemaPromise ??= (async () => {
     await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `customer_wallets` (`phone` VARCHAR(24) NOT NULL PRIMARY KEY, `balance` INT NOT NULL DEFAULT 0, `updatedAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) DEFAULT CHARSET=utf8mb4"));
-    await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `wallet_transactions` (`id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY, `customerPhone` VARCHAR(24) NOT NULL, `amount` INT NOT NULL, `kind` ENUM('topup','order_payment','refund','adjustment') NOT NULL, `orderId` INT NULL, `topupId` INT NULL, `note` VARCHAR(300) NULL, `createdBy` VARCHAR(80) NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY `wallet_transactions_phone` (`customerPhone`), KEY `wallet_transactions_order` (`orderId`)) DEFAULT CHARSET=utf8mb4"));
+    await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `wallet_transactions` (`id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY, `customerPhone` VARCHAR(24) NOT NULL, `amount` INT NOT NULL, `kind` ENUM('topup','order_payment','refund','adjustment','reward') NOT NULL, `orderId` INT NULL, `topupId` INT NULL, `note` VARCHAR(300) NULL, `createdBy` VARCHAR(80) NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY `wallet_transactions_phone` (`customerPhone`), KEY `wallet_transactions_order` (`orderId`)) DEFAULT CHARSET=utf8mb4"));
+    await db.execute(sql.raw("ALTER TABLE `wallet_transactions` MODIFY `kind` ENUM('topup','order_payment','refund','adjustment','reward') NOT NULL"));
     await db.execute(sql.raw("CREATE TABLE IF NOT EXISTS `wallet_topups` (`id` INT NOT NULL AUTO_INCREMENT PRIMARY KEY, `customerPhone` VARCHAR(24) NOT NULL, `amount` INT NOT NULL, `method` ENUM('sham_cash','office_cash') NOT NULL, `reference` VARCHAR(120) NULL, `proofImageUrl` VARCHAR(500) NULL, `status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending', `reviewNote` VARCHAR(300) NULL, `reviewedBy` VARCHAR(80) NULL, `reviewedAt` TIMESTAMP NULL, `createdAt` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY `wallet_topups_phone` (`customerPhone`), KEY `wallet_topups_status` (`status`)) DEFAULT CHARSET=utf8mb4"));
   })().catch(error => { walletSchemaPromise = null; throw error; });
   return walletSchemaPromise;

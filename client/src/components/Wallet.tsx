@@ -128,3 +128,24 @@ export function CheckoutPaymentExtras({ payment, balance, useWallet, setUseWalle
 }
 
 export type { WalletSummary };
+
+export type LaunchOffer = { title: string; startsAt: string | Date | null; endsAt: string | Date | null; winnersCount: number; minReferrals: number; rewardAmount: number; awarded: boolean; mine: number; rank: number | null; won: { rank: number; amount: number } | null };
+
+const dayLabel = (value: string | Date | null) => value ? new Date(value).toLocaleDateString("ar-SY", { day: "numeric", month: "long" }) : "";
+
+/** The launch referral offer and how close this customer is to it. */
+export function LaunchOfferCard({ offer }: { offer: LaunchOffer | null | undefined }) {
+  if (!offer) return null;
+  const ended = offer.endsAt ? new Date(offer.endsAt).getTime() < Date.now() : false;
+  const progress = Math.min(100, Math.round((offer.mine / Math.max(1, offer.minReferrals)) * 100));
+  const left = Math.max(0, offer.minReferrals - offer.mine);
+  return <section className="account-card launch-offer-card">
+    <div className="account-card-heading"><div><p>🎁 {offer.title}</p><h2>اربح {formatSyp(offer.rewardAmount)} رصيد</h2></div></div>
+    <p className="account-card-note">أكثر {offer.winnersCount} أشخاص يطلب من خلال رمز إحالتهم {offer.minReferrals} أصدقاء أو أكثر (وتكتمل طلباتهم) يربحون {formatSyp(offer.rewardAmount)} في رصيد لحظة{offer.endsAt ? `. ينتهي العرض ${dayLabel(offer.endsAt)}` : ""}.</p>
+    {offer.won ? <p className="launch-offer-won">مبروك! فزت بالمركز {offer.won.rank} وأُضيف {formatSyp(offer.won.amount)} إلى رصيدك 🎉</p> : <>
+      <div className="account-progress"><span style={{ width: `${progress}%` }} /></div>
+      <div className="account-progress-labels"><span>أصدقاؤك المحسوبون: {offer.mine}</span><span>{left ? `تحتاج ${left} للدخول في المنافسة` : offer.rank ? `ترتيبك الآن: ${offer.rank} من ${offer.winnersCount}` : "حققت الشرط، ادعُ المزيد لتدخل العشرة الأوائل"}</span></div>
+      {ended && !offer.awarded ? <p className="account-card-note">انتهى العرض، وتُعلن النتائج قريباً.</p> : null}
+    </>}
+  </section>;
+}
