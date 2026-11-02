@@ -160,6 +160,7 @@ export const orders = mysqlTable("orders", {
   referralCode: varchar("referralCode", { length: 40 }),
   discountAmount: int("discountAmount").notNull().default(0),
   pointsUsed: int("pointsUsed").notNull().default(0),
+  walletAmount: int("walletAmount").notNull().default(0),
   pointsRewardPercent: int("pointsRewardPercent").notNull().default(0),
   deliveryDistanceMeters: int("deliveryDistanceMeters").notNull().default(0),
   deliveryFee: int("deliveryFee").notNull().default(0),
@@ -232,6 +233,10 @@ export const systemSettings = mysqlTable("system_settings", {
   jarabulusOriginLatE6: int("jarabulusOriginLatE6").notNull().default(36817500),
   /** وصّل لي shows as "قريباً" until the owner switches it on. */
   wosselLiEnabled: boolean("wosselLiEnabled").notNull().default(false),
+  shamCashAccountName: varchar("shamCashAccountName", { length: 120 }),
+  shamCashAccountNumber: varchar("shamCashAccountNumber", { length: 120 }),
+  shamCashImageUrl: varchar("shamCashImageUrl", { length: 500 }),
+  officeAddress: varchar("officeAddress", { length: 300 }),
   jarabulusOriginLngE6: int("jarabulusOriginLngE6").notNull().default(38011400),
   tickerPrimary: varchar("tickerPrimary", { length: 220 }).notNull().default("حقق ١٠ طلبات واربح معنا هدية"),
   tickerSecondary: varchar("tickerSecondary", { length: 220 }).notNull().default("لحظة — منبج بين يديك"),

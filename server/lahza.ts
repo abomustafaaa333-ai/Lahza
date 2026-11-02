@@ -5,6 +5,7 @@ import { jwtVerify, SignJWT } from "jose";
 import { parse } from "cookie";
 import { z } from "zod";
 import { automaticDiscounts, catalogItems, contestCampaigns, customCategories, customerPresence, customerProfiles, customerAccounts, customerNotifications, drivers, driverDispatchResponses, driverDispatchRounds, financeEntries, intercityOrders, intercityTrips, inventoryMovements, lahzaEmployees, missingProductRequests, notificationCampaigns, orderAssignments, orderLines, orderNotifications, orders, partnerOffers, partners, customerReferrals, customerPoints, discountCodes, pointTransactions, pushTokens, storeTrafficEvents, stores, supportContacts, supervisors, systemSettings } from "../drizzle/schema";
+import { createTopup, listTopups, listTransactions, moveWallet, moveWalletToPhone, payFromWallet, rechargeReopenedOrder, refundOrderWallet, reviewTopup, walletBalance, walletBalances } from "./wallet";
 import { calculatePercentageDeliveryFeeNewSyp, catalogSeed, productFirstCategories, categoryMeta, customerDeliveryCategories, storeCategories, DEFAULT_TICKER_PRIMARY, DEFAULT_TICKER_SECONDARY, formatNewSyp, formatSyp, normalizeTickerText, orderStatusLabels, toLegacySyp, toNewSyp, type LahzaCategory } from "../shared/lahza";
 import { isStoreClosedForCustomer, parseStoreHours } from "../shared/storeAvailability";
 import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
@@ -239,6 +240,11 @@ async function ensureJarabulusGatewaySchemaWork(db: NonNullable<Awaited<ReturnTy
   await ensureColumn("system_settings", "jarabulusGatewayMinutesPerKm", "INT NOT NULL DEFAULT 2");
   await ensureColumn("system_settings", "jarabulusOriginLatE6", "INT NOT NULL DEFAULT 36817500");
   await ensureColumn("system_settings", "wosselLiEnabled", "BOOLEAN NOT NULL DEFAULT FALSE");
+  await ensureColumn("system_settings", "shamCashAccountName", "VARCHAR(120) NULL");
+  await ensureColumn("system_settings", "shamCashAccountNumber", "VARCHAR(120) NULL");
+  await ensureColumn("system_settings", "shamCashImageUrl", "VARCHAR(500) NULL");
+  await ensureColumn("system_settings", "officeAddress", "VARCHAR(300) NULL");
+  await ensureColumn("orders", "walletAmount", "INT NOT NULL DEFAULT 0");
   await ensureColumn("system_settings", "jarabulusOriginLngE6", "INT NOT NULL DEFAULT 38011400");
   await ensureColumn("system_settings", "wosselLiMinutesPerKm", "INT NOT NULL DEFAULT 5");
   await ensureColumn("system_settings", "driverPayMode", "ENUM('percent','fixed') NOT NULL DEFAULT 'percent'");
@@ -482,11 +488,45 @@ function collectWahaTextValues(value: unknown, depth = 0): string[] {
   }
   return values;
 }
+/** What the driver collects: the wallet may already have paid all or part of the order. */
+function paymentLine(order: { totalAmount: number; paymentMethod: "sham_cash" | "cash"; walletAmount: number } | undefined) {
+  if (!order) return "طريقة الدفع: نقداً";
+  const due = Math.max(0, order.totalAmount - order.walletAmount);
+  const method = order.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً";
+  if (!order.walletAmount) return `طريقة الدفع: ${method}`;
+  return due ? `مدفوع من رصيد لحظة: ${formatSyp(order.walletAmount)}\nالمطلوب تحصيله من الزبون: ${formatSyp(due)} (${method})` : `مدفوع بالكامل من رصيد لحظة، لا تحصّل شيئاً من الزبون`;
+}
+
+/** The owner and every WhatsApp support contact, without duplicates. */
+async function teamWhatsAppPhones(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  const settings = await getSettings();
+  const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
+  return [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts.map(contact => contact.phone)].filter((phone, index, all) => all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
+}
+
+/** Shown wherever a customer pays by Sham Cash. The image ships with the app until the owner uploads another. */
+const DEFAULT_SHAM_CASH_IMAGE = "/assets/sham-cash-account.jpg";
+async function paymentInfo() {
+  const settings = await getSettings();
+  return { shamCashAccountName: settings.shamCashAccountName ?? "", shamCashAccountNumber: settings.shamCashAccountNumber ?? "", shamCashImageUrl: settings.shamCashImageUrl || DEFAULT_SHAM_CASH_IMAGE, officeAddress: settings.officeAddress ?? "" };
+}
+
+function reviewerName(session: AdminSession) {
+  return session.role === "owner" ? "المالك" : `مشرف #${session.supervisorId ?? ""}`;
+}
+
+async function notifyTopupReviewed(phone: string, amount: number, decision: "approved" | "rejected", balance: number, note?: string) {
+  const body = decision === "approved"
+    ? `تم شحن رصيدك في لحظة بمبلغ ${formatSyp(amount)}.\nرصيدك الآن: ${formatSyp(balance)}`
+    : `لم نتمكن من اعتماد طلب شحن الرصيد بمبلغ ${formatSyp(amount)}.${note ? `\nالسبب: ${note}` : ""}\nللاستفسار تواصل مع خدمة العملاء.`;
+  await sendWahaText(phone, { title: "رصيد لحظة", body }).catch(() => undefined);
+}
+
 async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverPhone: string, storeName: string, customerName: string, locationText: string | null, locationUrl: string | null) {
-  const details = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  const details = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod, walletAmount: orders.walletAmount }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   const lines = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
   const itemsText = lines.length ? lines.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatSyp(item.unitPrice)} — المجموع: ${formatSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
-  await sendWahaText(driverPhone, { title: `تم إسناد الطلب #${orderId}`, body: `تم إسناد الطلب إليك.\nالمتجر: ${storeName}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatSyp(details?.deliveryFee ?? 0)}\nالإجمالي: ${formatSyp(details?.totalAmount ?? 0)}\nطريقة الدفع: ${details?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nالعميل: ${customerName}\nهاتف العميل: ${details?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(details?.deliveryDistanceMeters ?? 0))}م\nعند إكمال الطلب أرسل الرقم: 10` });
+  await sendWahaText(driverPhone, { title: `تم إسناد الطلب #${orderId}`, body: `تم إسناد الطلب إليك.\nالمتجر: ${storeName}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatSyp(details?.deliveryFee ?? 0)}\nالإجمالي: ${formatSyp(details?.totalAmount ?? 0)}\n${paymentLine(details)}\n\nالعميل: ${customerName}\nهاتف العميل: ${details?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(details?.deliveryDistanceMeters ?? 0))}م\nعند إكمال الطلب أرسل الرقم: 10` });
 }
 async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
   const order = (await db.select({ id: orders.id, status: orders.status, createdAt: orders.createdAt }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
@@ -518,8 +558,8 @@ async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnTyp
   }
   await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, driverName: nearest.name, status: "assigned", note: "طلب وصّل لي: استلام من عنوان مكتوب وتسليم إلى موقع GPS" }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, driverName: nearest.name, status: "assigned", note: "طلب وصّل لي: استلام من عنوان مكتوب وتسليم إلى موقع GPS", assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
   await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
-  const orderDetails = (await db.select({ customerPhone: orders.customerPhone, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
-  const message = { title: `طلب وصّل لي #${orderId}`, body: `طلب وصّل لي\nصاحب الطلب: ${customerName}\nرقم صاحب الطلب: ${orderDetails?.customerPhone || "غير متوفر"}\n\nاستلام الغرض من:\n${pickupLocation}\nرقم جهة الاستلام: ${pickupContactPhone}\n\nتسليم الغرض إلى:\n${destinationText}\n${destinationUrl}\n\nنوع الغرض: ${itemDescription}\nالمسافة ذهاباً وإياباً: ${Math.ceil(Number(orderDetails?.deliveryDistanceMeters ?? 0) / 1000)} كم\nسعر التوصيل: ${formatSyp(orderDetails?.deliveryFee ?? 0)}\nطريقة الدفع: ${orderDetails?.paymentMethod === "sham_cash" ? "شام كاش" : "نقداً"}\n\nأجب بكلمة: نعم أو لا.` };
+  const orderDetails = (await db.select({ customerPhone: orders.customerPhone, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod, totalAmount: orders.totalAmount, walletAmount: orders.walletAmount }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  const message = { title: `طلب وصّل لي #${orderId}`, body: `طلب وصّل لي\nصاحب الطلب: ${customerName}\nرقم صاحب الطلب: ${orderDetails?.customerPhone || "غير متوفر"}\n\nاستلام الغرض من:\n${pickupLocation}\nرقم جهة الاستلام: ${pickupContactPhone}\n\nتسليم الغرض إلى:\n${destinationText}\n${destinationUrl}\n\nنوع الغرض: ${itemDescription}\nالمسافة ذهاباً وإياباً: ${Math.ceil(Number(orderDetails?.deliveryDistanceMeters ?? 0) / 1000)} كم\nسعر التوصيل: ${formatSyp(orderDetails?.deliveryFee ?? 0)}\n${paymentLine(orderDetails)}\n\nأجب بكلمة: نعم أو لا.` };
   void sendWahaText(nearest.phone, message);
   return nearest.id;
 }
@@ -1682,6 +1722,7 @@ export const orderInputSchema = z.object({
   discountCode: z.string().trim().min(2).max(40).optional(),
   referralCode: z.string().trim().min(2).max(40).optional(),
   usePointsReward: z.boolean().optional(),
+  useWallet: z.boolean().optional(),
   lines: z.array(lineInput).max(30),
   taxiType: z.enum(["standard", "van"]).optional(),
   pickupLocation: z.string().trim().max(220).optional(),
@@ -1758,6 +1799,46 @@ export const lahzaRouter = router({
         jarabulusPreparationMinutes: jarabulusOrderPreparationMinutes(settings),
         jarabulusDistanceNotice: ctx.city === "jarabulus" ? JARABULUS_DISTANCE_DELIVERY_NOTE : null,
       };
+    }),
+  }),
+  wallet: router({
+    paymentInfo: publicProcedure.query(() => paymentInfo()),
+    summary: publicProcedure.query(async ({ ctx }) => {
+      const session = await readCustomerSession(ctx);
+      if (!session) return null;
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const phone = session.customerPhone;
+      const [balance, transactions, topups] = await Promise.all([walletBalance(db, phone), listTransactions(db, phone, 30), listTopups(db, { phone, limit: 10 })]);
+      return { balance, transactions, topups: topups.map(({ proofImageUrl: _proof, reviewedBy: _by, ...topup }) => topup) };
+    }),
+    requestTopup: publicProcedure.input(z.object({
+      amount: newSypMoneyInput.min(1, "أدخل مبلغ الشحن"),
+      method: z.enum(["sham_cash", "office_cash"]),
+      reference: z.string().trim().max(120).optional(),
+      proofDataUrl: z.string().max(8_000_000).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const session = await readCustomerSession(ctx);
+      if (!session) throw new Error("سجّل الدخول أولاً لشحن رصيدك");
+      if (input.method === "sham_cash" && !input.reference && !input.proofDataUrl) throw new Error("أدخل رقم عملية التحويل أو أرفق صورة الإشعار");
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      let proofImageUrl: string | undefined;
+      if (input.proofDataUrl) {
+        try {
+          proofImageUrl = (await uploadOfferImage(input.proofDataUrl, 0, `topup-${randomBytes(12).toString("hex")}`)).imageUrl;
+        } catch (error) {
+          // The transfer number alone is enough to check the payment; only a missing number makes the photo essential.
+          if (!input.reference) throw error;
+        }
+      }
+      const amount = toLegacySyp(input.amount);
+      const id = await createTopup(db, { phone: session.customerPhone, amount, method: input.method, reference: input.reference, proofImageUrl });
+      const name = (await db.select({ name: customerAccounts.name }).from(customerAccounts).where(eq(customerAccounts.phone, session.customerPhone)).limit(1))[0]?.name ?? "";
+      const body = `طلب شحن رصيد #${id}\nالعميل: ${name} ${session.customerPhone}\nالمبلغ: ${formatSyp(amount)}\nالطريقة: ${input.method === "sham_cash" ? `شام كاش${input.reference ? ` · رقم العملية ${input.reference}` : ""}` : "نقداً في المكتب"}\n\nراجعه من لوحة التحكم ← الرصيد.`;
+      const phones = await teamWhatsAppPhones(db);
+      await Promise.allSettled(phones.map(phone => sendWahaText(phone, { title: "طلب شحن رصيد", body })));
+      return { success: true, id };
     }),
   }),
   support: router({
@@ -2357,6 +2438,8 @@ export const lahzaRouter = router({
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       const phone = session.customerPhone;
+      const balance = await walletBalance(db, phone);
+      if (balance > 0) throw new Error(`لديك رصيد ${formatSyp(balance)} في حسابك. تواصل مع خدمة العملاء لاسترداده قبل حذف الحساب.`);
       await db.delete(customerAccounts).where(eq(customerAccounts.phone, phone));
       await db.delete(customerProfiles).where(eq(customerProfiles.phone, phone));
       await db.delete(customerPoints).where(eq(customerPoints.customerPhone, phone));
@@ -2427,6 +2510,7 @@ export const lahzaRouter = router({
       await db.update(customerReferrals).set({ referredPhone: input.newPhone }).where(eq(customerReferrals.referredPhone, input.currentPhone));
       await db.update(orders).set({ customerPhone: input.newPhone }).where(eq(orders.customerPhone, input.currentPhone));
       await db.update(intercityOrders).set({ customerPhone: input.newPhone }).where(eq(intercityOrders.customerPhone, input.currentPhone));
+      await moveWalletToPhone(db, input.currentPhone, input.newPhone);
       return { success: true, sessionToken: await setCustomerCookie(ctx, input.newPhone) };
     }),
     list: publicProcedure.query(async ({ ctx }) => {
@@ -2924,6 +3008,9 @@ export const lahzaRouter = router({
         throw new Error(concise ? `تعذر حفظ الطلب: ${concise}` : "تعذر حفظ الطلب في قاعدة البيانات؛ راجع سجلات الخادم للتفاصيل.");
       }
       const orderId = Number(created[0].insertId);
+      // The wallet pays what it can; the rest is collected on delivery in cash or Sham Cash.
+      const walletAmount = input.useWallet ? await payFromWallet(db, input.customerPhone, totalAmount, orderId) : 0;
+      if (walletAmount) await db.update(orders).set({ walletAmount }).where(eq(orders.id, orderId));
       await createOrderStatusNotification(db, { id: orderId, customerPhone: input.customerPhone, fulfillmentScope, preparationMinutes }, savedStatus);
       if (pointsUsed) {
         const spent = await db.update(customerPoints).set({ balance: sql`${customerPoints.balance} - 10` }).where(and(eq(customerPoints.customerPhone, input.customerPhone), gte(customerPoints.balance, 10)));
@@ -3023,6 +3110,12 @@ export const lahzaRouter = router({
       const existing = (await db.select().from(orders).where(eq(orders.id, input.id)).limit(1))[0];
       if (!existing || (session.role !== "owner" && existing.fulfillmentScope !== "manbij_to_jarabulus" && existing.orderCity !== (session.city ?? ctx.city))) throw new Error("لا يمكنك تحديث طلب تابع لمدينة أخرى");
       await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date(), manualStatusOverride: true }).where(eq(orders.id, input.id));
+      const closed = (status: string) => status === "cancelled" || status === "rejected";
+      if (closed(input.status) && !closed(existing.status)) await refundOrderWallet(db, existing);
+      if (!closed(input.status) && closed(existing.status) && existing.walletAmount > 0) {
+        const held = await rechargeReopenedOrder(db, existing);
+        if (held !== existing.walletAmount) await db.update(orders).set({ walletAmount: held }).where(eq(orders.id, input.id));
+      }
       if (existing.status !== input.status) await createOrderStatusNotification(db, existing, input.status);
       if (input.status === "completed") {
         const completedAssignment = (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, input.id)).limit(1))[0];
@@ -3678,6 +3771,82 @@ export const lahzaRouter = router({
     contests: router({
       list: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureContestSchema(db); return db.select().from(contestCampaigns).orderBy(contestCampaigns.contestNumber); }),
       update: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["ready", "draft", "active", "paused", "finished"]).optional(), active: z.boolean().optional(), startsAt: z.string().datetime().nullable().optional(), endsAt: z.string().datetime().nullable().optional(), rewardSuggestion: z.string().min(2).max(300).optional(), requirements: z.string().min(2).max(2000).optional(), configJson: z.string().max(4000).optional() })).mutation(async ({ ctx, input }) => { await requireAdmin(ctx, ["owner"]); const db = await getDb(); if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً"); await ensureContestSchema(db); const { id, startsAt, endsAt, ...patch } = input; await db.update(contestCampaigns).set({ ...patch, startsAt: startsAt === undefined ? undefined : startsAt ? new Date(startsAt) : null, endsAt: endsAt === undefined ? undefined : endsAt ? new Date(endsAt) : null }).where(eq(contestCampaigns.id, id)); return { success: true }; }),
+    }),
+    wallet: router({
+      topups: publicProcedure.input(z.object({ status: z.enum(["pending", "approved", "rejected"]).optional() }).optional()).query(async ({ ctx, input }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const rows = await listTopups(db, { status: input?.status, limit: 200 });
+        const phones = Array.from(new Set(rows.map(row => row.customerPhone)));
+        const names = phones.length ? await db.select({ phone: customerAccounts.phone, name: customerAccounts.name }).from(customerAccounts).where(inArray(customerAccounts.phone, phones)) : [];
+        return rows.map(row => ({ ...row, customerName: names.find(entry => entry.phone === row.customerPhone)?.name ?? "" }));
+      }),
+      review: publicProcedure.input(z.object({ id: z.number().int().positive(), decision: z.enum(["approved", "rejected"]), amount: newSypMoneyInput.min(1).optional(), note: z.string().trim().max(300).optional() })).mutation(async ({ ctx, input }) => {
+        const session = await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const topup = await reviewTopup(db, input.id, input.decision, reviewerName(session), input.note, input.amount === undefined ? undefined : toLegacySyp(input.amount));
+        await notifyTopupReviewed(topup.customerPhone, topup.amount, input.decision, await walletBalance(db, topup.customerPhone), input.note);
+        return { success: true };
+      }),
+      /** Cash paid at the office: recorded as an approved top-up so it shows in the customer's history. */
+      creditOffice: publicProcedure.input(z.object({ phone: internationalPhoneSchema, amount: newSypMoneyInput.min(1, "أدخل المبلغ"), note: z.string().trim().max(300).optional() })).mutation(async ({ ctx, input }) => {
+        const session = await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const account = (await db.select({ id: customerAccounts.id }).from(customerAccounts).where(eq(customerAccounts.phone, input.phone)).limit(1))[0];
+        if (!account) throw new Error("لا يوجد حساب عميل بهذا الرقم");
+        const amount = toLegacySyp(input.amount);
+        const id = await createTopup(db, { phone: input.phone, amount, method: "office_cash", reference: input.note });
+        await reviewTopup(db, id, "approved", reviewerName(session), input.note);
+        await notifyTopupReviewed(input.phone, amount, "approved", await walletBalance(db, input.phone));
+        return { success: true };
+      }),
+      /** Owner-only correction, up or down, with a reason kept in the ledger. */
+      adjust: publicProcedure.input(z.object({ phone: internationalPhoneSchema, amount: z.number().int().refine(value => value !== 0, "أدخل مبلغاً غير الصفر").refine(value => Math.abs(value) <= 10_000_000), note: z.string().trim().min(3, "اكتب سبب التعديل").max(300) })).mutation(async ({ ctx, input }) => {
+        const session = await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await moveWallet(db, input.phone, toLegacySyp(Math.abs(input.amount)) * Math.sign(input.amount), "adjustment", { note: input.note, createdBy: reviewerName(session) });
+        return { success: true, balance: await walletBalance(db, input.phone) };
+      }),
+      balances: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        const rows = await walletBalances(db);
+        const phones = rows.map(row => row.phone);
+        const names = phones.length ? await db.select({ phone: customerAccounts.phone, name: customerAccounts.name }).from(customerAccounts).where(inArray(customerAccounts.phone, phones)) : [];
+        return rows.map(row => ({ ...row, customerName: names.find(entry => entry.phone === row.phone)?.name ?? "" }));
+      }),
+      history: publicProcedure.input(z.object({ phone: internationalPhoneSchema })).query(async ({ ctx, input }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return { balance: await walletBalance(db, input.phone), transactions: await listTransactions(db, input.phone, 100) };
+      }),
+      paymentSettings: publicProcedure.query(async ({ ctx }) => { await requireAdmin(ctx); return paymentInfo(); }),
+      updatePaymentSettings: publicProcedure.input(z.object({
+        shamCashAccountName: z.string().trim().max(120),
+        shamCashAccountNumber: z.string().trim().max(120),
+        officeAddress: z.string().trim().max(300),
+        imageDataUrl: z.string().max(8_000_000).optional(),
+        resetImage: z.boolean().optional(),
+      })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await getSettings();
+        const image = input.imageDataUrl ? (await uploadOfferImage(input.imageDataUrl, 0, `sham-cash-${randomBytes(8).toString("hex")}`)).imageUrl : undefined;
+        await db.update(systemSettings).set({
+          shamCashAccountName: input.shamCashAccountName || null,
+          shamCashAccountNumber: input.shamCashAccountNumber || null,
+          officeAddress: input.officeAddress || null,
+          ...(image ? { shamCashImageUrl: image } : input.resetImage ? { shamCashImageUrl: null } : {}),
+        }).where(eq(systemSettings.id, 1));
+        return paymentInfo();
+      }),
     }),
     supportContacts: router({
       list: publicProcedure.query(async ({ ctx }) => {
