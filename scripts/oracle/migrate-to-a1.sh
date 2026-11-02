@@ -192,6 +192,7 @@ gunzip -c /opt/lahza/migrate/db.sql.gz | docker exec -i lahza-db mariadb -ulahza
 echo "orders restored: $(docker exec lahza-db mariadb -N -ulahza -p"$PW" lahza -e 'SELECT COUNT(*) FROM orders')"
 EOF
   on "$NEW_IP" "curl -fsSL https://raw.githubusercontent.com/abomustafaaa333-ai/Lahza/main/scripts/oracle/install.sh -o /tmp/i.sh && sudo LAHZA_SKIP_BUILD=1 bash /tmp/i.sh $domain main" || true
+  save MOVED 1; save DOMAIN "$domain"
   log "The new VM is running. Now point the domain at $NEW_IP:"
   log "  bash $0 dns <your duckdns subdomain>   (or set the IP yourself on duckdns.org)"
   log "If anything is wrong, the old VM still has everything: bash $0 rollback"
@@ -286,6 +287,9 @@ hunt_stop() {
 
 retire() {
   [ -n "${OLD_ID:-}" ] || die "run create first"
+  # The old VM is the only copy of the app and its data until the move is done and the domain points elsewhere.
+  [ "${MOVED:-}" = 1 ] && [ -n "${NEW_IP:-}" ] || die "the move to the new VM has not been done yet; the old VM still runs Lahza, so it is not deleted"
+  [ "$(getent hosts "${DOMAIN:-lahza-app.duckdns.org}" | awk '{print $1; exit}')" = "$NEW_IP" ] || die "${DOMAIN:-lahza-app.duckdns.org} does not point at the new VM ($NEW_IP) yet; the old VM is not deleted"
   log "This deletes the old VM ($OLD_IP) and its disk for good."
   read -rp "Type DELETE to continue: " answer
   [ "$answer" = DELETE ] || die "cancelled"
