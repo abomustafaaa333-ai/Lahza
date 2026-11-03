@@ -3,6 +3,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, Di
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { serverOrigin } from "@/lib/serverOrigin";
 import { trpc } from "@/lib/trpc";
 import { buildStoreShareUrl, parseSharedStoreId } from "@/lib/storeShare";
 import { countryCallingCodes, DEFAULT_COUNTRY_CODE } from "@/lib/countryCallingCodes";
@@ -92,26 +93,28 @@ const DEMO_OTP_CODE = "123456";
 const DEMO_OWNER_PIN = "1212";
 const isStaticDemo = import.meta.env.VITE_LAHZA_STATIC_DEMO === "true";
 const demoAssetPrefix = isStaticDemo ? "." : "";
+// Category photos come from the server inside the Android app too, so changing one needs only a server update; main.tsx falls back to the copy bundled in the app when offline.
+const categoryAssetPrefix = isStaticDemo ? "." : Capacitor.isNativePlatform() ? serverOrigin() : "";
 const demoGalleryImages = [
   `${demoAssetPrefix}/assets/lahza-offer-bakery.jpg`,
   `${demoAssetPrefix}/assets/lahza-offer-grocery.jpg`,
   `${demoAssetPrefix}/assets/lahza-offer-restaurant.jpg`,
 ];
 const categoryImageByKey: Partial<Record<LahzaCategory, string>> = {
-  restaurants: `${demoAssetPrefix}/assets/lahza-category-restaurants.jpg`,
-  groceries: `${demoAssetPrefix}/assets/lahza-category-groceries.jpg`,
-  produce: `${demoAssetPrefix}/assets/lahza-category-produce.jpg`,
-  household: `${demoAssetPrefix}/assets/lahza-category-household.jpg`,
-  pharmacy: `${demoAssetPrefix}/assets/lahza-category-pharmacy.jpg`,
-  bakery: `${demoAssetPrefix}/assets/lahza-category-bakery.jpg`,
-  sweets: `${demoAssetPrefix}/assets/lahza-category-sweets.jpg`,
-  butcher: `${demoAssetPrefix}/assets/lahza-category-butcher.jpg`,
-  gas: `${demoAssetPrefix}/assets/lahza-category-gas.jpg`,
-  baby: `${demoAssetPrefix}/assets/lahza-category-baby.jpg`,
-  school_stationery: `${demoAssetPrefix}/assets/lahza-category-stationery.jpg`,
-  beauty_personal_care: `${demoAssetPrefix}/assets/lahza-category-beauty.jpg`,
-  mobile_accessories: `${demoAssetPrefix}/assets/lahza-category-mobile.jpg`,
-  clothing: `${demoAssetPrefix}/assets/lahza-category-clothing.jpg`,
+  restaurants: `${categoryAssetPrefix}/assets/lahza-category-restaurants.jpg`,
+  groceries: `${categoryAssetPrefix}/assets/lahza-category-groceries.jpg`,
+  produce: `${categoryAssetPrefix}/assets/lahza-category-produce.jpg`,
+  household: `${categoryAssetPrefix}/assets/lahza-category-household.jpg`,
+  pharmacy: `${categoryAssetPrefix}/assets/lahza-category-pharmacy.jpg`,
+  bakery: `${categoryAssetPrefix}/assets/lahza-category-bakery.jpg`,
+  sweets: `${categoryAssetPrefix}/assets/lahza-category-sweets.jpg`,
+  butcher: `${categoryAssetPrefix}/assets/lahza-category-butcher.jpg`,
+  gas: `${categoryAssetPrefix}/assets/lahza-category-gas.jpg`,
+  baby: `${categoryAssetPrefix}/assets/lahza-category-baby.jpg`,
+  school_stationery: `${categoryAssetPrefix}/assets/lahza-category-stationery.jpg`,
+  beauty_personal_care: `${categoryAssetPrefix}/assets/lahza-category-beauty.jpg`,
+  mobile_accessories: `${categoryAssetPrefix}/assets/lahza-category-mobile.jpg`,
+  clothing: `${categoryAssetPrefix}/assets/lahza-category-clothing.jpg`,
 };
 const homeFeaturedStores: { id: number; name: string; category: LahzaCategory; note: string; ratingStars: number; storeOpen?: boolean | null }[] = [
   { id: -101, name: "مذاق الساحة", category: "restaurants", note: "وجبات ومشاوي", ratingStars: 3, storeOpen: true },

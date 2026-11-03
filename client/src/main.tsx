@@ -13,6 +13,18 @@ import "./redesign.css";
 import { serverOrigin } from "./lib/serverOrigin";
 import "./admin-redesign.css";
 
+// Category photos load from the server inside the app; when that fails (offline), use the copy bundled in the app.
+if (Capacitor.isNativePlatform()) {
+  window.addEventListener("error", event => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement) || image.dataset.bundledFallback) return;
+    const match = image.src.match(/\/assets\/(lahza-category-[\w-]+\.jpg)$/);
+    if (!match || image.src.startsWith(window.location.origin)) return;
+    image.dataset.bundledFallback = "1";
+    image.src = `/assets/${match[1]}`;
+  }, true);
+}
+
 const apiUrl = Capacitor.isNativePlatform()
   ? `${serverOrigin()}/api/trpc`
   : "/api/trpc";
