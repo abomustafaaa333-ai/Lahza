@@ -2,6 +2,7 @@ export type NativeLahzaBridge = {
   getVersionCode?: () => number | string;
   getInstaller?: () => string;
   openExternal?: (url: string) => void;
+  saveImage?: (url: string, fileName: string) => boolean;
 };
 
 export type NativeRuntimeLike = {

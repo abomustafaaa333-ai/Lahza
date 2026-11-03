@@ -40,6 +40,7 @@ declare global {
       getVersionCode?: () => number | string;
       getInstaller?: () => string;
       openExternal?: (url: string) => void;
+      saveImage?: (url: string, fileName: string) => boolean;
     };
   }
 }
