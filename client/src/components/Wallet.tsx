@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Building2, Copy, Download, ImagePlus, Plus, Wallet as WalletIcon } from "lucide-react";
+import { Building2, CalendarDays, Clock3, Copy, Download, Gift, ImagePlus, Info, ListChecks, Plus, ShieldCheck, Sparkles, Trophy, Users, Wallet as WalletIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -161,23 +161,94 @@ function Progress({ label, done, goal }: { label: string; done: number; goal: nu
   return <div className="contest-progress"><div className="account-progress-labels"><span>{label}</span><span>{Math.min(done, goal)} / {goal}</span></div><div className="account-progress"><span style={{ width: `${Math.min(100, Math.round(done / goal * 100))}%` }} /></div></div>;
 }
 
-/** The contest and this customer's progress toward both targets. */
-export function LaunchOfferCard({ offer }: { offer: LaunchOffer | null | undefined }) {
+/** Where the contest stands right now, in one short line. */
+export function contestStatus(offer: LaunchOffer) {
+  const now = Date.now();
+  if (offer.startsAt && new Date(offer.startsAt).getTime() > now) return { live: false, text: `تبدأ ${dayLabel(offer.startsAt)}` };
+  if (offer.awarded || (offer.endsAt && new Date(offer.endsAt).getTime() < now)) return { live: false, text: "انتهت المسابقة" };
+  if (offer.seatsTaken >= offer.winnersCount) return { live: false, text: `اكتمل الفائزون (${offer.winnersCount})` };
+  const days = offer.endsAt ? Math.ceil((new Date(offer.endsAt).getTime() - now) / 86_400_000) : 0;
+  return { live: true, text: offer.endsAt ? (days <= 1 ? "آخر يوم في المسابقة" : `باقي ${days} يوم`) : "المسابقة جارية" };
+}
+
+const prizeLine = (offer: LaunchOffer) => [offer.prizeText, offer.rewardAmount ? `${formatSyp(offer.rewardAmount)} رصيد في محفظة لحظة` : ""].filter(Boolean).join(" + ");
+
+/** The full contest page: what it is, how to join, the rules, the prizes, and where this customer stands. */
+export function ContestDialog({ offer, open, onOpenChange, signedIn, onJoin }: { offer: LaunchOffer | null | undefined; open: boolean; onOpenChange: (open: boolean) => void; signedIn: boolean; onJoin?: () => void }) {
   if (!offer) return null;
-  const ended = offer.endsAt ? new Date(offer.endsAt).getTime() < Date.now() : false;
-  const notStarted = offer.startsAt ? new Date(offer.startsAt).getTime() > Date.now() : false;
-  const full = offer.seatsTaken >= offer.winnersCount;
-  const rules = [offer.minPersonalOrders ? `${offer.minPersonalOrders} طلبات شخصية أو أكثر` : "", offer.minReferrals ? `${offer.minReferrals} طلبات من أصدقائك برمز إحالتك` : ""].filter(Boolean).join(" و");
+  const status = contestStatus(offer);
+  const prize = prizeLine(offer);
+  const seatsLeft = Math.max(0, offer.winnersCount - offer.seatsTaken);
+  const steps = [
+    "أنشئ رمز الإحالة الخاص بك من صفحة «حسابي».",
+    offer.minReferrals ? `شارك رمزك مع أصدقائك، ويجب أن يُكمل ${offer.minReferrals} منهم على الأقل طلباً باستخدام رمزك.` : "",
+    offer.minPersonalOrders ? `أكمل أنت ${offer.minPersonalOrders} طلبات أو أكثر من التطبيق.` : "",
+    `أول ${offer.winnersCount} عملاء يحققون الشروط يفوزون بالجوائز.`,
+  ].filter(Boolean);
+  const rules = [
+    offer.startsAt || offer.endsAt ? `تُحسب فقط الطلبات المكتملة خلال مدة المسابقة${offer.startsAt ? ` من ${dayLabel(offer.startsAt)}` : ""}${offer.endsAt ? ` حتى ${dayLabel(offer.endsAt)}` : ""}.` : "تُحسب فقط الطلبات المكتملة خلال مدة المسابقة.",
+    "الطلبات الملغاة أو المرفوضة لا تُحسب.",
+    "كل صديق يُحسب مرة واحدة مهما كرر الطلب.",
+    "الترتيب حسب الأسبقية: من يكمل الشرطين أولاً يحجز مركزه.",
+    "يراجع فريق لحظة النتائج ويعتمد الفائزين، ويُعلَن عنهم بعد انتهاء المسابقة.",
+  ];
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent dir="rtl" className="contest-dialog w-[calc(100%-1.5rem)] max-w-lg max-h-[90vh] overflow-y-auto rounded-3xl border-0 bg-white p-0 shadow-2xl">
+    <div className="contest-hero">
+      <span className="contest-hero-trophy" aria-hidden="true"><Trophy className="h-9 w-9" /></span>
+      <DialogHeader><DialogTitle className="text-center text-2xl font-black text-white">{offer.title}</DialogTitle><DialogDescription className="text-center text-sm font-bold text-amber-100">أول {offer.winnersCount} يحققون الشروط يفوزون</DialogDescription></DialogHeader>
+      <span className={`contest-status-chip${status.live ? " contest-status-live" : ""}`}><Clock3 className="h-4 w-4" />{status.text}</span>
+    </div>
+    <div className="contest-body">
+      {prize ? <section className="contest-section contest-prize-box"><h3><Gift className="h-5 w-5" /> الجوائز</h3><p>{prize}</p><small>لكل فائز من الفائزين الـ{offer.winnersCount}</small></section> : null}
+      <section className="contest-section"><h3><ListChecks className="h-5 w-5" /> كيف تشارك؟</h3><ol className="contest-steps">{steps.map((step, index) => <li key={index}><b>{index + 1}</b><span>{step}</span></li>)}</ol></section>
+      <section className="contest-section"><h3><Users className="h-5 w-5" /> وضع المسابقة الآن</h3>
+        <div className="contest-stats"><article><strong>{offer.winnersCount}</strong><span>عدد الجوائز</span></article><article><strong>{offer.seatsTaken}</strong><span>حققوا الشروط</span></article><article><strong>{seatsLeft}</strong><span>مراكز متبقية</span></article></div>
+        {offer.startsAt || offer.endsAt ? <p className="contest-dates"><CalendarDays className="h-4 w-4" />{offer.startsAt ? `من ${dayLabel(offer.startsAt)}` : ""}{offer.startsAt && offer.endsAt ? " " : ""}{offer.endsAt ? `حتى ${dayLabel(offer.endsAt)}` : ""}</p> : null}
+      </section>
+      <section className="contest-section"><h3><Sparkles className="h-5 w-5" /> تقدّمك</h3>
+        {!signedIn ? <p className="account-card-note">سجّل الدخول برقم هاتفك لتشارك وتتابع تقدّمك.</p>
+          : offer.won ? <p className="launch-offer-won">مبروك! فزت بالمركز {offer.won.rank} 🎉</p>
+          : offer.rank ? <p className="launch-offer-won">حققت الشروط! مركزك {offer.rank} من {offer.winnersCount}.</p>
+          : <><Progress label="طلباتك المكتملة" done={offer.personalOrders} goal={offer.minPersonalOrders} /><Progress label="أصدقاء طلبوا برمزك" done={offer.referrals} goal={offer.minReferrals} /></>}
+      </section>
+      <section className="contest-section"><h3><ShieldCheck className="h-5 w-5" /> الشروط</h3><ul className="contest-rules">{rules.map((rule, index) => <li key={index}>{rule}</li>)}</ul></section>
+      {onJoin && status.live ? <Button type="button" onClick={() => { onOpenChange(false); onJoin(); }} className="contest-join">{signedIn ? "أنشئ رمز إحالتك وشارك الآن" : "سجّل وشارك الآن"}</Button> : null}
+    </div>
+  </DialogContent></Dialog>;
+}
+
+/** The contest as a slide in the home offers gallery. */
+export function ContestSlide({ offer, onOpen }: { offer: LaunchOffer; onOpen: () => void }) {
+  const status = contestStatus(offer);
+  const prize = prizeLine(offer);
+  return <button type="button" onClick={onOpen} className="hero-gallery-slide contest-slide block h-full w-full cursor-pointer text-right" aria-label={`فتح ${offer.title}`}>
+    <span className="contest-slide-glow" aria-hidden="true" />
+    <span className="contest-slide-trophy" aria-hidden="true"><Trophy className="h-10 w-10" /></span>
+    <span className="contest-slide-copy">
+      <small>🏆 {status.text}</small>
+      <strong>{offer.title}</strong>
+      <span>{prize ? `الجائزة: ${prize}` : `أول ${offer.winnersCount} يفوزون بجوائز لحظة`}</span>
+      <em>شاهد الشروط وشارك</em>
+    </span>
+  </button>;
+}
+
+/** The contest and this customer's progress toward both targets. */
+export function LaunchOfferCard({ offer, onDetails }: { offer: LaunchOffer | null | undefined; onDetails?: () => void }) {
+  if (!offer) return null;
+  const status = contestStatus(offer);
+  const prize = prizeLine(offer);
   return <section className="account-card launch-offer-card">
-    <div className="account-card-heading"><div><p>🏆 {offer.title}</p><h2>أول {offer.winnersCount} يفوزون</h2></div></div>
-    <p className="account-card-note">حقق خلال المسابقة {rules}{offer.startsAt || offer.endsAt ? ` (${offer.startsAt ? `من ${dayLabel(offer.startsAt)} ` : ""}${offer.endsAt ? `حتى ${dayLabel(offer.endsAt)}` : ""})` : ""}.</p>
-    {offer.prizeText || offer.rewardAmount ? <p className="contest-prize">🎁 {offer.prizeText}{offer.prizeText && offer.rewardAmount ? " · " : ""}{offer.rewardAmount ? `${formatSyp(offer.rewardAmount)} رصيد لكل فائز` : ""}</p> : null}
+    <div className="account-card-heading"><div><p>🏆 {offer.title}</p><h2>أول {offer.winnersCount} يفوزون</h2></div>{onDetails ? <button type="button" className="contest-info-button" onClick={onDetails} aria-label="معلومات المسابقة وشروطها"><Info className="h-5 w-5" /></button> : <Trophy className="h-6 w-6" />}</div>
+    <span className={`contest-status-chip contest-status-inline${status.live ? " contest-status-live" : ""}`}><Clock3 className="h-4 w-4" />{status.text}</span>
+    {prize ? <p className="contest-prize">🎁 {prize}</p> : null}
     {offer.won ? <p className="launch-offer-won">مبروك! فزت بالمركز {offer.won.rank} 🎉</p>
       : offer.rank ? <p className="launch-offer-won">حققت الشروط! مركزك {offer.rank} من {offer.winnersCount}، وسيعتمد فريق لحظة الفائزين.</p>
       : <>
         <Progress label="طلباتك المكتملة" done={offer.personalOrders} goal={offer.minPersonalOrders} />
-        <Progress label="طلبات أصدقائك برمزك" done={offer.referrals} goal={offer.minReferrals} />
-        <p className="account-card-note">{notStarted ? "لم تبدأ المسابقة بعد." : ended || offer.awarded ? "انتهت المسابقة." : full ? `اكتمل عدد الفائزين (${offer.winnersCount}).` : `بقي ${offer.winnersCount - offer.seatsTaken} مراكز من ${offer.winnersCount}.`}</p>
+        <Progress label="أصدقاء طلبوا برمزك" done={offer.referrals} goal={offer.minReferrals} />
+        <p className="account-card-note">{status.live ? `بقي ${Math.max(0, offer.winnersCount - offer.seatsTaken)} مراكز من ${offer.winnersCount}.` : status.text}</p>
       </>}
+    {onDetails ? <button type="button" className="account-action-secondary contest-details-link" onClick={onDetails}><Info className="h-4 w-4" /> شرح المسابقة والشروط</button> : null}
   </section>;
 }
