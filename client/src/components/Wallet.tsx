@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Building2, Copy, ImagePlus, Plus, Wallet as WalletIcon } from "lucide-react";
+import { Building2, Copy, Download, ImagePlus, Plus, Wallet as WalletIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,31 @@ export function readImageAsDataUrl(file: File, maxSide = 1600) {
   });
 }
 
+/**
+ * A QR on the same phone cannot be scanned, so the customer saves it and opens it from
+ * Sham Cash's "scan from image". The Android app saves it to the gallery; older app
+ * versions open it in the browser, and the website downloads it.
+ */
+async function saveQrImage(url: string) {
+  const app = window.LahzaApp;
+  if (app?.saveImage) {
+    if (app.saveImage(url, "lahza-shamcash-qr.png")) { toast.success("تم حفظ صورة الباركود في الاستديو (مجلد Pictures/Lahza). افتح شام كاش واختر المسح من صورة."); return; }
+    if (!app.openExternal) { toast.error("تعذر حفظ الصورة، جرّب مرة أخرى"); return; }
+  }
+  if (app?.openExternal) { app.openExternal(url); toast.message("اضغط مطولاً على الصورة واختر حفظ"); return; }
+  try {
+    const blob = await (await fetch(url)).blob();
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "lahza-shamcash-qr.png";
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+    toast.success("تم تحميل صورة الباركود");
+  } catch {
+    window.open(url, "_blank");
+  }
+}
+
 export function ShamCashAccountCard({ info, amountNewSyp }: { info: PaymentInfo | undefined; amountNewSyp?: number | null }) {
   const [imageFailed, setImageFailed] = useState(false);
   if (!info) return null;
@@ -43,7 +68,7 @@ export function ShamCashAccountCard({ info, amountNewSyp }: { info: PaymentInfo 
   };
   return <div className="shamcash-card">
     <div className="shamcash-card-head"><span className="payment-icon payment-icon-lahza">ش</span><div><strong>حوّل عبر شام كاش</strong><small>{amountNewSyp ? `المبلغ المطلوب: ${formatNewSyp(amountNewSyp)}` : "امسح الرمز أو انسخ رقم الحساب"}</small></div></div>
-    {imageFailed ? null : <img src={imageSrc(info.shamCashImageUrl)} alt="رمز حساب شام كاش" className="shamcash-card-image" onError={() => setImageFailed(true)} />}
+    {imageFailed ? null : <><img src={imageSrc(info.shamCashImageUrl)} alt="رمز حساب شام كاش" className="shamcash-card-image" onError={() => setImageFailed(true)} /><button type="button" className="shamcash-save" onClick={() => void saveQrImage(imageSrc(info.shamCashImageUrl))}><Download className="h-4 w-4" /> حفظ صورة الباركود</button><small className="shamcash-hint">احفظ الصورة، ثم افتح شام كاش واختر «المسح من صورة».</small></>}
     {info.shamCashAccountName ? <p className="shamcash-card-line">اسم الحساب: <b>{info.shamCashAccountName}</b></p> : null}
     {info.shamCashAccountNumber ? <button type="button" className="shamcash-card-number" onClick={copy}><span dir="ltr">{info.shamCashAccountNumber}</span><Copy className="h-4 w-4" /></button> : null}
   </div>;
@@ -68,12 +93,11 @@ export function WalletCard({ summary, onTopup }: { summary: WalletSummary | null
 export function TopupDialog({ open, onOpenChange, info, onDone }: { open: boolean; onOpenChange: (open: boolean) => void; info: PaymentInfo | undefined; onDone: () => void }) {
   const [method, setMethod] = useState<"sham_cash" | "office_cash">("sham_cash");
   const [amount, setAmount] = useState("");
-  const [reference, setReference] = useState("");
   const [proof, setProof] = useState<string | null>(null);
   const request = trpc.lahza.wallet.requestTopup.useMutation({
     onSuccess: () => {
       toast.success(method === "sham_cash" ? "وصل طلب الشحن، سنضيف الرصيد بعد التحقق من التحويل" : "وصل طلبك، ادفع المبلغ في مكتب لحظة ليُضاف إلى رصيدك");
-      setAmount(""); setReference(""); setProof(null);
+      setAmount(""); setProof(null);
       onOpenChange(false);
       onDone();
     },
@@ -82,8 +106,8 @@ export function TopupDialog({ open, onOpenChange, info, onDone }: { open: boolea
   const amountNumber = Number(amount);
   const submit = () => {
     if (!Number.isInteger(amountNumber) || amountNumber < 1) { toast.error("أدخل مبلغ الشحن بالليرة"); return; }
-    if (method === "sham_cash" && !reference.trim() && !proof) { toast.error("أدخل رقم عملية التحويل أو أرفق صورة الإشعار"); return; }
-    request.mutate({ amount: amountNumber, method, reference: reference.trim() || undefined, proofDataUrl: proof ?? undefined });
+    if (method === "sham_cash" && !proof) { toast.error("أرفق صورة إشعار التحويل من شام كاش"); return; }
+    request.mutate({ amount: amountNumber, method, proofDataUrl: method === "sham_cash" ? proof ?? undefined : undefined });
   };
   const pickProof = async (file: File | undefined) => {
     if (!file) return;
@@ -99,8 +123,7 @@ export function TopupDialog({ open, onOpenChange, info, onDone }: { open: boolea
       <label className="topup-field"><span>المبلغ (ل.س)</span><Input dir="ltr" inputMode="numeric" value={amount} onChange={event => setAmount(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="مثال: 500" /></label>
       {method === "sham_cash" ? <>
         <ShamCashAccountCard info={info} amountNewSyp={amountNumber || null} />
-        <label className="topup-field"><span>رقم عملية التحويل</span><Input dir="ltr" value={reference} onChange={event => setReference(event.target.value.slice(0, 120))} placeholder="من إشعار شام كاش" /></label>
-        <label className="topup-proof"><ImagePlus className="h-5 w-5" /><span>{proof ? "تم إرفاق صورة الإشعار ✓" : "إرفاق صورة إشعار التحويل (اختياري)"}</span><input type="file" accept="image/*" hidden onChange={event => void pickProof(event.target.files?.[0])} /></label>
+        <label className="topup-proof"><ImagePlus className="h-5 w-5" /><span>{proof ? "تم إرفاق صورة الإشعار ✓" : "إرفاق صورة إشعار التحويل"}</span><input type="file" accept="image/*" hidden onChange={event => void pickProof(event.target.files?.[0])} /></label>
         <p className="topup-note">بعد التحويل اضغط «إرسال الطلب»، ويُضاف المبلغ لرصيدك فور التحقق منه.</p>
       </> : <div className="topup-office">
         <strong>ادفع في مكتب لحظة</strong>
