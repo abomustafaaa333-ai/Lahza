@@ -462,8 +462,13 @@ export default function Home() {
     const saved = typeof window !== "undefined" ? window.sessionStorage.getItem("lahza_selected_city") : null;
     return saved === "manbij" || saved === "jarabulus" ? saved : null;
   });
-  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false, staleTime: 300_000 });
-  const categorySettingsQuery = trpc.lahza.categorySettings.get.useQuery(undefined, { enabled: Boolean(customerAuth), retry: false, staleTime: 300_000 });
+  // The owner, supervisors and partners who open the storefront from their panel browse it like a
+  // customer: these read the session already loaded at sign-in, without asking the server again.
+  const cachedAdminSession = trpc.lahza.admin.session.useQuery(undefined, { enabled: false });
+  const cachedPartnerSession = trpc.lahza.partner.session.useQuery(undefined, { enabled: false });
+  const canBrowse = Boolean(customerAuth) || Boolean(cachedAdminSession.data?.role || cachedPartnerSession.data);
+  const interfaceSettingsQuery = trpc.lahza.interfaceSettings.get.useQuery(undefined, { enabled: canBrowse, retry: false, staleTime: 300_000 });
+  const categorySettingsQuery = trpc.lahza.categorySettings.get.useQuery(undefined, { enabled: canBrowse, retry: false, staleTime: 300_000 });
   useEffect(() => {
     if (!selectedCity || isStaticDemo) return;
     queryClient.removeQueries({ predicate: query => {
@@ -651,14 +656,14 @@ export default function Home() {
   const [sharedStoreId] = useState(() => parseSharedStoreId(window.location.search));
   const [gatewayMode, setGatewayMode] = useState(false);
 
-  const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && screen === "checkout", retry: false });
+  const deliveryFeesQuery = trpc.lahza.deliveryFees.get.useQuery(undefined, { enabled: !isStaticDemo && canBrowse && screen === "checkout", retry: false });
   const deliveryQuote = trpc.lahza.delivery.quote.useMutation();
-  const partnerOffersQuery = trpc.lahza.publicFeaturedOffers.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false, staleTime: 120_000 });
-  const popularProductsQuery = trpc.lahza.storefront.popularProducts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth), retry: false, staleTime: 300_000 });
+  const partnerOffersQuery = trpc.lahza.publicFeaturedOffers.useQuery(undefined, { enabled: !isStaticDemo && canBrowse, retry: false, staleTime: 120_000 });
+  const popularProductsQuery = trpc.lahza.storefront.popularProducts.useQuery(undefined, { enabled: !isStaticDemo && canBrowse, retry: false, staleTime: 300_000 });
   const storeOffersQuery = trpc.lahza.intercity.offers.useQuery({ storeId: selectedStore?.id ?? 1 }, { enabled: !isStaticDemo && Boolean(selectedStore), retry: false });
   const trackStoreVisit = trpc.lahza.traffic.track.useMutation();
-  const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && (screen === "delivery" || screen === "stores"), retry: false });
-  const supportContactsQuery = trpc.lahza.support.contacts.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && (screen === "checkout" || supportOpen), retry: false });
+  const customCategoriesQuery = trpc.lahza.customCategories.listActive.useQuery(undefined, { enabled: !isStaticDemo && canBrowse && (screen === "delivery" || screen === "stores"), retry: false });
+  const supportContactsQuery = trpc.lahza.support.contacts.useQuery(undefined, { enabled: !isStaticDemo && canBrowse && (screen === "checkout" || supportOpen), retry: false });
   const normalizedSearchText = searchText.trim();
   const productSearchInput = useMemo(() => ({ query: normalizedSearchText }), [normalizedSearchText]);
   const productSearchQuery = trpc.lahza.storefront.searchProducts.useQuery(productSearchInput, { enabled: !isStaticDemo && searchOpen && normalizedSearchText.length >= 2, retry: false });
@@ -714,13 +719,13 @@ export default function Home() {
     onError: error => toast.error(error.message),
   });
   const categoryStoresInput = useMemo(() => ({ category: activeCategory ?? "groceries", customCategorySlug: activeCategory === "other" ? activeCustomCategory?.slug : undefined }), [activeCategory, activeCustomCategory?.slug]);
-  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(activeCategory), retry: false, staleTime: 60_000 });
-  const gatewayStoresQuery = trpc.lahza.storefront.gatewayStores.useQuery(undefined, { enabled: !isStaticDemo && Boolean(customerAuth) && selectedCity === "jarabulus", retry: false });
+  const categoryStoresQuery = trpc.lahza.storefront.stores.useQuery(categoryStoresInput, { enabled: !isStaticDemo && canBrowse && Boolean(activeCategory), retry: false, staleTime: 60_000 });
+  const gatewayStoresQuery = trpc.lahza.storefront.gatewayStores.useQuery(undefined, { enabled: !isStaticDemo && canBrowse && selectedCity === "jarabulus", retry: false });
   const productFirstCategory = !gatewayMode && !activeCustomCategory && activeCategory && isProductFirstCategory(activeCategory) ? activeCategory as (typeof productFirstCategories)[number] : null;
   const productFirstBrowsing = Boolean(productFirstCategory);
   // Every store category is asked for products: product-first ones list all of them, the rest list only لحظة's own.
   const productListCategory = !gatewayMode && !activeCustomCategory && activeCategory && (storeCategories as readonly string[]).includes(activeCategory) ? activeCategory as (typeof storeCategories)[number] : null;
-  const categoryProductsQuery = trpc.lahza.storefront.categoryProducts.useQuery({ category: productListCategory ?? "groceries" }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(productListCategory) && screen === "stores", retry: false, staleTime: 60_000 });
+  const categoryProductsQuery = trpc.lahza.storefront.categoryProducts.useQuery({ category: productListCategory ?? "groceries" }, { enabled: !isStaticDemo && canBrowse && Boolean(productListCategory) && screen === "stores", retry: false, staleTime: 60_000 });
   const categoryProducts: CategoryProduct[] = isStaticDemo
     ? staticDemoProducts.filter(product => product.category === activeCategory).map(product => ({ ...product, storeId: -1, storeName: "متجر لحظة التجريبي", storeCategory: product.category, storeOpen: true }))
     : (categoryProductsQuery.data ?? []) as CategoryProduct[];
@@ -732,8 +737,8 @@ export default function Home() {
     setScreen("productQuantity");
     window.scrollTo({ top: 0 });
   };
-  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id || 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(selectedStore && selectedStore.id > 0), retry: false, staleTime: 60_000 });
-  const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && Boolean(customerAuth) && Boolean(sharedStoreId), retry: false, staleTime: 120_000 });
+  const storeProductsQuery = trpc.lahza.storefront.products.useQuery({ storeId: selectedStore?.id || 1 }, { enabled: !isStaticDemo && canBrowse && Boolean(selectedStore && selectedStore.id > 0), retry: false, staleTime: 60_000 });
+  const sharedStoreQuery = trpc.lahza.storefront.products.useQuery({ storeId: sharedStoreId ?? 1 }, { enabled: !isStaticDemo && canBrowse && Boolean(sharedStoreId), retry: false, staleTime: 120_000 });
   const products = isStaticDemo ? staticDemoProducts : [];
   const supportContacts = supportContactsQuery.data ?? [];
   const gatewayStores = (gatewayStoresQuery.data ?? []) as StoreOption[];
