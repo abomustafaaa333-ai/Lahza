@@ -6,6 +6,7 @@
 #   bash migrate-to-a1.sh create <old-ip> [ocpus] [memory-gb]   new VM + start the build there
 #                          (RETRY_SECONDS=20 bash ... sets the wait between A1 attempts; default 30)
 #   bash migrate-to-a1.sh hunt <old-ip> <whatsapp> [ocpus] [gb]  keep trying on the old VM, even with Cloud Shell closed
+#                          (with no size given it tries 2 OCPU/12 GB, then 1 OCPU/6 GB, in turn)
 #   bash migrate-to-a1.sh hunt-status | hunt-stop                 follow or stop that search
 #   bash migrate-to-a1.sh status                                  progress of that build
 #   bash migrate-to-a1.sh move <domain>                           stop old app, copy data, start new
@@ -224,7 +225,9 @@ rollback() {
 # with its own API key and messages the owner on WhatsApp when the VM exists.
 hunt() {
   local old_ip=${1:?usage: hunt <old-ip> <whatsapp-number e.g. 963997311078> [ocpus] [memory-gb]}
-  local notify=${2:?usage: hunt <old-ip> <whatsapp-number> [ocpus] [memory-gb]} ocpus=${3:-2} mem=${4:-12} fp tmp
+  local notify=${2:?usage: hunt <old-ip> <whatsapp-number> [ocpus] [memory-gb]} ocpus=${3:-2} mem=${4:-12} fp tmp sizes
+  # A size given on the command line is the only one tried; otherwise the smaller size is tried too.
+  if [ -n "${3:-}" ]; then sizes="$ocpus:$mem"; else sizes="2:12 1:6"; fi
   notify=${notify//[^0-9]/}
   [[ "$notify" =~ ^[0-9]{9,15}$ ]] || die "the WhatsApp number needs the country code, digits only, e.g. 963997311078"
   [ -n "${OCI_CS_USER_OCID:-}" ] || die "run this in OCI Cloud Shell"
@@ -249,8 +252,8 @@ SETUP
   tmp=$(mktemp -d)
   printf '[DEFAULT]\nuser=%s\nfingerprint=%s\ntenancy=%s\nregion=%s\nkey_file=/root/.oci/api.pem\n' \
     "$OCI_CS_USER_OCID" "$API_FP" "$OCI_TENANCY" "${OCI_REGION:-eu-madrid-1}" > "$tmp/config"
-  printf 'COMP=%s\nAD=%s\nSUBNET=%s\nIMAGE=%s\nOCPUS=%s\nMEM=%s\nNOTIFY=%s\nOLD_IP=%s\n' \
-    "$comp" "$ad" "$subnet" "$image" "$ocpus" "$mem" "$notify" "$OLD_IP" > "$tmp/env"
+  printf 'COMP=%s\nAD=%s\nSUBNET=%s\nIMAGE=%s\nOCPUS=%s\nMEM=%s\nNOTIFY=%s\nOLD_IP=%s\nSIZES="%s"\n' \
+    "$comp" "$ad" "$subnet" "$image" "$ocpus" "$mem" "$notify" "$OLD_IP" "$sizes" > "$tmp/env"
   printf '[Unit]\nDescription=Lahza: wait for the Always Free A1 VM\nAfter=network-online.target docker.service\n[Service]\nExecStart=/usr/local/bin/lahza-a1-hunt\nRestart=on-failure\nRestartSec=60\nStandardOutput=append:/var/log/lahza-hunt.log\nStandardError=append:/var/log/lahza-hunt.log\n[Install]\nWantedBy=multi-user.target\n' > "$tmp/service"
   curl -fsSL "https://raw.githubusercontent.com/abomustafaaa333-ai/Lahza/main/scripts/oracle/a1-hunter.sh" -o "$tmp/hunter"
   on "$OLD_IP" "sudo tee /root/.oci/config >/dev/null" < "$tmp/config"
@@ -270,7 +273,7 @@ SETUP
   done
   on "$OLD_IP" "$probe" || die "the old VM cannot log in to Oracle with the new key"
   on "$OLD_IP" 'sudo systemctl daemon-reload && sudo systemctl enable lahza-a1-hunt >/dev/null 2>&1 && sudo systemctl restart lahza-a1-hunt'
-  log "The search now runs on the old VM, even with Cloud Shell closed."
+  log "The search now runs on the old VM, even with Cloud Shell closed. Sizes tried in turn: $sizes (OCPU:GB)"
   log "A WhatsApp message goes to +$notify now, and again when the A1 VM exists."
   log "Progress: bash $0 hunt-status    Stop: bash $0 hunt-stop"
 }
