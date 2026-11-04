@@ -13,7 +13,7 @@ import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getRoadRoute } from "./maps";
-import { mapLink, saveTaxiDestination, taxiDestination, taxiTypeLabel, taxiVehicle } from "./taxi";
+import { mapLink, requestedVehicles, saveRequestedVehicle, saveTaxiDestination, taxiDestination, taxiTypeLabel, vehicleForOrder, vehicleLabel, type WosselVehicle } from "./taxi";
 import { cleanExpiredOffers } from "./expiredOffers";
 import { cleanExpiredOrders, isOrderArchived } from "./orderLifecycle";
 import { LAHZA_SEED_PHOTOS, LAHZA_SEED_PRODUCTS, SEED_BAKERIES, SEED_BREAD } from "./lahzaCatalogSeed";
@@ -535,33 +535,34 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   if (!order || isOrderArchived(order.createdAt) || !["pending", "confirmed", "preparing", "on_the_way"].includes(order.status)) return null;
   // Products sold without a store still go out to drivers; the store only matters for pricing.
   const settings = await getSettings(); const timeoutMinutes = DRIVER_DISPATCH_WINDOW_MINUTES;
-  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true))); const isTaxi = order.orderType === "taxi"; const vehicle = taxiVehicle(order.taxiType === "van" ? "van" : "standard"); const target = candidates.filter(d => !excludedDriverIds.includes(d.id) && (!isTaxi || d.vehicleType === vehicle));
+  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true))); const isTaxi = order.orderType === "taxi"; const vehicle = vehicleForOrder(order); const target = candidates.filter(d => !excludedDriverIds.includes(d.id) && d.vehicleType === vehicle);
   console.info("Driver broadcast candidate check", { orderId, orderCity, availableCount: candidates.length, targetDriverIds: target.map(d => d.id), excludedDriverIds });
-  if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), isTaxi ? { title: "لا يوجد سائق متاح", body: `طلب سيارة الأجرة #${orderId} (${taxiTypeLabel(order.taxiType)}) لا يوجد له سائق متاح حالياً. يرجى التواصل مع العميل وتأمين سيارة يدوياً.` } : { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب متاح حالياً.` }); return null; }
+  if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), isTaxi ? { title: "لا يوجد سائق متاح", body: `طلب سيارة الأجرة #${orderId} (${taxiTypeLabel(order.taxiType)}) لا يوجد له سائق متاح حالياً. يرجى التواصل مع العميل وتأمين سيارة يدوياً.` } : { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب ${vehicleLabel(vehicle)} متاح حالياً.` }); return null; }
   const old = (await db.select().from(driverDispatchRounds).where(eq(driverDispatchRounds.orderId, orderId)).limit(1))[0]; const expiresAt = new Date(Date.now() + timeoutMinutes * 60000); let roundId: number; if (old) return null; { const inserted = await db.insert(driverDispatchRounds).values({ orderId, status: "open", expiresAt }); roundId = Number(inserted[0].insertId); }
   const message = isTaxi ? { title: "طلب سيارة أجرة جديد", body: `يوجد طلب ${taxiTypeLabel(order.taxiType)} جديد #${orderId}.\nمن: ${order.pickupLocation || "موقع الراكب"}\nإلى: ${order.destination || "يحددها الراكب"}\n\nهل أنت متاح لتوصيل الراكب؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` } : { title: "طلب توصيل جديد", body: `يوجد طلب توصيل جديد #${orderId}.\n\nهل أنت متاح لاستلامه؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` }; await Promise.allSettled(target.map(async d => { const textResult = await sendWahaText(d.phone, { ...message, body: isTaxi ? message.body : `${message.body}\nلا توجد تفاصيل في هذه المرحلة.` }); console.info("Driver text broadcast delivery", { orderId, driverId: d.id, phone: maskPhone(d.phone), textSent: textResult.sent }); return textResult; })); return roundId;
 }
 async function claimBroadcastOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, driver: typeof drivers.$inferSelect, accepted: boolean) {
-  const rounds = await db.select({ round: driverDispatchRounds, order: orders }).from(driverDispatchRounds).innerJoin(orders, eq(orders.id, driverDispatchRounds.orderId)).where(and(inArray(driverDispatchRounds.status, ["open", "assigned"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(driverDispatchRounds.createdAt)).limit(20); const row = (await Promise.all(rounds.map(async r => (await db.select({ id: driverDispatchResponses.id }).from(driverDispatchResponses).where(and(eq(driverDispatchResponses.roundId, r.round.id), eq(driverDispatchResponses.driverId, driver.id))).limit(1))[0] ? null : r))).find(r => r && r.round.status === "open" && r.round.expiresAt > new Date()) as (typeof rounds)[number] | undefined; if (!row) { const assigned = rounds.find(r => r.round.status === "assigned"); if (assigned) { await sendWahaText(driver.phone, { body: "الطلب لم يعد متاحاً، تم إسناده إلى مندوب آخر." }); return true; } return false; }
+  // A reply only counts for offers this driver's vehicle could have received.
+  const rounds = (await db.select({ round: driverDispatchRounds, order: orders }).from(driverDispatchRounds).innerJoin(orders, eq(orders.id, driverDispatchRounds.orderId)).where(and(inArray(driverDispatchRounds.status, ["open", "assigned"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(driverDispatchRounds.createdAt)).limit(20)).filter(r => vehicleForOrder(r.order) === driver.vehicleType); const row = (await Promise.all(rounds.map(async r => (await db.select({ id: driverDispatchResponses.id }).from(driverDispatchResponses).where(and(eq(driverDispatchResponses.roundId, r.round.id), eq(driverDispatchResponses.driverId, driver.id))).limit(1))[0] ? null : r))).find(r => r && r.round.status === "open" && r.round.expiresAt > new Date()) as (typeof rounds)[number] | undefined; if (!row) { const assigned = rounds.find(r => r.round.status === "assigned"); if (assigned) { await sendWahaText(driver.phone, { body: "الطلب لم يعد متاحاً، تم إسناده إلى مندوب آخر." }); return true; } return false; }
   if (!accepted) { await db.insert(driverDispatchResponses).values({ roundId: row.round.id, orderId: row.order.id, driverId: driver.id, response: "no" }); await sendWahaText(driver.phone, { body: "تم تسجيل عدم توفرك لهذا الطلب." }); return true; }
   const result = await db.update(driverDispatchRounds).set({ status: "assigned", winnerDriverId: driver.id, assignedAt: new Date() }).where(and(eq(driverDispatchRounds.id, row.round.id), eq(driverDispatchRounds.status, "open"), gt(driverDispatchRounds.expiresAt, new Date()))); if (!result[0]?.affectedRows) { await sendWahaText(driver.phone, { body: "الطلب لم يعد متاحاً، تم إسناده إلى مندوب آخر." }); return true; }
   await db.insert(driverDispatchResponses).values({ roundId: row.round.id, orderId: row.order.id, driverId: driver.id, response: "yes" }); await db.insert(orderAssignments).values({ orderId: row.order.id, driverId: driver.id, driverName: driver.name, status: "assigned", note: "أول مندوب أجاب بنعم" }).onDuplicateKeyUpdate({ set: { driverId: driver.id, driverName: driver.name, status: "assigned", assignedAt: new Date(), acceptedAt: null, deliveredAt: null } }); await db.update(drivers).set({ available: false }).where(eq(drivers.id, driver.id)); const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, row.order.id)).limit(1))[0]; const store = line?.storeId ? (await db.select({ name: stores.name }).from(stores).where(eq(stores.id, line.storeId)).limit(1))[0] : null; await processDriverAssignmentResponse(db, driver.id, row.order.id, true); if (row.order.orderType === "taxi") await sendTaxiRideDetails(db, row.order.id, driver.phone); else await sendAssignedOrderDetails(db, row.order.id, driver.phone, store?.name ?? "متجر لحظة", row.order.customerName, row.order.locationText, row.order.locationUrl); return true;
 }
-async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, pickupLocation: string, pickupContactPhone: string, destinationText: string, destinationUrl: string, itemDescription: string) {
-  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true)));
+async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, pickupLocation: string, pickupContactPhone: string, destinationText: string, destinationUrl: string, itemDescription: string, vehicle: WosselVehicle = "motorcycle", excludedDriverIds: number[] = []) {
+  const candidates = (await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true)))).filter(driver => driver.vehicleType === vehicle && !excludedDriverIds.includes(driver.id));
   const settings = await getSettings();
   const distanceFromCenter = (driver: typeof candidates[number]) => driver.locationLat === null || driver.locationLng === null ? Number.POSITIVE_INFINITY : distanceBetweenE6(settings.originLatE6, settings.originLngE6, driver.locationLat, driver.locationLng);
   const nearest = [...candidates].sort((a, b) => distanceFromCenter(a) - distanceFromCenter(b))[0];
   const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
   if (!nearest) {
     const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts.map(contact => contact.phone)];
-    void Promise.allSettled(phones.map(phone => sendWahaText(phone, { title: "تدخل مطلوب في وصّل لي", body: `طلب وصّل لي #${orderId} للعميل ${customerName} لا يوجد له مندوب متاح حالياً.` })));
+    void Promise.allSettled(phones.map(phone => sendWahaText(phone, { title: "تدخل مطلوب في وصّل لي", body: `طلب وصّل لي #${orderId} للعميل ${customerName} لا يوجد له مندوب ${vehicleLabel(vehicle)} متاح حالياً.` })));
     return null;
   }
   await db.insert(orderAssignments).values({ orderId, driverId: nearest.id, driverName: nearest.name, status: "assigned", note: "طلب وصّل لي: استلام من عنوان مكتوب وتسليم إلى موقع GPS" }).onDuplicateKeyUpdate({ set: { driverId: nearest.id, driverName: nearest.name, status: "assigned", note: "طلب وصّل لي: استلام من عنوان مكتوب وتسليم إلى موقع GPS", assignedAt: new Date(), acceptedAt: null, deliveredAt: null } });
   await db.update(drivers).set({ available: false }).where(eq(drivers.id, nearest.id));
   const orderDetails = (await db.select({ customerPhone: orders.customerPhone, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod, totalAmount: orders.totalAmount, walletAmount: orders.walletAmount }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
-  const message = { title: `طلب وصّل لي #${orderId}`, body: `طلب وصّل لي\nصاحب الطلب: ${customerName}\nرقم صاحب الطلب: ${orderDetails?.customerPhone || "غير متوفر"}\n\nاستلام الغرض من:\n${pickupLocation}\nرقم جهة الاستلام: ${pickupContactPhone}\n\nتسليم الغرض إلى:\n${destinationText}\n${destinationUrl}\n\nنوع الغرض: ${itemDescription}\nالمسافة ذهاباً وإياباً: ${Math.ceil(Number(orderDetails?.deliveryDistanceMeters ?? 0) / 1000)} كم\nسعر التوصيل: ${formatSyp(orderDetails?.deliveryFee ?? 0)}\n${paymentLine(orderDetails)}\n\nأجب بكلمة: نعم أو لا.` };
+  const message = { title: `طلب وصّل لي #${orderId}`, body: `طلب وصّل لي (${vehicleLabel(vehicle)})\nصاحب الطلب: ${customerName}\nرقم صاحب الطلب: ${orderDetails?.customerPhone || "غير متوفر"}\n\nاستلام الغرض من:\n${pickupLocation}\nرقم جهة الاستلام: ${pickupContactPhone}\n\nتسليم الغرض إلى:\n${destinationText}\n${destinationUrl}\n\nنوع الغرض: ${itemDescription}\nالمسافة ذهاباً وإياباً: ${Math.ceil(Number(orderDetails?.deliveryDistanceMeters ?? 0) / 1000)} كم\nسعر التوصيل: ${formatSyp(orderDetails?.deliveryFee ?? 0)}\n${paymentLine(orderDetails)}\n\nأجب بكلمة: نعم أو لا.` };
   void sendWahaText(nearest.phone, message);
   return nearest.id;
 }
@@ -609,7 +610,7 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
     await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, row.assignment.id));
     await db.update(drivers).set({ available: sql`${drivers.readyForOrders}` }).where(eq(drivers.id, driverId));
     const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, orderId)).limit(1))[0];
-    if (row.order.orderType === "wossel_li") await dispatchWosselLiToNearestDriver(db, orderId, row.order.customerName, row.order.pickupLocation || "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", row.order.pickupContactPhone || "غير متوفر", row.order.locationText || "موقع GPS", row.order.locationUrl || "", row.order.itemDescription || "غير محدد");
+    if (row.order.orderType === "wossel_li") await dispatchWosselLiToNearestDriver(db, orderId, row.order.customerName, row.order.pickupLocation || "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", row.order.pickupContactPhone || "غير متوفر", row.order.locationText || "موقع GPS", row.order.locationUrl || "", row.order.itemDescription || "غير محدد", (await requestedVehicles(db, [orderId])).get(orderId) ?? "motorcycle", [driverId]);
     else await dispatchOrderToNearestDriver(db, orderId, row.order.orderCity, line?.storeId ?? null, row.order.customerName, row.order.locationText, row.order.locationUrl, [driverId]);
     return { accepted: false };
   }
@@ -1766,6 +1767,7 @@ export const orderInputSchema = z.object({
   destination: z.string().trim().max(220).optional(),
   destinationLat: coordinateSchema.min(-90).max(90).optional(),
   destinationLng: coordinateSchema.min(-180).max(180).optional(),
+  wosselVehicle: z.enum(["motorcycle", "car"]).optional(),
   notes: z.string().trim().max(500).optional(),
 }).superRefine((input, context) => {
   if (input.orderType === "delivery" && input.lines.length === 0 && !input.pharmacyPrescriptionUrl) context.addIssue({ code: "custom", message: "أضف صنفاً واحداً على الأقل أو أرفق وصفة طبية" });
@@ -3075,6 +3077,7 @@ export const lahzaRouter = router({
         throw new Error(concise ? `تعذر حفظ الطلب: ${concise}` : "تعذر حفظ الطلب في قاعدة البيانات؛ راجع سجلات الخادم للتفاصيل.");
       }
       const orderId = Number(created[0].insertId);
+      if (input.orderType === "wossel_li") await saveRequestedVehicle(db, orderId, input.wosselVehicle ?? "motorcycle");
       if (input.orderType === "taxi" && input.destinationLat !== undefined && input.destinationLng !== undefined) await saveTaxiDestination(db, orderId, input.destinationLat, input.destinationLng);
       // The wallet pays what it can; the rest is collected on delivery in cash or Sham Cash.
       const walletAmount = input.useWallet ? await payFromWallet(db, input.customerPhone, totalAmount, orderId) : 0;
@@ -3118,7 +3121,7 @@ export const lahzaRouter = router({
           await notifyTeamOfTaxiOrder(db, orderId, input.customerName, input.customerPhone, input.pickupLocation ?? "", input.destination ?? "", input.taxiType ?? "standard");
           await dispatchOrderToNearestDriver(db, orderId, orderCity, null, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
         } else if (input.orderType === "wossel_li") {
-          await dispatchWosselLiToNearestDriver(db, orderId, input.customerName, input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", input.pickupContactPhone!, input.locationText!, input.locationUrl!, input.itemDescription!);
+          await dispatchWosselLiToNearestDriver(db, orderId, input.customerName, input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", input.pickupContactPhone!, input.locationText!, input.locationUrl!, input.itemDescription!, input.wosselVehicle ?? "motorcycle");
         }
       } catch (dispatchError) {
         console.error("Order saved but driver dispatch failed", { orderId, orderType: input.orderType, dispatchError });
@@ -3165,10 +3168,12 @@ export const lahzaRouter = router({
       const storeIds = Array.from(new Set(catalogRows.flatMap(row => row.storeId ? [row.storeId] : [])));
       const storeRows = storeIds.length ? await db.select({ id: stores.id, name: stores.name }).from(stores).where(inArray(stores.id, storeIds)) : [];
       const storeByCatalogId = new Map(catalogRows.map(row => [row.id, row.storeId ? storeRows.find(store => store.id === row.storeId)?.name ?? null : null]));
+      const vehicles = await requestedVehicles(db, allOrders.filter(order => order.orderType === "wossel_li").map(order => order.id));
       return allOrders.map(order => {
+        const requestedVehicle = order.orderType === "wossel_li" ? vehicles.get(order.id) ?? "motorcycle" : null;
         const orderLines = lines.filter(line => line.orderId === order.id).map(line => ({ ...line, storeName: line.catalogItemId ? storeByCatalogId.get(line.catalogItemId) ?? null : null }));
         const storeNames = Array.from(new Set(orderLines.flatMap(line => line.storeName ? [line.storeName] : [])));
-        return { ...order, archived: isOrderArchived(order.createdAt), driverName: assignmentByOrderId.get(order.id) ?? null, storeNames, lines: orderLines };
+        return { ...order, archived: isOrderArchived(order.createdAt), driverName: assignmentByOrderId.get(order.id) ?? null, storeNames, lines: orderLines, requestedVehicle };
       });
     }),
     /** The team records the fare the driver agreed with the rider; the rider is told the amount. */
