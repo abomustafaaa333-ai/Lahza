@@ -14,7 +14,9 @@ export function normalizeWahaReply(value: string) {
     .trim()
     .replace(/\s+/g, " ")
     .toLowerCase();
-  if (/^(10|١٠|رقم 10|رقم ١٠|الرقم 10|الرقم ١٠)$/.test(normalized)) return "10";
+  // "تم" closes the driver's current order; "10" is the old form of the same command.
+  if (/^(تم|تمت|تم التسليم|تم التوصيل|تم توصيل الطلب|تم تسليم الطلب)$/.test(normalized)) return "تم";
+  if (/^(10|١٠|رقم 10|رقم ١٠|الرقم 10|الرقم ١٠)$/.test(normalized)) return "تم";
   if (
     normalized.includes("غير جاهز") ||
     normalized.includes("غير متاح") ||

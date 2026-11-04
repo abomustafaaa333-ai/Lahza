@@ -528,7 +528,7 @@ async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeo
   const details = (await db.select({ customerPhone: orders.customerPhone, totalAmount: orders.totalAmount, deliveryFee: orders.deliveryFee, deliveryDistanceMeters: orders.deliveryDistanceMeters, paymentMethod: orders.paymentMethod, walletAmount: orders.walletAmount }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   const lines = await db.select({ itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).where(eq(orderLines.orderId, orderId));
   const itemsText = lines.length ? lines.map((item, index) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatSyp(item.unitPrice)} — المجموع: ${formatSyp(item.lineTotal)}`).join("\n") : "لا توجد أصناف مسجلة";
-  await sendWahaText(driverPhone, { title: `تم إسناد الطلب #${orderId}`, body: `تم إسناد الطلب إليك.\nالمتجر: ${storeName}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatSyp(details?.deliveryFee ?? 0)}\nالإجمالي: ${formatSyp(details?.totalAmount ?? 0)}\n${paymentLine(details)}\n\nالعميل: ${customerName}\nهاتف العميل: ${details?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(details?.deliveryDistanceMeters ?? 0))}م\nعند إكمال الطلب أرسل الرقم: 10` });
+  await sendWahaText(driverPhone, { title: `تم إسناد الطلب #${orderId}`, body: `تم إسناد الطلب إليك.\nالمتجر: ${storeName}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatSyp(details?.deliveryFee ?? 0)}\nالإجمالي: ${formatSyp(details?.totalAmount ?? 0)}\n${paymentLine(details)}\n\nالعميل: ${customerName}\nهاتف العميل: ${details?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(details?.deliveryDistanceMeters ?? 0))}م\nعند إتمام التوصيل أرسل كلمة: تم` });
 }
 async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
   const order = (await db.select({ id: orders.id, status: orders.status, createdAt: orders.createdAt, orderType: orders.orderType, taxiType: orders.taxiType, pickupLocation: orders.pickupLocation, destination: orders.destination }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
@@ -589,6 +589,8 @@ async function sendTaxiRideDetails(db: NonNullable<Awaited<ReturnType<typeof get
     `الراكب: ${order.customerName}`,
     `هاتف الراكب: ${order.customerPhone}`,
     `واتساب الراكب: https://wa.me/${order.customerPhone.replace(/\D/g, "")}`,
+    "",
+    "عند إيصال الراكب أرسل كلمة: تم",
   ].filter((line, index, all) => line || all[index - 1]).join("\n") });
 }
 
@@ -631,7 +633,7 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
   const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, row.order.customerPhone), eq(pushTokens.active, true)));
   await sendPushNotification(tokens.map(token => token.token), customerMessage);
   void sendWahaText(row.order.customerPhone, customerMessage);
-  void sendWahaText(row.driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${orderId}.` });
+  void sendWahaText(row.driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${orderId}.\nعند إتمام التوصيل أرسل كلمة: تم\nلن تصلك طلبات جديدة قبل إرسالها.` });
   return { accepted: true };
 }
 
@@ -707,9 +709,9 @@ export async function handleWahaWebhook(body: unknown) {
   // longer part of the driver workflow.
   const textReplyCandidates = [...collectWahaTextValues(payload), data.body, data.text, data.conversation, nestedMessage.body, nestedMessage.conversation, nestedExtended.text, payload.body, payload.text];
   const normalizedReplies = textReplyCandidates.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map(value => normalizeWahaReply(value));
-  const rawReply = normalizedReplies.find(value => ["نعم", "لا", "جاهز", "غير جاهز", "10"].includes(value)) ?? "";
+  const rawReply = normalizedReplies.find(value => ["نعم", "لا", "جاهز", "غير جاهز", "تم"].includes(value)) ?? "";
   const priceReply = normalizedReplies.find(value => PHARMACY_PRICE_REPLY_PATTERN.test(value)) ?? "";
-  const completeCommand = rawReply === "10";
+  const completeCommand = rawReply === "تم";
   const availabilityReply = rawReply === "جاهز" || rawReply === "غير جاهز" ? rawReply : "";
   const orderReply = rawReply === "نعم" || rawReply === "لا" ? rawReply : "";
   console.info("WAHA driver text received", { event: event.event ?? "direct", rawReply, senderIds, textCandidates: textReplyCandidates.filter(value => typeof value === "string").slice(0, 5) });
@@ -736,8 +738,9 @@ export async function handleWahaWebhook(body: unknown) {
     if (senderPhones[0]) void sendWahaText(senderPhones[0], { body: "لم أتعرف على رقمك كمندوب مسجل في لحظة. يرجى التأكد من رقم واتساب المسجل لدى الإدارة." });
     return;
   }
+  // "تم" is de-duplicated per order below, so a driver can close two short rides in a row.
   const commandKey = `${driver.id}:${rawReply}`;
-  if (!claimRecentWahaKey(recentWahaCommands, commandKey, WAHA_COMMAND_DEDUPE_MS)) {
+  if (!completeCommand && !claimRecentWahaKey(recentWahaCommands, commandKey, WAHA_COMMAND_DEDUPE_MS)) {
     console.info("Ignoring duplicate WAHA driver command", { driverId: driver.id, rawReply });
     return;
   }
@@ -748,18 +751,22 @@ export async function handleWahaWebhook(body: unknown) {
   }
   if (completeCommand) {
     const activeAssignment = (await db.select({ assignment: orderAssignments, order: orders }).from(orderAssignments).innerJoin(orders, eq(orders.id, orderAssignments.orderId)).where(and(eq(orderAssignments.driverId, driver.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(orderAssignments.assignedAt)).limit(1))[0];
+    if (!claimRecentWahaKey(recentWahaCommands, `${driver.id}:تم:${activeAssignment?.order.id ?? "none"}`, WAHA_COMMAND_DEDUPE_MS)) return;
     if (!activeAssignment) {
+      void sendWahaText(driver.phone, { body: "لا يوجد طلب مفتوح باسمك حالياً." });
       return;
     }
     const now = new Date();
     const feeSettings = await getSettings();
     const driverFee = calculateDriverFee(Number(activeAssignment.order.deliveryFee ?? 0), feeSettings);
     await db.update(orderAssignments).set({ status: "delivered", deliveredAt: now }).where(and(eq(orderAssignments.id, activeAssignment.assignment.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"])));
-    await db.update(orders).set({ status: "completed", driverFee, statusChangedAt: now, statusReason: "اكتمل الطلب بأمر المندوب 10" }).where(and(eq(orders.id, activeAssignment.order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
+    await db.update(orders).set({ status: "completed", driverFee, statusChangedAt: now, statusReason: "اكتمل الطلب برسالة «تم» من المندوب" }).where(and(eq(orders.id, activeAssignment.order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
     await db.update(drivers).set({ available: driver.readyForOrders }).where(eq(drivers.id, driver.id));
     await createOrderStatusNotification(db, activeAssignment.order, "completed");
     await settleCompletedOrder(db, activeAssignment.order.id, activeAssignment.order.customerPhone);
-    void sendWahaText(driver.phone, { body: `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل.` });
+    // A duplicate delivery of this same "تم" now finds no open order; keep it silent.
+    claimRecentWahaKey(recentWahaCommands, `${driver.id}:تم:none`, WAHA_COMMAND_DEDUPE_MS);
+    void sendWahaText(driver.phone, { body: driver.readyForOrders ? `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل. يمكنك الآن استلام طلبات جديدة.` : `تم تسجيل الطلب #${activeAssignment.order.id} كمكتمل. أنت مسجّل «غير جاهز»؛ أرسل «جاهز» لتستلم طلبات جديدة.` });
     return;
   }
   if (orderReply) {
@@ -798,12 +805,14 @@ async function notifyManualInterventionRequired(db: NonNullable<Awaited<ReturnTy
   await Promise.allSettled(phones.map(phone => sendWahaText(phone, { title: "تدخل يدوي مطلوب", body: `انتهت دورة البحث الوحيدة عن مندوب للطلب #${orderId} بعد 15 دقيقة. لم يؤكد أي مندوب جاهزيته؛ يرجى التدخل يدوياً من لوحة التحكم.` })));
 }
 /**
- * "جاهز" is sent once: a driver stays ready until they send "غير جاهز". They are only busy while
- * they hold an open order, so anyone still marked busy after that order was cancelled, rejected,
- * finished or left for hours is made available again, as their own ready setting says.
+ * "جاهز" is sent once: a driver stays ready until they send "غير جاهز". A driver holding an order
+ * gets no other order until they send "تم" for it (or the team closes or cancels it); then they
+ * return to their own ready setting.
  */
 export async function releaseIdleDrivers(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
-  await db.execute(sql.raw("UPDATE `drivers` d SET d.`available` = d.`readyForOrders` WHERE d.`active` = 1 AND d.`available` <> d.`readyForOrders` AND NOT EXISTS (SELECT 1 FROM `order_assignments` a INNER JOIN `orders` o ON o.`id` = a.`orderId` WHERE a.`driverId` = d.`id` AND a.`status` IN ('assigned', 'accepted', 'picked_up') AND o.`status` IN ('pending', 'confirmed', 'preparing', 'on_the_way') AND a.`assignedAt` > NOW() - INTERVAL 6 HOUR)"));
+  const openOrder = "SELECT 1 FROM `order_assignments` a INNER JOIN `orders` o ON o.`id` = a.`orderId` WHERE a.`driverId` = d.`id` AND a.`status` IN ('assigned', 'accepted', 'picked_up') AND o.`status` IN ('pending', 'confirmed', 'preparing', 'on_the_way')";
+  await db.execute(sql.raw(`UPDATE \`drivers\` d SET d.\`available\` = 0 WHERE d.\`available\` = 1 AND EXISTS (${openOrder})`));
+  await db.execute(sql.raw(`UPDATE \`drivers\` d SET d.\`available\` = d.\`readyForOrders\` WHERE d.\`active\` = 1 AND d.\`available\` <> d.\`readyForOrders\` AND NOT EXISTS (${openOrder})`));
 }
 async function expireUnansweredDriverAssignments(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   const expiredRounds = await db.select({ round: driverDispatchRounds, order: orders }).from(driverDispatchRounds).innerJoin(orders, eq(orders.id, driverDispatchRounds.orderId)).where(and(eq(driverDispatchRounds.status, "open"), lte(driverDispatchRounds.expiresAt, new Date()), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).limit(100);
@@ -823,34 +832,19 @@ export async function autoCompleteDueOrders() {
   await releaseIdleDrivers(db).catch(error => console.warn("Unable to release idle drivers", error));
   const now = new Date();
   const feeSettings = await getSettings();
-  // Only orders a driver accepted can be closed on a timer. An order nobody took
-  // is waiting on the team (they were told when dispatch expired), not delivered.
-  const due = await db.select({ order: orders, driverId: orderAssignments.driverId }).from(orders).innerJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).where(and(
-    inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]),
-    inArray(orderAssignments.status, ["accepted", "picked_up"]),
-    eq(orders.manualStatusOverride, false),
-    lte(sql`DATE_ADD(${orders.statusChangedAt}, INTERVAL GREATEST(${orders.preparationMinutes}, 30) MINUTE)`, now),
-  )).limit(100);
-  for (const { order, driverId } of due) {
-    await db.update(orders).set({ status: "completed", driverFee: driverId ? calculateDriverFee(Number(order.deliveryFee ?? 0), feeSettings) : 0, statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
-    await deductCompletedOrderInventory(db, order.id);
-    await db.update(drivers).set({ available: sql`${drivers.readyForOrders}` }).where(eq(drivers.id, driverId ?? -1));
-    // Automatic timeout may close the stale workflow, but must not tell the customer
-    // that the order was delivered. Customer completion is announced only after
-    // the courier explicitly sends command 10 through WhatsApp.
-    await awardCustomerPoint(db, order.customerPhone, "order_completed", order.id);
-  }
+  // Orders a driver holds are not closed on a timer any more: the driver sends "تم" when it is
+  // delivered (or the team closes it), and gets no new order until then.
   const followUpCutoff = new Date(Date.now() - 20 * 60_000);
   const followUps = await db.select({ order: orders, assignment: orderAssignments, driver: drivers }).from(orders).innerJoin(orderAssignments, eq(orderAssignments.orderId, orders.id)).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orders.status, "preparing"), eq(orderAssignments.status, "accepted"))).limit(100);
   for (const row of followUps) {
     if (row.order.statusChangedAt > followUpCutoff || row.order.statusReason?.includes("تم إرسال متابعة 20 دقيقة")) continue;
-    const body = `مرّ 20 دقيقة على الطلب #${row.order.id}. ما وضع الطلب؟ أجب برسالة قصيرة.`;
+    const body = `مرّ 20 دقيقة على الطلب #${row.order.id}. إذا سلّمته أرسل كلمة: تم\nلن تصلك طلبات جديدة قبل إرسالها.`;
     void sendWahaText(row.driver.phone, { title: "متابعة الطلب", body });
     void sendWahaText(row.order.customerPhone, { title: "متابعة طلبك", body: `مرّت 20 دقيقة على طلبك #${row.order.id}. سنوافيك بآخر تحديث قريباً.` });
     await db.insert(orderNotifications).values({ orderId: row.order.id, customerPhone: row.order.customerPhone, status: "preparing", title: "متابعة طلبك", body: `مرّت 20 دقيقة على طلبك #${row.order.id}. سنوافيك بآخر تحديث قريباً.` });
     await db.update(orders).set({ statusReason: `${row.order.statusReason ?? ""} تم إرسال متابعة 20 دقيقة` }).where(eq(orders.id, row.order.id));
   }
-  return due.length;
+  return 0;
 }
 
 async function addTickerColumnIfMissing(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, name: "tickerPrimary" | "tickerSecondary" | "wosselLiNotice", defaultValue: string) {

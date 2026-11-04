@@ -26,8 +26,11 @@ describe("WAHA integration", () => {
     expect(normalizeWahaReply("لا")).toBe("لا");
     expect(normalizeWahaReply("أنا جاهز")).toBe("جاهز");
     expect(normalizeWahaReply("غير جاهز")).toBe("غير جاهز");
-    expect(normalizeWahaReply("١٠")).toBe("10");
-    expect(normalizeWahaReply("رقم 10")).toBe("10");
-    expect(normalizeWahaReply("الرقم ١٠")).toBe("10");
+    expect(normalizeWahaReply("١٠")).toBe("تم");
+    expect(normalizeWahaReply("تم")).toBe("تم");
+    expect(normalizeWahaReply("تمّ.")).toBe("تم");
+    expect(normalizeWahaReply("تم التسليم")).toBe("تم");
+    expect(normalizeWahaReply("رقم 10")).toBe("تم");
+    expect(normalizeWahaReply("الرقم ١٠")).toBe("تم");
   });
 });
