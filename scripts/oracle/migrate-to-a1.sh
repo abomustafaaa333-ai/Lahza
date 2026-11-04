@@ -6,7 +6,8 @@
 #   bash migrate-to-a1.sh create <old-ip> [ocpus] [memory-gb]   new VM + start the build there
 #                          (RETRY_SECONDS=20 bash ... sets the wait between A1 attempts; default 30)
 #   bash migrate-to-a1.sh hunt <old-ip> <whatsapp> [ocpus] [gb]  keep trying on the old VM, even with Cloud Shell closed
-#                          (with no size given it tries 2 OCPU/12 GB, then 1 OCPU/6 GB, in turn)
+#                          (with no size given it tries 1 OCPU with 6, 4 and 2 GB in turn: small VMs fit
+#                           into free slots more often, and an A1 VM can be enlarged later for free)
 #   bash migrate-to-a1.sh hunt-status | hunt-stop                 follow or stop that search
 #   bash migrate-to-a1.sh status                                  progress of that build
 #   bash migrate-to-a1.sh move <domain>                           stop old app, copy data, start new
@@ -226,8 +227,8 @@ rollback() {
 hunt() {
   local old_ip=${1:?usage: hunt <old-ip> <whatsapp-number e.g. 963997311078> [ocpus] [memory-gb]}
   local notify=${2:?usage: hunt <old-ip> <whatsapp-number> [ocpus] [memory-gb]} ocpus=${3:-2} mem=${4:-12} fp tmp sizes
-  # A size given on the command line is the only one tried; otherwise the smaller size is tried too.
-  if [ -n "${3:-}" ]; then sizes="$ocpus:$mem"; else sizes="2:12 1:6"; fi
+  # A size given on the command line is the only one tried; otherwise the small sizes are tried in turn.
+  if [ -n "${3:-}" ]; then sizes="$ocpus:$mem"; else sizes="1:6 1:4 1:2"; ocpus=1; mem=6; fi
   notify=${notify//[^0-9]/}
   [[ "$notify" =~ ^[0-9]{9,15}$ ]] || die "the WhatsApp number needs the country code, digits only, e.g. 963997311078"
   [ -n "${OCI_CS_USER_OCID:-}" ] || die "run this in OCI Cloud Shell"
