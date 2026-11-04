@@ -10,6 +10,7 @@ import { ensureScheduledPushSchema, runScheduledPushNotifications } from "../not
 import { ensureDatabaseCompatibility, migrateDatabase } from "../db";
 import { isAuthorizedWebhook } from "../security";
 import { createContext } from "./context";
+import { registerMapTiles } from "../mapTiles";
 import { serveStatic, setupVite } from "./vite";
 
 async function startServer() {
@@ -37,6 +38,7 @@ async function startServer() {
   } }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   app.get("/health", (_req, res) => res.status(200).json({ ok: true, service: "lahza" }));
+  registerMapTiles(app);
   let warnedMissingWebhookSecret = false;
   app.post("/api/waha/webhook", (req, res) => {
     const secret = process.env.WAHA_WEBHOOK_SECRET;

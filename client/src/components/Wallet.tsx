@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { Building2, CalendarDays, Clock3, Copy, Download, Gift, ImagePlus, Info, ListChecks, Plus, ShieldCheck, Sparkles, Trophy, Users, Wallet as WalletIcon } from "lucide-react";
+import { Building2, CalendarDays, Clock3, Copy, Download, Gift, Info, ListChecks, Plus, ShieldCheck, Sparkles, Trophy, Users, Wallet as WalletIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -93,11 +93,10 @@ export function WalletCard({ summary, onTopup }: { summary: WalletSummary | null
 export function TopupDialog({ open, onOpenChange, info, onDone }: { open: boolean; onOpenChange: (open: boolean) => void; info: PaymentInfo | undefined; onDone: () => void }) {
   const [method, setMethod] = useState<"sham_cash" | "office_cash">("sham_cash");
   const [amount, setAmount] = useState("");
-  const [proof, setProof] = useState<string | null>(null);
   const request = trpc.lahza.wallet.requestTopup.useMutation({
     onSuccess: () => {
       toast.success(method === "sham_cash" ? "وصل طلب الشحن، سنضيف الرصيد بعد التحقق من التحويل" : "وصل طلبك، ادفع المبلغ في مكتب لحظة ليُضاف إلى رصيدك");
-      setAmount(""); setProof(null);
+      setAmount("");
       onOpenChange(false);
       onDone();
     },
@@ -106,12 +105,7 @@ export function TopupDialog({ open, onOpenChange, info, onDone }: { open: boolea
   const amountNumber = Number(amount);
   const submit = () => {
     if (!Number.isInteger(amountNumber) || amountNumber < 1) { toast.error("أدخل مبلغ الشحن بالليرة"); return; }
-    if (method === "sham_cash" && !proof) { toast.error("أرفق صورة إشعار التحويل من شام كاش"); return; }
-    request.mutate({ amount: amountNumber, method, proofDataUrl: method === "sham_cash" ? proof ?? undefined : undefined });
-  };
-  const pickProof = async (file: File | undefined) => {
-    if (!file) return;
-    try { setProof(await readImageAsDataUrl(file)); } catch (error) { toast.error(error instanceof Error ? error.message : "تعذر قراءة الصورة"); }
+    request.mutate({ amount: amountNumber, method });
   };
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent dir="rtl" className="topup-dialog w-[calc(100%-2rem)] max-w-md rounded-3xl border-0 bg-white p-5 shadow-2xl">
@@ -123,8 +117,7 @@ export function TopupDialog({ open, onOpenChange, info, onDone }: { open: boolea
       <label className="topup-field"><span>المبلغ (ل.س)</span><Input dir="ltr" inputMode="numeric" value={amount} onChange={event => setAmount(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="مثال: 500" /></label>
       {method === "sham_cash" ? <>
         <ShamCashAccountCard info={info} amountNewSyp={amountNumber || null} />
-        <label className="topup-proof"><ImagePlus className="h-5 w-5" /><span>{proof ? "تم إرفاق صورة الإشعار ✓" : "إرفاق صورة إشعار التحويل"}</span><input type="file" accept="image/*" hidden onChange={event => void pickProof(event.target.files?.[0])} /></label>
-        <p className="topup-note">بعد التحويل اضغط «إرسال الطلب»، ويُضاف المبلغ لرصيدك فور التحقق منه.</p>
+        <p className="topup-note">حوّل المبلغ عبر شام كاش ثم اضغط «إرسال الطلب»، ويُضاف لرصيدك فور تأكد فريق لحظة من وصول التحويل.</p>
       </> : <div className="topup-office">
         <strong>ادفع في مكتب لحظة</strong>
         <p>{info?.officeAddress || "اسأل خدمة العملاء عن عنوان المكتب"}</p>
