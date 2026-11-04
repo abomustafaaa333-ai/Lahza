@@ -13,6 +13,8 @@ BASE=/opt/lahza
 ENV_FILE="$BASE/app.env"
 
 log() { echo "[$(date +%H:%M:%S)] $*"; }
+# A failed step ends the run; say so, so whoever follows the log knows it stopped.
+trap 'log "FAILED at line $LINENO"' ERR
 waha_env() { docker inspect waha --format '{{range .Config.Env}}{{println .}}{{end}}' | sed -n "s/^$1=//p"; }
 
 mkdir -p "$BASE/certs" "$BASE/db"
