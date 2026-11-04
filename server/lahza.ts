@@ -605,7 +605,7 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
   if (!row) throw new Error("هذا الطلب لم يعد متاحاً للتأكيد");
   if (!accepted) {
     await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, row.assignment.id));
-    await db.update(drivers).set({ available: true }).where(eq(drivers.id, driverId));
+    await db.update(drivers).set({ available: sql`${drivers.readyForOrders}` }).where(eq(drivers.id, driverId));
     const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, orderId)).limit(1))[0];
     if (row.order.orderType === "wossel_li") await dispatchWosselLiToNearestDriver(db, orderId, row.order.customerName, row.order.pickupLocation || "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", row.order.pickupContactPhone || "غير متوفر", row.order.locationText || "موقع GPS", row.order.locationUrl || "", row.order.itemDescription || "غير محدد");
     else await dispatchOrderToNearestDriver(db, orderId, row.order.orderCity, line?.storeId ?? null, row.order.customerName, row.order.locationText, row.order.locationUrl, [driverId]);
@@ -743,7 +743,7 @@ export async function handleWahaWebhook(body: unknown) {
   }
   if (availabilityReply) {
     await db.update(drivers).set({ available: availabilityReply === "جاهز", readyForOrders: availabilityReply === "جاهز" }).where(eq(drivers.id, driver.id));
-    void sendWahaText(driver.phone, { body: availabilityReply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك." });
+    void sendWahaText(driver.phone, { body: availabilityReply === "جاهز" ? "تم تسجيلك متاحاً لاستقبال الطلبات، وستبقى متاحاً كل يوم دون الحاجة لإرسالها مجدداً. عندما تريد التوقف أرسل «غير جاهز»." : "تم تسجيلك غير متاح ولن يتم إسناد طلبات جديدة لك. أرسل «جاهز» عندما تريد العودة." });
     return;
   }
   if (completeCommand) {
@@ -786,7 +786,7 @@ export async function handleWahaWebhook(body: unknown) {
     return;
   }
   await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, assignment.assignment.id));
-  await db.update(drivers).set({ available: true }).where(eq(drivers.id, driver.id));
+  await db.update(drivers).set({ available: sql`${drivers.readyForOrders}` }).where(eq(drivers.id, driver.id));
   const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, assignment.order.id)).limit(1))[0];
   await dispatchOrderToNearestDriver(db, assignment.order.id, assignment.order.orderCity, line?.storeId ?? null, assignment.order.customerName, assignment.order.locationText, assignment.order.locationUrl, [driver.id]);
 }
@@ -796,6 +796,14 @@ async function notifyManualInterventionRequired(db: NonNullable<Awaited<ReturnTy
   const supervisorsRows = await db.select({ phone: supervisors.username }).from(supervisors).where(eq(supervisors.active, true)).limit(50);
   const phones = [(settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), ...supervisorsRows.map(row => row.phone)].filter((phone, index, all) => all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
   await Promise.allSettled(phones.map(phone => sendWahaText(phone, { title: "تدخل يدوي مطلوب", body: `انتهت دورة البحث الوحيدة عن مندوب للطلب #${orderId} بعد 15 دقيقة. لم يؤكد أي مندوب جاهزيته؛ يرجى التدخل يدوياً من لوحة التحكم.` })));
+}
+/**
+ * "جاهز" is sent once: a driver stays ready until they send "غير جاهز". They are only busy while
+ * they hold an open order, so anyone still marked busy after that order was cancelled, rejected,
+ * finished or left for hours is made available again, as their own ready setting says.
+ */
+export async function releaseIdleDrivers(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  await db.execute(sql.raw("UPDATE `drivers` d SET d.`available` = d.`readyForOrders` WHERE d.`active` = 1 AND d.`available` <> d.`readyForOrders` AND NOT EXISTS (SELECT 1 FROM `order_assignments` a INNER JOIN `orders` o ON o.`id` = a.`orderId` WHERE a.`driverId` = d.`id` AND a.`status` IN ('assigned', 'accepted', 'picked_up') AND o.`status` IN ('pending', 'confirmed', 'preparing', 'on_the_way') AND a.`assignedAt` > NOW() - INTERVAL 6 HOUR)"));
 }
 async function expireUnansweredDriverAssignments(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
   const expiredRounds = await db.select({ round: driverDispatchRounds, order: orders }).from(driverDispatchRounds).innerJoin(orders, eq(orders.id, driverDispatchRounds.orderId)).where(and(eq(driverDispatchRounds.status, "open"), lte(driverDispatchRounds.expiresAt, new Date()), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).limit(100);
@@ -812,6 +820,7 @@ export async function autoCompleteDueOrders() {
   await ensureJarabulusGatewaySchema(db);
   await processPharmacyPricingReminders(db);
   await expireUnansweredDriverAssignments(db);
+  await releaseIdleDrivers(db).catch(error => console.warn("Unable to release idle drivers", error));
   const now = new Date();
   const feeSettings = await getSettings();
   // Only orders a driver accepted can be closed on a timer. An order nobody took
@@ -825,7 +834,7 @@ export async function autoCompleteDueOrders() {
   for (const { order, driverId } of due) {
     await db.update(orders).set({ status: "completed", driverFee: driverId ? calculateDriverFee(Number(order.deliveryFee ?? 0), feeSettings) : 0, statusReason: "اكتمل تلقائياً بعد انتهاء مدة التوصيل المقدرة", statusChangedAt: now }).where(and(eq(orders.id, order.id), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"])));
     await deductCompletedOrderInventory(db, order.id);
-    await db.update(drivers).set({ available: true }).where(eq(drivers.id, driverId ?? -1));
+    await db.update(drivers).set({ available: sql`${drivers.readyForOrders}` }).where(eq(drivers.id, driverId ?? -1));
     // Automatic timeout may close the stale workflow, but must not tell the customer
     // that the order was delivered. Customer completion is announced only after
     // the courier explicitly sends command 10 through WhatsApp.
@@ -3193,7 +3202,14 @@ export const lahzaRouter = router({
       if (!existing || (session.role !== "owner" && existing.fulfillmentScope !== "manbij_to_jarabulus" && existing.orderCity !== (session.city ?? ctx.city))) throw new Error("لا يمكنك تحديث طلب تابع لمدينة أخرى");
       await db.update(orders).set({ status: input.status, statusReason: input.reason ?? null, statusChangedAt: new Date(), manualStatusOverride: true }).where(eq(orders.id, input.id));
       const closed = (status: string) => status === "cancelled" || status === "rejected";
-      if (closed(input.status) && !closed(existing.status)) await refundOrderWallet(db, existing);
+      if (closed(input.status) && !closed(existing.status)) {
+        await refundOrderWallet(db, existing);
+        const heldBy = (await db.select({ id: orderAssignments.id, driverId: orderAssignments.driverId }).from(orderAssignments).where(and(eq(orderAssignments.orderId, input.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]))).limit(1))[0];
+        if (heldBy) {
+          await db.update(orderAssignments).set({ status: "cancelled" }).where(eq(orderAssignments.id, heldBy.id));
+          if (heldBy.driverId) await db.update(drivers).set({ available: sql`${drivers.readyForOrders}` }).where(eq(drivers.id, heldBy.driverId));
+        }
+      }
       if (!closed(input.status) && closed(existing.status) && existing.walletAmount > 0) {
         const held = await rechargeReopenedOrder(db, existing);
         if (held !== existing.walletAmount) await db.update(orders).set({ walletAmount: held }).where(eq(orders.id, input.id));
@@ -3201,7 +3217,7 @@ export const lahzaRouter = router({
       if (existing.status !== input.status) await createOrderStatusNotification(db, existing, input.status);
       if (input.status === "completed") {
         const completedAssignment = (await db.select({ driverId: orderAssignments.driverId }).from(orderAssignments).where(eq(orderAssignments.orderId, input.id)).limit(1))[0];
-        if (completedAssignment?.driverId) await db.update(drivers).set({ available: true }).where(eq(drivers.id, completedAssignment.driverId));
+        if (completedAssignment?.driverId) await db.update(drivers).set({ available: sql`${drivers.readyForOrders}` }).where(eq(drivers.id, completedAssignment.driverId));
         await settleCompletedOrder(db, input.id, existing.customerPhone);
       }
       return { success: true };
@@ -3695,7 +3711,7 @@ export const lahzaRouter = router({
         const { locationLat, locationLng, password, ...driverData } = input;
         // A new driver receives orders only after saying they are ready.
         await db.insert(drivers).values({ ...driverData, readyForOrders: false, passwordHash: await hashSecret(password || DEFAULT_STAFF_PASSWORD), locationLat: locationLat === undefined ? null : Math.round(locationLat * 1_000_000), locationLng: locationLng === undefined ? null : Math.round(locationLng * 1_000_000) });
-        void sendWahaText(input.phone, { body: `لقد تم تعيينك مندوباً في شركة لحظة. كلمة المرور الأولية: ${password || DEFAULT_STAFF_PASSWORD}\nعندما تكون جاهزاً لاستلام الطلبات أرسل كلمة: جاهز` });
+        void sendWahaText(input.phone, { body: `لقد تم تعيينك مندوباً في شركة لحظة. كلمة المرور الأولية: ${password || DEFAULT_STAFF_PASSWORD}\nعندما تكون جاهزاً لاستلام الطلبات أرسل كلمة: جاهز\nتكفي مرة واحدة: ستبقى تستلم الطلبات كل يوم حتى ترسل «غير جاهز».` });
         return { success: true };
       }),
       update: publicProcedure.input(driverInput.safeExtend({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
