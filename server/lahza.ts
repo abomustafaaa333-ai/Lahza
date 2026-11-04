@@ -13,6 +13,7 @@ import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getRoadRoute } from "./maps";
+import { getTaxiPricing, mapLink, saveTaxiDestination, taxiDestination, taxiFareNewSyp, taxiTypeLabel, taxiVehicle, updateTaxiPricing } from "./taxi";
 import { cleanExpiredOffers } from "./expiredOffers";
 import { cleanExpiredOrders, isOrderArchived } from "./orderLifecycle";
 import { LAHZA_SEED_PHOTOS, LAHZA_SEED_PRODUCTS, SEED_BAKERIES, SEED_BREAD } from "./lahzaCatalogSeed";
@@ -530,21 +531,21 @@ async function sendAssignedOrderDetails(db: NonNullable<Awaited<ReturnType<typeo
   await sendWahaText(driverPhone, { title: `تم إسناد الطلب #${orderId}`, body: `تم إسناد الطلب إليك.\nالمتجر: ${storeName}\n\nالأصناف:\n${itemsText}\n\nسعر التوصيل: ${formatSyp(details?.deliveryFee ?? 0)}\nالإجمالي: ${formatSyp(details?.totalAmount ?? 0)}\n${paymentLine(details)}\n\nالعميل: ${customerName}\nهاتف العميل: ${details?.customerPhone || "غير متوفر"}\nالموقع: ${locationText || "موقع GPS"}${locationUrl ? `\n${locationUrl}` : ""}\n\nمسافة الطريق: ${Math.round(Number(details?.deliveryDistanceMeters ?? 0))}م\nعند إكمال الطلب أرسل الرقم: 10` });
 }
 async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, orderCity: CityKey, storeId: number | null, customerName: string, locationText: string | null, locationUrl: string | null, excludedDriverIds: number[] = []) {
-  const order = (await db.select({ id: orders.id, status: orders.status, createdAt: orders.createdAt }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  const order = (await db.select({ id: orders.id, status: orders.status, createdAt: orders.createdAt, orderType: orders.orderType, taxiType: orders.taxiType }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
   if (!order || isOrderArchived(order.createdAt) || !["pending", "confirmed", "preparing", "on_the_way"].includes(order.status)) return null;
   // Products sold without a store still go out to drivers; the store only matters for pricing.
   const settings = await getSettings(); const timeoutMinutes = DRIVER_DISPATCH_WINDOW_MINUTES;
-  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true))); const target = candidates.filter(d => !excludedDriverIds.includes(d.id));
+  const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true))); const isTaxi = order.orderType === "taxi"; const vehicle = taxiVehicle(order.taxiType === "van" ? "van" : "standard"); const target = candidates.filter(d => !excludedDriverIds.includes(d.id) && (!isTaxi || d.vehicleType === vehicle));
   console.info("Driver broadcast candidate check", { orderId, orderCity, availableCount: candidates.length, targetDriverIds: target.map(d => d.id), excludedDriverIds });
-  if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب متاح حالياً.` }); return null; }
+  if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), isTaxi ? { title: "لا يوجد سائق متاح", body: `طلب سيارة الأجرة #${orderId} (${taxiTypeLabel(order.taxiType)}) لا يوجد له سائق متاح حالياً. يرجى التواصل مع العميل وتأمين سيارة يدوياً.` } : { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب متاح حالياً.` }); return null; }
   const old = (await db.select().from(driverDispatchRounds).where(eq(driverDispatchRounds.orderId, orderId)).limit(1))[0]; const expiresAt = new Date(Date.now() + timeoutMinutes * 60000); let roundId: number; if (old) return null; { const inserted = await db.insert(driverDispatchRounds).values({ orderId, status: "open", expiresAt }); roundId = Number(inserted[0].insertId); }
-  const message = { title: "طلب توصيل جديد", body: `يوجد طلب توصيل جديد #${orderId}.\n\nهل أنت متاح لاستلامه؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` }; await Promise.allSettled(target.map(async d => { const textResult = await sendWahaText(d.phone, { ...message, body: `${message.body}\nلا توجد تفاصيل في هذه المرحلة.` }); console.info("Driver text broadcast delivery", { orderId, driverId: d.id, phone: maskPhone(d.phone), textSent: textResult.sent }); return textResult; })); return roundId;
+  const message = isTaxi ? { title: "طلب سيارة أجرة جديد", body: `يوجد طلب ${taxiTypeLabel(order.taxiType)} جديد #${orderId}.\n\nهل أنت متاح لتوصيل الراكب؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` } : { title: "طلب توصيل جديد", body: `يوجد طلب توصيل جديد #${orderId}.\n\nهل أنت متاح لاستلامه؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` }; await Promise.allSettled(target.map(async d => { const textResult = await sendWahaText(d.phone, { ...message, body: `${message.body}\nلا توجد تفاصيل في هذه المرحلة.` }); console.info("Driver text broadcast delivery", { orderId, driverId: d.id, phone: maskPhone(d.phone), textSent: textResult.sent }); return textResult; })); return roundId;
 }
 async function claimBroadcastOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, driver: typeof drivers.$inferSelect, accepted: boolean) {
   const rounds = await db.select({ round: driverDispatchRounds, order: orders }).from(driverDispatchRounds).innerJoin(orders, eq(orders.id, driverDispatchRounds.orderId)).where(and(inArray(driverDispatchRounds.status, ["open", "assigned"]), inArray(orders.status, ["pending", "confirmed", "preparing", "on_the_way"]))).orderBy(desc(driverDispatchRounds.createdAt)).limit(20); const row = (await Promise.all(rounds.map(async r => (await db.select({ id: driverDispatchResponses.id }).from(driverDispatchResponses).where(and(eq(driverDispatchResponses.roundId, r.round.id), eq(driverDispatchResponses.driverId, driver.id))).limit(1))[0] ? null : r))).find(r => r && r.round.status === "open" && r.round.expiresAt > new Date()) as (typeof rounds)[number] | undefined; if (!row) { const assigned = rounds.find(r => r.round.status === "assigned"); if (assigned) { await sendWahaText(driver.phone, { body: "الطلب لم يعد متاحاً، تم إسناده إلى مندوب آخر." }); return true; } return false; }
   if (!accepted) { await db.insert(driverDispatchResponses).values({ roundId: row.round.id, orderId: row.order.id, driverId: driver.id, response: "no" }); await sendWahaText(driver.phone, { body: "تم تسجيل عدم توفرك لهذا الطلب." }); return true; }
   const result = await db.update(driverDispatchRounds).set({ status: "assigned", winnerDriverId: driver.id, assignedAt: new Date() }).where(and(eq(driverDispatchRounds.id, row.round.id), eq(driverDispatchRounds.status, "open"), gt(driverDispatchRounds.expiresAt, new Date()))); if (!result[0]?.affectedRows) { await sendWahaText(driver.phone, { body: "الطلب لم يعد متاحاً، تم إسناده إلى مندوب آخر." }); return true; }
-  await db.insert(driverDispatchResponses).values({ roundId: row.round.id, orderId: row.order.id, driverId: driver.id, response: "yes" }); await db.insert(orderAssignments).values({ orderId: row.order.id, driverId: driver.id, driverName: driver.name, status: "assigned", note: "أول مندوب أجاب بنعم" }).onDuplicateKeyUpdate({ set: { driverId: driver.id, driverName: driver.name, status: "assigned", assignedAt: new Date(), acceptedAt: null, deliveredAt: null } }); await db.update(drivers).set({ available: false }).where(eq(drivers.id, driver.id)); const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, row.order.id)).limit(1))[0]; const store = line?.storeId ? (await db.select({ name: stores.name }).from(stores).where(eq(stores.id, line.storeId)).limit(1))[0] : null; await processDriverAssignmentResponse(db, driver.id, row.order.id, true); await sendAssignedOrderDetails(db, row.order.id, driver.phone, store?.name ?? "متجر لحظة", row.order.customerName, row.order.locationText, row.order.locationUrl); return true;
+  await db.insert(driverDispatchResponses).values({ roundId: row.round.id, orderId: row.order.id, driverId: driver.id, response: "yes" }); await db.insert(orderAssignments).values({ orderId: row.order.id, driverId: driver.id, driverName: driver.name, status: "assigned", note: "أول مندوب أجاب بنعم" }).onDuplicateKeyUpdate({ set: { driverId: driver.id, driverName: driver.name, status: "assigned", assignedAt: new Date(), acceptedAt: null, deliveredAt: null } }); await db.update(drivers).set({ available: false }).where(eq(drivers.id, driver.id)); const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, row.order.id)).limit(1))[0]; const store = line?.storeId ? (await db.select({ name: stores.name }).from(stores).where(eq(stores.id, line.storeId)).limit(1))[0] : null; await processDriverAssignmentResponse(db, driver.id, row.order.id, true); if (row.order.orderType === "taxi") await sendTaxiRideDetails(db, row.order.id, driver.phone); else await sendAssignedOrderDetails(db, row.order.id, driver.phone, store?.name ?? "متجر لحظة", row.order.customerName, row.order.locationText, row.order.locationUrl); return true;
 }
 async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, pickupLocation: string, pickupContactPhone: string, destinationText: string, destinationUrl: string, itemDescription: string) {
   const candidates = await db.select().from(drivers).where(and(eq(drivers.active, true), eq(drivers.available, true), eq(drivers.readyForOrders, true)));
@@ -565,11 +566,37 @@ async function dispatchWosselLiToNearestDriver(db: NonNullable<Awaited<ReturnTyp
   return nearest.id;
 }
 
-async function notifyTeamOfTaxiOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, customerPhone: string, pickup: string, destination: string, taxiType: "standard" | "van") {
+/** Everything the driver needs once a ride is theirs: where to pick up, where to go, the fare and how it is paid. */
+async function sendTaxiRideDetails(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, driverPhone: string) {
+  const order = (await db.select().from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  if (!order) return;
+  const destination = await taxiDestination(db, orderId);
+  const pickupLink = order.locationLat !== null && order.locationLng !== null ? mapLink(order.locationLat / 1_000_000, order.locationLng / 1_000_000) : order.locationUrl;
+  const fare = order.totalAmount > 0 ? formatSyp(order.totalAmount) : "يُتفق عليها مع العميل";
+  await sendWahaText(driverPhone, { title: `رحلة #${orderId}`, body: [
+    `تم إسناد رحلة سيارة الأجرة #${orderId} إليك (${taxiTypeLabel(order.taxiType)}).`,
+    "",
+    `الانطلاق: ${order.pickupLocation || order.locationText || "موقع الراكب"}`,
+    pickupLink ? pickupLink : "",
+    "",
+    `الوجهة: ${order.destination || "يحددها الراكب"}`,
+    destination ? mapLink(destination.lat, destination.lng) : "",
+    "",
+    order.deliveryDistanceMeters ? `المسافة التقريبية: ${(order.deliveryDistanceMeters / 1000).toFixed(1)} كم` : "",
+    `الأجرة: ${fare}`,
+    paymentLine(order),
+    "",
+    `الراكب: ${order.customerName}`,
+    `هاتف الراكب: ${order.customerPhone}`,
+    `واتساب الراكب: https://wa.me/${order.customerPhone.replace(/\D/g, "")}`,
+  ].filter((line, index, all) => line || all[index - 1]).join("\n") });
+}
+
+async function notifyTeamOfTaxiOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerName: string, customerPhone: string, pickup: string, destination: string, taxiType: "standard" | "van", fareText = "غير محددة") {
   const settings = await getSettings();
   const contacts = await db.select({ phone: supportContacts.phone }).from(supportContacts).where(and(eq(supportContacts.active, true), eq(supportContacts.whatsappEnabled, true))).limit(10);
   const phones = [settings.ownerPhone || DEFAULT_OWNER_PHONE, ...contacts.map(contact => contact.phone)].filter((phone, index, all) => all.findIndex(other => other.replace(/\D/g, "") === phone.replace(/\D/g, "")) === index);
-  const body = `طلب سيارة أجرة جديد #${orderId}\nالعميل: ${customerName}\nالهاتف: ${customerPhone}\nالنوع: ${taxiType === "van" ? "فان" : "عادية"}\nمن: ${pickup}\nإلى: ${destination}\n\nيرجى التواصل مع العميل وتأكيد السعر والسائق.`;
+  const body = `طلب سيارة أجرة جديد #${orderId}\nالعميل: ${customerName}\nالهاتف: ${customerPhone}\nالنوع: ${taxiType === "van" ? "فان" : "عادية"}\nمن: ${pickup}\nإلى: ${destination}\nالأجرة: ${fareText}\n\n${fareText === "غير محددة" ? "لم تُحدد أسعار سيارات الأجرة بعد: يرجى التواصل مع العميل لتأكيد الأجرة." : "أُرسل الطلب للسائقين المتاحين، وسيصلكم تنبيه إن لم يقبله أحد."}`;
   await Promise.allSettled(phones.map(phone => sendWahaText(phone, { title: "طلب تاكسي", body })));
 }
 
@@ -597,7 +624,9 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
       void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${orderId}`, body: `يرجى تجهيز الطلب #${orderId}\n\n${itemsText}\n\nمجموع المواد: ${formatSyp(partnerItemsTotal)}` });
     });
   }
-  const customerMessage = { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${orderId} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${row.driver.phone}\nللتواصل عبر واتساب: https://wa.me/${row.driver.phone.replace(/\D/g, "")}` };
+  const customerMessage = row.order.orderType === "taxi"
+    ? { title: "السائق في الطريق إليك", body: `تم قبول طلب سيارة الأجرة #${orderId}، والسائق ${row.driver.name} في الطريق إليك.\nرقم السائق: ${row.driver.phone}\nللتواصل عبر واتساب: https://wa.me/${row.driver.phone.replace(/\D/g, "")}` }
+    : { title: "طلبك قيد التنفيذ", body: `تم قبول طلبك #${orderId} وبدأ المندوب تجهيزه.\nرقم مندوب التوصيل: ${row.driver.phone}\nللتواصل عبر واتساب: https://wa.me/${row.driver.phone.replace(/\D/g, "")}` };
   await db.insert(orderNotifications).values({ orderId, customerPhone: row.order.customerPhone, status: "preparing", title: customerMessage.title, body: customerMessage.body });
   const tokens = await db.select({ token: pushTokens.token }).from(pushTokens).where(and(eq(pushTokens.customerPhone, row.order.customerPhone), eq(pushTokens.active, true)));
   await sendPushNotification(tokens.map(token => token.token), customerMessage);
@@ -1732,6 +1761,8 @@ export const orderInputSchema = z.object({
   itemWeight: z.string().trim().max(80).optional(),
   pharmacyPrescriptionUrl: z.string().url("رابط الوصفة غير صالح").max(500).optional(),
   destination: z.string().trim().max(220).optional(),
+  destinationLat: coordinateSchema.min(-90).max(90).optional(),
+  destinationLng: coordinateSchema.min(-180).max(180).optional(),
   notes: z.string().trim().max(500).optional(),
 }).superRefine((input, context) => {
   if (input.orderType === "delivery" && input.lines.length === 0 && !input.pharmacyPrescriptionUrl) context.addIssue({ code: "custom", message: "أضف صنفاً واحداً على الأقل أو أرفق وصفة طبية" });
@@ -1802,6 +1833,28 @@ export const lahzaRouter = router({
       };
     }),
   }),
+  taxi: router({
+    /** Where the map opens, and whether each vehicle has a price yet. */
+    config: publicProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const pricing = await getTaxiPricing(db);
+      const center = cityCenter(await getSettings(), ctx.city);
+      return { centerLat: center.latitude, centerLng: center.longitude, standardPriced: pricing.standardPricePerKm > 0, vanPriced: pricing.vanPricePerKm > 0 };
+    }),
+    /** The road distance and fare between the two points the customer picked. */
+    quote: publicProcedure.input(z.object({
+      taxiType: z.enum(["standard", "van"]),
+      pickupLat: coordinateSchema.min(-90).max(90), pickupLng: coordinateSchema.min(-180).max(180),
+      destinationLat: coordinateSchema.min(-90).max(90), destinationLng: coordinateSchema.min(-180).max(180),
+    })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const route = await getRoadRoute({ latitude: input.pickupLat, longitude: input.pickupLng }, { latitude: input.destinationLat, longitude: input.destinationLng });
+      const fareNewSyp = taxiFareNewSyp(route.distanceMeters, input.taxiType, await getTaxiPricing(db));
+      return { distanceKm: Math.round(route.distanceMeters / 100) / 10, minutes: Math.max(1, Math.round(route.durationSeconds / 60)), fareNewSyp };
+    }),
+  }),
   launchOffer: router({
     /** The contest as customers see it, with their own progress when signed in. */
     mine: publicProcedure.query(async ({ ctx }) => {
@@ -1843,7 +1896,7 @@ export const lahzaRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const session = await readCustomerSession(ctx);
       if (!session) throw new Error("سجّل الدخول أولاً لشحن رصيدك");
-      if (input.method === "sham_cash" && !input.reference && !input.proofDataUrl) throw new Error("أدخل رقم عملية التحويل أو أرفق صورة الإشعار");
+      // Sham Cash top-ups need no proof: the team checks the transfer in the Sham Cash account before approving.
       const db = await getDb();
       if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
       let proofImageUrl: string | undefined;
@@ -2976,6 +3029,21 @@ export const lahzaRouter = router({
         deliveryFee = calculateDistanceBasedDeliveryFee(deliveryDistanceMeters, service.pricePerKm).deliveryFee;
         preparationMinutes = estimatedRouteMinutes(routeDurationSeconds, deliveryDistanceMeters, service.minutesPerKm);
         totalAmount = deliveryFee;
+      } else if (input.orderType === "taxi") {
+        // Priced from the pickup to the destination on the road. Without both points, or before the
+        // owner sets taxi prices, the fare stays open and the team agrees it with the customer.
+        preparationMinutes = 0;
+        if (input.locationLat !== undefined && input.locationLng !== undefined && input.destinationLat !== undefined && input.destinationLng !== undefined) {
+          try {
+            const route = await getRoadRoute({ latitude: input.locationLat, longitude: input.locationLng }, { latitude: input.destinationLat, longitude: input.destinationLng });
+            deliveryDistanceMeters = Math.round(route.distanceMeters);
+            routeDurationSeconds = route.durationSeconds;
+            const fare = taxiFareNewSyp(route.distanceMeters, input.taxiType ?? "standard", await getTaxiPricing(db));
+            if (fare !== null) { deliveryFee = toLegacySyp(fare); totalAmount = deliveryFee; }
+          } catch (error) {
+            console.warn("Taxi route failed; the team will price the ride", { error });
+          }
+        }
       }
 
       const storeCommissionAmount = input.orderType === "delivery" ? calculateStoreCommission(finalItemsTotal, settings) : 0;
@@ -3031,6 +3099,7 @@ export const lahzaRouter = router({
         throw new Error(concise ? `تعذر حفظ الطلب: ${concise}` : "تعذر حفظ الطلب في قاعدة البيانات؛ راجع سجلات الخادم للتفاصيل.");
       }
       const orderId = Number(created[0].insertId);
+      if (input.orderType === "taxi" && input.destinationLat !== undefined && input.destinationLng !== undefined) await saveTaxiDestination(db, orderId, input.destinationLat, input.destinationLng);
       // The wallet pays what it can; the rest is collected on delivery in cash or Sham Cash.
       const walletAmount = input.useWallet ? await payFromWallet(db, input.customerPhone, totalAmount, orderId) : 0;
       if (walletAmount) await db.update(orders).set({ walletAmount }).where(eq(orders.id, orderId));
@@ -3070,7 +3139,8 @@ export const lahzaRouter = router({
           const primaryStoreId = products.find(product => product.storeId)?.storeId ?? null;
           await dispatchOrderToNearestDriver(db, orderId, orderCity, primaryStoreId, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
         } else if (input.orderType === "taxi") {
-          await notifyTeamOfTaxiOrder(db, orderId, input.customerName, input.customerPhone, input.pickupLocation ?? "", input.destination ?? "", input.taxiType ?? "standard");
+          await notifyTeamOfTaxiOrder(db, orderId, input.customerName, input.customerPhone, input.pickupLocation ?? "", input.destination ?? "", input.taxiType ?? "standard", totalAmount > 0 ? formatSyp(totalAmount) : "غير محددة");
+          if (totalAmount > 0) await dispatchOrderToNearestDriver(db, orderId, orderCity, null, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
         } else if (input.orderType === "wossel_li") {
           await dispatchWosselLiToNearestDriver(db, orderId, input.customerName, input.pickupLocation ?? "يتم تحديد مكان الاستلام هاتفياً مع جهة الاستلام", input.pickupContactPhone!, input.locationText!, input.locationUrl!, input.itemDescription!);
         }
@@ -3124,6 +3194,24 @@ export const lahzaRouter = router({
         const storeNames = Array.from(new Set(orderLines.flatMap(line => line.storeName ? [line.storeName] : [])));
         return { ...order, archived: isOrderArchived(order.createdAt), driverName: assignmentByOrderId.get(order.id) ?? null, storeNames, lines: orderLines };
       });
+    }),
+    /** The team sets or corrects a ride's fare; the customer is told the new amount. */
+    setTaxiFare: publicProcedure.input(z.object({ id: z.number().int().positive(), fare: newSypMoneyInput })).mutation(async ({ ctx, input }) => {
+      await requireAdmin(ctx);
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const order = (await db.select().from(orders).where(eq(orders.id, input.id)).limit(1))[0];
+      if (!order || order.orderType !== "taxi") throw new Error("الطلب ليس طلب سيارة أجرة");
+      if (["completed", "cancelled", "rejected"].includes(order.status)) throw new Error("لا يمكن تعديل أجرة رحلة منتهية");
+      const fare = toLegacySyp(input.fare);
+      if (fare < Number(order.walletAmount ?? 0)) throw new Error("الأجرة أقل مما دُفع من رصيد العميل");
+      await db.update(orders).set({ deliveryFee: fare, totalAmount: fare }).where(eq(orders.id, input.id));
+      const message = { title: "أجرة رحلتك", body: `أجرة رحلة سيارة الأجرة #${input.id}: ${formatSyp(fare)}.` };
+      await db.insert(orderNotifications).values({ orderId: input.id, customerPhone: order.customerPhone, status: order.status, title: message.title, body: message.body });
+      void sendWahaText(order.customerPhone, message);
+      // A ride the team prices goes out to drivers the same way a ride priced in the app does.
+      if (!order.totalAmount && ["pending", "confirmed"].includes(order.status)) await dispatchOrderToNearestDriver(db, input.id, order.orderCity, null, order.customerName, order.locationText, order.locationUrl);
+      return { success: true };
     }),
     updateStatus: publicProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(orderStatuses), reason: z.string().trim().min(2).max(300).optional() })).mutation(async ({ ctx, input }) => {
       const session = await requireAdmin(ctx);
@@ -3559,6 +3647,21 @@ export const lahzaRouter = router({
       await db.update(systemSettings).set({ masterPinHash: await hashSecret(input.newPin) }).where(eq(systemSettings.id, 1));
       return { success: true };
     }),
+    taxiSettings: router({
+      get: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return getTaxiPricing(db);
+      }),
+      update: publicProcedure.input(z.object({ standardPricePerKm: newSypMoneyInput, standardMinFare: newSypMoneyInput, vanPricePerKm: newSypMoneyInput, vanMinFare: newSypMoneyInput })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await updateTaxiPricing(db, input);
+        return { success: true };
+      }),
+    }),
     deliverySettings: router({
       get: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner"]);
@@ -3669,6 +3772,14 @@ export const lahzaRouter = router({
         if (!order[0]) throw new Error("الطلب غير موجود");
         await db.insert(orderAssignments).values({ orderId: input.orderId, driverId: input.driverId, driverName: driver[0].name, note: input.note || null }).onDuplicateKeyUpdate({ set: { driverId: input.driverId, driverName: driver[0].name, status: "assigned", note: input.note || null, assignedAt: new Date() } });
         await db.update(drivers).set({ available: false }).where(eq(drivers.id, input.driverId));
+        const assigned = (await db.select({ orderType: orders.orderType, customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.orderId)).limit(1))[0];
+        const driverRow = (await db.select({ phone: drivers.phone, name: drivers.name }).from(drivers).where(eq(drivers.id, input.driverId)).limit(1))[0];
+        if (assigned?.orderType === "taxi" && driverRow) {
+          await sendTaxiRideDetails(db, input.orderId, driverRow.phone);
+          const message = { title: "السائق في الطريق إليك", body: `تم تعيين السائق ${driverRow.name} لرحلتك #${input.orderId}.\nرقم السائق: ${driverRow.phone}\nللتواصل عبر واتساب: https://wa.me/${driverRow.phone.replace(/\D/g, "")}` };
+          await db.insert(orderNotifications).values({ orderId: input.orderId, customerPhone: assigned.customerPhone, status: "preparing", title: message.title, body: message.body });
+          void sendWahaText(assigned.customerPhone, message);
+        }
         return { success: true };
       }),
     }),
