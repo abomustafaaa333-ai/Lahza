@@ -71,7 +71,7 @@ function CityChoiceScreen({ onSelect }: { onSelect: (city: CityKey) => void }) {
   ];
   return <main dir="rtl" className="city-choice-screen">
     <section className="city-choice-card">
-      <img src="/assets/lahza-logo.svg" alt="لحظة" className="city-choice-logo" />
+      <img src="/assets/lahza-primary-logo-display.png" alt="لحظة" className="city-choice-logo" />
       <h1>من أين تستخدم تطبيق لحظة؟</h1>
       <p>اختر مدينتك لنعرض لك متاجرها وعروضها وخدماتها.</p>
       <div className="city-choice-grid">{cities.map(city => <button key={city.key} type="button" onClick={() => onSelect(city.key)} className={`city-choice-option ${city.tone}`}>
