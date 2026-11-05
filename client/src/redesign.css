@@ -831,3 +831,46 @@
 button.lahza-home-location { border: 0; background: transparent; padding: 0; cursor: pointer; }
 .taxi-point-adjust { display: inline-flex; align-items: center; gap: .3rem; margin: -.1rem 0 .45rem; border: 0; padding: 0; color: #00666b; background: none; font-size: .76rem; font-weight: 800; text-decoration: underline; }
 .taxi-point-button:disabled { opacity: .7; }
+
+/* Gifts: checkout card */
+.gift-card { padding: 0 !important; overflow: hidden; }
+.gift-card-on { box-shadow: 0 0 0 2px #f9a8d4, 0 1rem 2rem -1.6rem rgba(190,24,93,.6) !important; }
+.gift-toggle { display: flex; width: 100%; align-items: center; gap: .75rem; border: 0; padding: 1rem; text-align: right; background: linear-gradient(120deg, #fff1f6, #fff7ef); }
+.gift-toggle-icon { display: grid; flex: 0 0 auto; width: 2.6rem; height: 2.6rem; place-items: center; border-radius: .9rem; color: #fff; background: linear-gradient(145deg, #f472b6, #e11d48); }
+.gift-toggle-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.gift-toggle-copy strong { color: #4a2618; font-size: .98rem; font-weight: 900; }
+.gift-toggle-copy small { color: #8b6b5d; font-size: .74rem; font-weight: 700; }
+.gift-switch { position: relative; flex: 0 0 auto; width: 2.7rem; height: 1.55rem; border-radius: 999px; background: #e5d8cf; transition: background .2s; }
+.gift-switch span { position: absolute; top: .2rem; right: .2rem; width: 1.15rem; height: 1.15rem; border-radius: 999px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+.gift-switch-on { background: #e11d48; }
+.gift-switch-on span { transform: translateX(-1.15rem); }
+.gift-body { display: grid; gap: .9rem; padding: .2rem 1rem 1rem; }
+.gift-section { display: grid; gap: .5rem; }
+.gift-section-title { color: #4a2618; font-size: .84rem; font-weight: 900; }
+.gift-choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.gift-choice-grid button { display: flex; flex-direction: column; align-items: flex-start; gap: .25rem; border: 1.5px solid #f3e1d6; border-radius: 1rem; padding: .7rem; text-align: right; background: #fff; color: #7c6252; }
+.gift-choice-grid button strong { color: #4a2618; font-size: .85rem; font-weight: 900; }
+.gift-choice-grid button small { font-size: .7rem; font-weight: 700; line-height: 1.55; }
+.gift-choice-grid button svg { color: #e11d48; }
+.gift-choice-grid .gift-choice-active { border-color: #e11d48; background: #fff1f4; }
+.gift-choice-compact button { align-items: center; padding: .55rem; }
+.gift-check { display: flex; align-items: flex-start; gap: .55rem; border-radius: .9rem; padding: .6rem .7rem; background: #fffaf6; box-shadow: inset 0 0 0 1px #f3e1d6; }
+.gift-check input { margin-top: .25rem; accent-color: #e11d48; }
+.gift-check span { display: flex; flex-direction: column; }
+.gift-check strong { color: #4a2618; font-size: .84rem; font-weight: 900; }
+.gift-check small { color: #8b6b5d; font-size: .72rem; font-weight: 700; line-height: 1.55; }
+.gift-note { color: #9d174d; font-size: .74rem; font-weight: 800; line-height: 1.6; }
+
+/* Gifts: the page the recipient opens */
+.gift-page { display: grid; min-height: 100vh; place-items: center; padding: 1.5rem 1rem; color: #4a2618; background: radial-gradient(circle at 90% 0%, #ffd6e5 0%, transparent 45%), radial-gradient(circle at 0% 100%, #ffe4cc 0%, transparent 45%), #fffaf6; }
+.gift-page-card { display: flex; width: 100%; max-width: 26rem; flex-direction: column; align-items: center; gap: .8rem; border-radius: 2rem; padding: 2rem 1.3rem 1.6rem; text-align: center; background: #fff; box-shadow: 0 1.5rem 3.5rem -1.8rem rgba(99,48,27,.45); }
+.gift-page-logo { width: min(70%, 13rem); height: auto; }
+.gift-page-icon { display: grid; width: 4.6rem; height: 4.6rem; place-items: center; border-radius: 1.5rem; color: #fff; background: linear-gradient(145deg, #f472b6, #e11d48); box-shadow: 0 .9rem 1.6rem -.9rem rgba(225,29,72,.8); }
+.gift-page-icon-ok { background: linear-gradient(145deg, #34d399, #0f766e); }
+.gift-page-card h1 { font-size: 1.35rem; font-weight: 900; line-height: 1.5; }
+.gift-page-text { color: #7c6252; font-size: .9rem; font-weight: 700; line-height: 1.7; }
+.gift-page-note { display: grid; width: 100%; gap: .3rem; text-align: right; font-size: .78rem; font-weight: 800; }
+.gift-page-button { display: inline-flex; width: 100%; align-items: center; justify-content: center; gap: .5rem; border: 0; border-radius: 1.1rem; padding: .95rem; color: #fff; background: #e11d48; font-size: 1.02rem; font-weight: 900; }
+.gift-page-button:disabled { opacity: .7; }
+.gift-page-error { color: #b91c1c; font-size: .8rem; font-weight: 800; line-height: 1.6; }
+.gift-page-small { color: #a8968b; font-size: .72rem; font-weight: 700; }

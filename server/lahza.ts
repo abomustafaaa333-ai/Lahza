@@ -13,6 +13,7 @@ import { CITY_KEYS, DEFAULT_CITY, type CityKey } from "../shared/cities";
 import { getDb } from "./db";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { getRoadRoute } from "./maps";
+import { dueScheduledGifts, ensureGiftSchema, getGiftSettings, giftByToken, giftForOrder, giftFromLabel, giftScheduleLabel, giftsForOrders, markGift, saveGift, updateGiftSettings, type Gift } from "./gifts";
 import { mapLink, requestedVehicles, saveRequestedVehicle, saveTaxiDestination, taxiDestination, taxiTypeLabel, vehicleForOrder, vehicleLabel, type WosselVehicle } from "./taxi";
 import { cleanExpiredOffers } from "./expiredOffers";
 import { cleanExpiredOrders, isOrderArchived } from "./orderLifecycle";
@@ -446,10 +447,68 @@ async function deductCompletedOrderInventory(db: NonNullable<Awaited<ReturnType<
 }
 
 /** Everything that follows a delivered order, whoever marked it complete: stock, points, referral and the team message. */
+function giftLocationLink(token: string) {
+  return `${MEDIA_ORIGIN}/gift/${token}`;
+}
+
+/** What the driver needs for a gift: who receives it, how to find them, and what not to say. */
+async function sendGiftDriverDetails(gift: Gift, order: { id: number; locationUrl: string | null; locationText: string | null }, driverPhone: string) {
+  const location = gift.locationSharedAt || gift.locationMode === "map"
+    ? `موقع التسليم: ${order.locationText || "على الخريطة"}${order.locationUrl ? `\n${order.locationUrl}` : ""}`
+    : "موقع التسليم: أرسلنا للمُهدى إليه رسالة بأن لديه هدية. اتصل به الآن واطلب موقعه (لا تذكر المحتوى). إن شارك موقعه من الرابط سيصلك هنا تلقائياً.";
+  await sendWahaText(driverPhone, { title: `🎁 الطلب #${order.id} هدية`, body: [
+    `🎁 الطلب #${order.id} هدية: سلّمه إلى المُهدى إليه، لا إلى صاحب الطلب.`,
+    `المُهدى إليه: ${gift.recipientName}`,
+    `هاتفه: ${gift.recipientPhone}`,
+    `واتساب: https://wa.me/${gift.recipientPhone.replace(/\D/g, "")}`,
+    "",
+    location,
+    gift.scheduledAt ? `\nموعد التسليم المطلوب: ${giftScheduleLabel(gift.scheduledAt)}` : "",
+    gift.message ? `\nبطاقة الإهداء: «${gift.message}»` : "",
+    "",
+    "الطلب مدفوع مسبقاً: لا تحصّل أي مبلغ من المُهدى إليه، ولا تذكر السعر أو المحتوى.",
+  ].filter((line, index, all) => line || all[index - 1]).join("\n") });
+}
+
+/** When a driver takes a gift: the driver gets the gift details and, unless the sender pinned the place, the recipient is told a gift is coming. */
+async function startGiftDelivery(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, gift: Gift, order: typeof orders.$inferSelect, driver: { phone: string; name: string }) {
+  await sendGiftDriverDetails(gift, order, driver.phone);
+  if (gift.locationMode !== "recipient" || !(await markGift(db, order.id, "recipientNotifiedAt"))) return;
+  const from = giftFromLabel(gift, order.customerName);
+  const body = `مرحباً ${gift.recipientName} 🎁\nلديك هدية من ${from} عبر تطبيق لحظة!\n\nسيتصل بك مندوبنا ${driver.name} قريباً من الرقم ${driver.phone} ليعرف موقعك.\nأو شارك موقعك الآن بضغطة واحدة:\n${giftLocationLink(gift.locationToken)}`;
+  void sendWahaText(gift.recipientPhone, { title: "لديك هدية 🎁", body });
+  void sendWahaText(order.customerPhone, { body: `🎁 أبلغنا ${gift.recipientName} أن لديه هدية${gift.senderVisibility === "anonymous" ? " دون ذكر اسمك" : ""}، وسيتواصل معه المندوب لمعرفة موقعه.` });
+}
+
+/** After "تم": the recipient reads the card and learns who sent it; the sender hears it arrived. */
+async function notifyGiftDelivered(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number) {
+  const gift = await giftForOrder(db, orderId);
+  if (!gift || !(await markGift(db, orderId, "deliveredNotifiedAt"))) return;
+  const order = (await db.select({ customerName: orders.customerName, customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, orderId)).limit(1))[0];
+  if (!order) return;
+  const from = giftFromLabel(gift, order.customerName);
+  void sendWahaText(gift.recipientPhone, { title: "هدية من لحظة 🎁", body: `🎁 ${gift.recipientName}، هذه هدية من ${from}.${gift.message ? `\n\n«${gift.message}»` : ""}\n\nوصلتك عبر لحظة 💛` });
+  const message = { title: "وصلت هديتك 🎁", body: `تم تسليم هديتك إلى ${gift.recipientName} ✓` };
+  await db.insert(orderNotifications).values({ orderId, customerPhone: order.customerPhone, status: "completed", title: message.title, body: message.body });
+  void sendWahaText(order.customerPhone, message);
+}
+
+/** Scheduled gifts go out to drivers 40 minutes before the time the sender chose. */
+async function dispatchScheduledGifts(db: NonNullable<Awaited<ReturnType<typeof getDb>>>) {
+  for (const gift of await dueScheduledGifts(db)) {
+    if (!(await markGift(db, gift.orderId, "dispatchedAt"))) continue;
+    const order = (await db.select().from(orders).where(eq(orders.id, gift.orderId)).limit(1))[0];
+    if (!order) continue;
+    const line = (await db.select({ storeId: catalogItems.storeId }).from(orderLines).leftJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).where(eq(orderLines.orderId, order.id)).limit(1))[0];
+    await dispatchOrderToNearestDriver(db, order.id, order.orderCity, line?.storeId ?? null, order.customerName, order.locationText, order.locationUrl).catch(error => console.warn("Scheduled gift dispatch failed", { orderId: order.id, error }));
+  }
+}
+
 async function settleCompletedOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, orderId: number, customerPhone: string) {
   await deductCompletedOrderInventory(db, orderId);
   await awardCustomerPoint(db, customerPhone, "order_completed", orderId);
   await notifyOperationsOrderCompleted(db, orderId);
+  await notifyGiftDelivered(db, orderId).catch(error => console.warn("Gift delivered message failed", { orderId, error }));
   const referral = (await db.select().from(customerReferrals).where(and(eq(customerReferrals.referredOrderId, orderId), isNull(customerReferrals.completedAt))).limit(1))[0];
   if (referral) {
     await db.update(customerReferrals).set({ completedAt: new Date() }).where(eq(customerReferrals.id, referral.id));
@@ -539,7 +598,7 @@ async function dispatchOrderToNearestDriver(db: NonNullable<Awaited<ReturnType<t
   console.info("Driver broadcast candidate check", { orderId, orderCity, availableCount: candidates.length, targetDriverIds: target.map(d => d.id), excludedDriverIds });
   if (!target.length) { await sendWahaText((settings.ownerPhone || DEFAULT_OWNER_PHONE).trim(), isTaxi ? { title: "لا يوجد سائق متاح", body: `طلب سيارة الأجرة #${orderId} (${taxiTypeLabel(order.taxiType)}) لا يوجد له سائق متاح حالياً. يرجى التواصل مع العميل وتأمين سيارة يدوياً.` } : { title: "لا يوجد مندوب متاح", body: `الطلب #${orderId} لا يوجد له مندوب ${vehicleLabel(vehicle)} متاح حالياً.` }); return null; }
   const old = (await db.select().from(driverDispatchRounds).where(eq(driverDispatchRounds.orderId, orderId)).limit(1))[0]; const expiresAt = new Date(Date.now() + timeoutMinutes * 60000); let roundId: number; if (old) return null; { const inserted = await db.insert(driverDispatchRounds).values({ orderId, status: "open", expiresAt }); roundId = Number(inserted[0].insertId); }
-  const message = isTaxi ? { title: "طلب سيارة أجرة جديد", body: `يوجد طلب ${taxiTypeLabel(order.taxiType)} جديد #${orderId}.\nمن: ${order.pickupLocation || "موقع الراكب"}\nإلى: ${order.destination || "يحددها الراكب"}\n\nهل أنت متاح لتوصيل الراكب؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` } : { title: "طلب توصيل جديد", body: `يوجد طلب توصيل جديد #${orderId}.\n\nهل أنت متاح لاستلامه؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` }; await Promise.allSettled(target.map(async d => { const textResult = await sendWahaText(d.phone, { ...message, body: isTaxi ? message.body : `${message.body}\nلا توجد تفاصيل في هذه المرحلة.` }); console.info("Driver text broadcast delivery", { orderId, driverId: d.id, phone: maskPhone(d.phone), textSent: textResult.sent }); return textResult; })); return roundId;
+  const isGift = !isTaxi && Boolean(await giftForOrder(db, orderId)); const message = isTaxi ? { title: "طلب سيارة أجرة جديد", body: `يوجد طلب ${taxiTypeLabel(order.taxiType)} جديد #${orderId}.\nمن: ${order.pickupLocation || "موقع الراكب"}\nإلى: ${order.destination || "يحددها الراكب"}\n\nهل أنت متاح لتوصيل الراكب؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` } : { title: "طلب توصيل جديد", body: `يوجد طلب توصيل جديد #${orderId}${isGift ? " 🎁 (هدية)" : ""}.\n\nهل أنت متاح لاستلامه؟\nأرسل رسالة نصية فقط: نعم أو لا.\nالمهلة: ${timeoutMinutes} دقائق.` }; await Promise.allSettled(target.map(async d => { const textResult = await sendWahaText(d.phone, { ...message, body: isTaxi ? message.body : `${message.body}\nلا توجد تفاصيل في هذه المرحلة.` }); console.info("Driver text broadcast delivery", { orderId, driverId: d.id, phone: maskPhone(d.phone), textSent: textResult.sent }); return textResult; })); return roundId;
 }
 async function claimBroadcastOrder(db: NonNullable<Awaited<ReturnType<typeof getDb>>>, driver: typeof drivers.$inferSelect, accepted: boolean) {
   // A reply only counts for offers this driver's vehicle could have received.
@@ -616,6 +675,7 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
   }
   await db.update(orderAssignments).set({ status: "accepted", acceptedAt: new Date() }).where(eq(orderAssignments.id, row.assignment.id));
   await db.update(orders).set({ status: "preparing", statusChangedAt: new Date(), statusReason: "اعتمد المندوب الطلب" }).where(and(eq(orders.id, orderId), inArray(orders.status, ["pending", "confirmed"])));
+  const acceptedGift = row.order.orderType === "delivery" ? await giftForOrder(db, orderId) : null;
   if (row.order.orderType !== "wossel_li") {
     const partnerItems = await db.select({ partnerId: partners.id, partnerPhone: partners.username, itemName: orderLines.itemName, quantity: orderLines.quantity, unit: orderLines.unit, unitPrice: orderLines.unitPrice, lineTotal: orderLines.lineTotal }).from(orderLines).innerJoin(catalogItems, eq(orderLines.catalogItemId, catalogItems.id)).innerJoin(stores, eq(catalogItems.storeId, stores.id)).innerJoin(partners, eq(stores.partnerId, partners.id)).where(eq(orderLines.orderId, orderId));
     const grouped = new Map<number, typeof partnerItems>();
@@ -624,7 +684,7 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
       const first = items[0];
       const itemsText = items.map((item: (typeof partnerItems)[number], index: number) => `${index + 1}. ${item.itemName} — الكمية: ${item.quantity} ${item.unit} — سعر الوحدة: ${formatSyp(item.unitPrice)} — المجموع: ${formatSyp(item.lineTotal)}`).join("\n");
       const partnerItemsTotal = items.reduce((sum, item) => sum + Number(item.lineTotal ?? 0), 0);
-      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${orderId}`, body: `يرجى تجهيز الطلب #${orderId}\n\n${itemsText}\n\nمجموع المواد: ${formatSyp(partnerItemsTotal)}` });
+      void sendWahaText(first.partnerPhone, { title: `يرجى تجهيز الطلب #${orderId}`, body: `يرجى تجهيز الطلب #${orderId}${acceptedGift ? " 🎁 هدية" : ""}\n\n${itemsText}\n\nمجموع المواد: ${formatSyp(partnerItemsTotal)}${acceptedGift ? `\n\n🎁 هذا الطلب هدية${acceptedGift.wrap ? "، يرجى تغليفه كهدية" : ""}.${acceptedGift.message ? `\nبطاقة الإهداء: «${acceptedGift.message}»` : ""}\nلا تضعوا فاتورة أو سعراً داخل الطلب.` : ""}` });
     });
   }
   const customerMessage = row.order.orderType === "taxi"
@@ -635,6 +695,7 @@ async function processDriverAssignmentResponse(db: NonNullable<Awaited<ReturnTyp
   await sendPushNotification(tokens.map(token => token.token), customerMessage);
   void sendWahaText(row.order.customerPhone, customerMessage);
   void sendWahaText(row.driver.phone, { body: `تم اعتمادك لتنفيذ الطلب #${orderId}.\nعند إتمام التوصيل أرسل كلمة: تم\nلن تصلك طلبات جديدة قبل إرسالها.` });
+  if (acceptedGift) await startGiftDelivery(db, acceptedGift, row.order, row.driver);
   return { accepted: true };
 }
 
@@ -831,6 +892,7 @@ export async function autoCompleteDueOrders() {
   await processPharmacyPricingReminders(db);
   await expireUnansweredDriverAssignments(db);
   await releaseIdleDrivers(db).catch(error => console.warn("Unable to release idle drivers", error));
+  await dispatchScheduledGifts(db).catch(error => console.warn("Unable to dispatch scheduled gifts", error));
   const now = new Date();
   const feeSettings = await getSettings();
   // Orders a driver holds are not closed on a timer any more: the driver sends "تم" when it is
@@ -1768,8 +1830,20 @@ export const orderInputSchema = z.object({
   destinationLat: coordinateSchema.min(-90).max(90).optional(),
   destinationLng: coordinateSchema.min(-180).max(180).optional(),
   wosselVehicle: z.enum(["motorcycle", "car"]).optional(),
+  gift: z.object({
+    recipientName: z.string().trim().min(2, "اكتب اسم المُهدى إليه").max(80),
+    recipientPhone: internationalPhoneSchema,
+    message: z.string().trim().max(500).default(""),
+    locationMode: z.enum(["recipient", "map"]),
+    senderVisibility: z.enum(["reveal", "anonymous"]).default("reveal"),
+    wrap: z.boolean().default(false),
+    scheduledAt: z.coerce.date().optional(),
+  }).optional(),
   notes: z.string().trim().max(500).optional(),
 }).superRefine((input, context) => {
+  if (input.gift && input.orderType !== "delivery") context.addIssue({ code: "custom", message: "الهدايا متاحة لطلبات المتاجر فقط" });
+  if (input.gift && input.gift.recipientPhone.replace(/\D/g, "") === input.customerPhone.replace(/\D/g, "")) context.addIssue({ code: "custom", message: "رقم المُهدى إليه هو رقمك؛ اكتب رقم الشخص الذي ستصله الهدية" });
+  if (input.gift?.scheduledAt && (input.gift.scheduledAt.getTime() < Date.now() + 30 * 60_000 || input.gift.scheduledAt.getTime() > Date.now() + 30 * 86_400_000)) context.addIssue({ code: "custom", message: "اختر موعداً للهدية بعد نصف ساعة على الأقل وخلال 30 يوماً" });
   if (input.orderType === "delivery" && input.lines.length === 0 && !input.pharmacyPrescriptionUrl) context.addIssue({ code: "custom", message: "أضف صنفاً واحداً على الأقل أو أرفق وصفة طبية" });
   if (input.orderType === "taxi" && (!input.taxiType || !input.pickupLocation || !input.destination)) context.addIssue({ code: "custom", message: "أكمل بيانات التاكسي" });
   if (input.orderType === "wossel_li" && (!input.locationUrl || input.locationLat === undefined || input.locationLng === undefined || !input.locationText || !input.pickupContactPhone || !input.itemDescription)) context.addIssue({ code: "custom", message: "أكمل موقع التسليم ورقم جهة الاستلام ونوع الغرض" });
@@ -1836,6 +1910,39 @@ export const lahzaRouter = router({
         jarabulusPreparationMinutes: jarabulusOrderPreparationMinutes(settings),
         jarabulusDistanceNotice: ctx.city === "jarabulus" ? JARABULUS_DISTANCE_DELIVERY_NOTE : null,
       };
+    }),
+  }),
+  gift: router({
+    /** Whether gift wrapping is offered, and its price in new pounds. */
+    options: publicProcedure.query(async () => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      return getGiftSettings(db);
+    }),
+    /** What the recipient's link page shows: never the contents or the price. */
+    info: publicProcedure.input(z.object({ token: z.string().min(10).max(60) })).query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const gift = await giftByToken(db, input.token);
+      if (!gift) throw new Error("الرابط غير صالح");
+      const order = (await db.select({ customerName: orders.customerName, status: orders.status }).from(orders).where(eq(orders.id, gift.orderId)).limit(1))[0];
+      return { recipientName: gift.recipientName, from: giftFromLabel(gift, order?.customerName ?? ""), shared: Boolean(gift.locationSharedAt) || gift.locationMode === "map", closed: !order || ["completed", "cancelled", "rejected"].includes(order.status) };
+    }),
+    /** The recipient sends their location; the driver who has the gift gets it at once. */
+    shareLocation: publicProcedure.input(z.object({ token: z.string().min(10).max(60), lat: coordinateSchema.min(-90).max(90), lng: coordinateSchema.min(-180).max(180), note: z.string().trim().max(200).optional() })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+      const gift = await giftByToken(db, input.token);
+      if (!gift) throw new Error("الرابط غير صالح");
+      const order = (await db.select().from(orders).where(eq(orders.id, gift.orderId)).limit(1))[0];
+      if (!order || ["completed", "cancelled", "rejected"].includes(order.status)) throw new Error("هذه الهدية لم تعد بانتظار التوصيل");
+      const url = mapLink(input.lat, input.lng);
+      const text = input.note ? `موقع ${gift.recipientName}: ${input.note}` : `موقع ${gift.recipientName} (GPS)`;
+      await db.update(orders).set({ locationMode: "gps", locationText: text, locationUrl: url, locationLat: Math.round(input.lat * 1_000_000), locationLng: Math.round(input.lng * 1_000_000) }).where(eq(orders.id, order.id));
+      await markGift(db, gift.orderId, "locationSharedAt");
+      const assignment = (await db.select({ phone: drivers.phone }).from(orderAssignments).innerJoin(drivers, eq(drivers.id, orderAssignments.driverId)).where(and(eq(orderAssignments.orderId, order.id), inArray(orderAssignments.status, ["assigned", "accepted", "picked_up"]))).limit(1))[0];
+      if (assignment) void sendWahaText(assignment.phone, { title: `📍 موقع هدية #${order.id}`, body: `📍 شارك ${gift.recipientName} موقعه للطلب #${order.id} 🎁:\n${text}\n${url}` });
+      return { success: true };
     }),
   }),
   taxi: router({
@@ -3024,6 +3131,16 @@ export const lahzaRouter = router({
         preparationMinutes = 0;
       }
 
+      // A gift is paid before it leaves: from the wallet in full, or by Sham Cash. Wrapping is added to it.
+      let giftWrapFee = 0;
+      if (input.gift) {
+        const giftSettings = await getGiftSettings(db);
+        if (input.gift.wrap && giftSettings.wrapEnabled) giftWrapFee = toLegacySyp(giftSettings.wrapFee);
+        totalAmount += giftWrapFee;
+        if (input.paymentMethod === "cash" && (!input.useWallet || await walletBalance(db, input.customerPhone) < totalAmount)) {
+          throw new Error("الهدايا تُدفع مسبقاً حتى لا يُطلب أي مبلغ من المُهدى إليه: ادفع عبر شام كاش أو من رصيد لحظة");
+        }
+      }
       const storeCommissionAmount = input.orderType === "delivery" ? calculateStoreCommission(finalItemsTotal, settings) : 0;
       let created: any;
       try {
@@ -3078,6 +3195,12 @@ export const lahzaRouter = router({
       }
       const orderId = Number(created[0].insertId);
       if (input.orderType === "wossel_li") await saveRequestedVehicle(db, orderId, input.wosselVehicle ?? "motorcycle");
+      const giftScheduled = Boolean(input.gift?.scheduledAt);
+      if (input.gift) {
+        await saveGift(db, { orderId, recipientName: input.gift.recipientName, recipientPhone: input.gift.recipientPhone, message: input.gift.message, locationMode: input.gift.locationMode, senderVisibility: input.gift.senderVisibility, wrap: giftWrapFee > 0 || (input.gift.wrap && (await getGiftSettings(db)).wrapEnabled), wrapFee: giftWrapFee, scheduledAt: input.gift.scheduledAt ?? null, dispatched: !giftScheduled });
+        // The fee was priced to the city centre; the recipient's own location comes later from them.
+        if (input.gift.locationMode === "recipient") await db.update(orders).set({ locationMode: "manual", locationText: `يحدده المُهدى إليه (${input.gift.recipientName})`, locationUrl: null, locationLat: null, locationLng: null }).where(eq(orders.id, orderId));
+      }
       if (input.orderType === "taxi" && input.destinationLat !== undefined && input.destinationLng !== undefined) await saveTaxiDestination(db, orderId, input.destinationLat, input.destinationLng);
       // The wallet pays what it can; the rest is collected on delivery in cash or Sham Cash.
       const walletAmount = input.useWallet ? await payFromWallet(db, input.customerPhone, totalAmount, orderId) : 0;
@@ -3114,7 +3237,9 @@ export const lahzaRouter = router({
       // follow-up operation and must not make a successful order look failed
       // when assignment or the notification provider is temporarily unavailable.
       try {
-        if (input.orderType === "delivery") {
+        if (input.orderType === "delivery" && giftScheduled) {
+          // A scheduled gift goes out to drivers 40 minutes before its time (see dispatchScheduledGifts).
+        } else if (input.orderType === "delivery") {
           const primaryStoreId = products.find(product => product.storeId)?.storeId ?? null;
           await dispatchOrderToNearestDriver(db, orderId, orderCity, primaryStoreId, input.customerName, input.locationText ?? null, input.locationUrl ?? null);
         } else if (input.orderType === "taxi") {
@@ -3169,11 +3294,12 @@ export const lahzaRouter = router({
       const storeRows = storeIds.length ? await db.select({ id: stores.id, name: stores.name }).from(stores).where(inArray(stores.id, storeIds)) : [];
       const storeByCatalogId = new Map(catalogRows.map(row => [row.id, row.storeId ? storeRows.find(store => store.id === row.storeId)?.name ?? null : null]));
       const vehicles = await requestedVehicles(db, allOrders.filter(order => order.orderType === "wossel_li").map(order => order.id));
+      const gifts = await giftsForOrders(db, allOrders.filter(order => order.orderType === "delivery").map(order => order.id));
       return allOrders.map(order => {
         const requestedVehicle = order.orderType === "wossel_li" ? vehicles.get(order.id) ?? "motorcycle" : null;
         const orderLines = lines.filter(line => line.orderId === order.id).map(line => ({ ...line, storeName: line.catalogItemId ? storeByCatalogId.get(line.catalogItemId) ?? null : null }));
         const storeNames = Array.from(new Set(orderLines.flatMap(line => line.storeName ? [line.storeName] : [])));
-        return { ...order, archived: isOrderArchived(order.createdAt), driverName: assignmentByOrderId.get(order.id) ?? null, storeNames, lines: orderLines, requestedVehicle };
+        return { ...order, archived: isOrderArchived(order.createdAt), driverName: assignmentByOrderId.get(order.id) ?? null, storeNames, lines: orderLines, requestedVehicle, gift: (() => { const gift = gifts.get(order.id); return gift ? { recipientName: gift.recipientName, recipientPhone: gift.recipientPhone, message: gift.message, locationMode: gift.locationMode, senderVisibility: gift.senderVisibility, wrap: gift.wrap, scheduledAt: gift.scheduledAt, locationShared: Boolean(gift.locationSharedAt) } : null; })() };
       });
     }),
     /** The team records the fare the driver agreed with the rider; the rider is told the amount. */
@@ -3633,6 +3759,21 @@ export const lahzaRouter = router({
       await db.update(systemSettings).set({ masterPinHash: await hashSecret(input.newPin) }).where(eq(systemSettings.id, 1));
       return { success: true };
     }),
+    giftSettings: router({
+      get: publicProcedure.query(async ({ ctx }) => {
+        await requireAdmin(ctx);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        return getGiftSettings(db);
+      }),
+      update: publicProcedure.input(z.object({ wrapEnabled: z.boolean(), wrapFee: newSypMoneyInput })).mutation(async ({ ctx, input }) => {
+        await requireAdmin(ctx, ["owner"]);
+        const db = await getDb();
+        if (!db) throw new Error("قاعدة البيانات غير متاحة حالياً");
+        await updateGiftSettings(db, input);
+        return { success: true };
+      }),
+    }),
     deliverySettings: router({
       get: publicProcedure.query(async ({ ctx }) => {
         await requireAdmin(ctx, ["owner"]);
@@ -3745,6 +3886,11 @@ export const lahzaRouter = router({
         await db.update(drivers).set({ available: false }).where(eq(drivers.id, input.driverId));
         const assigned = (await db.select({ orderType: orders.orderType, customerPhone: orders.customerPhone }).from(orders).where(eq(orders.id, input.orderId)).limit(1))[0];
         const driverRow = (await db.select({ phone: drivers.phone, name: drivers.name }).from(drivers).where(eq(drivers.id, input.driverId)).limit(1))[0];
+        const assignedGift = assigned?.orderType === "delivery" ? await giftForOrder(db, input.orderId) : null;
+        if (assignedGift && driverRow) {
+          const fullOrder = (await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1))[0];
+          if (fullOrder) await startGiftDelivery(db, assignedGift, fullOrder, driverRow);
+        }
         if (assigned?.orderType === "taxi" && driverRow) {
           await sendTaxiRideDetails(db, input.orderId, driverRow.phone);
           const message = { title: "السائق في الطريق إليك", body: `تم تعيين السائق ${driverRow.name} لرحلتك #${input.orderId}، وسيتصل بك ليخبرك بالأجرة.\nرقم السائق: ${driverRow.phone}\nللتواصل عبر واتساب: https://wa.me/${driverRow.phone.replace(/\D/g, "")}` };

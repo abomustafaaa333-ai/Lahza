@@ -14,10 +14,11 @@ const Admin = lazy(() => import("@/pages/Admin"));
 const DemoAdmin = lazy(() => import("@/pages/DemoAdmin"));
 const DownloadApp = lazy(() => import("@/pages/DownloadApp"));
 const PartnerPortal = lazy(() => import("@/pages/PartnerPortal"));
+const GiftLocation = lazy(() => import("@/pages/GiftLocation"));
 
 function Router() {
   const AdminPage = isStaticDemo ? DemoAdmin : Admin;
-  return <Suspense fallback={<main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ فتح الصفحة...</span></main>}><Switch><Route path="/" component={Home} /><Route path="/download" component={DownloadApp} /><Route path="/partner/store" component={PartnerPortal} /><Route path="/partner" component={PartnerPortal} /><Route path="/admin" component={AdminPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch></Suspense>;
+  return <Suspense fallback={<main className="customer-auth-loading" dir="rtl"><img src="/assets/lahza-logo.svg" alt="لحظة" /><span>جارٍ فتح الصفحة...</span></main>}><Switch><Route path="/" component={Home} /><Route path="/download" component={DownloadApp} /><Route path="/gift/:token" component={GiftLocation} /><Route path="/partner/store" component={PartnerPortal} /><Route path="/partner" component={PartnerPortal} /><Route path="/admin" component={AdminPage} /><Route path="/404" component={NotFound} /><Route component={NotFound} /></Switch></Suspense>;
 }
 
 export default function App() {
